@@ -37,8 +37,8 @@ func (c *SchemaRef) generateSQL(schemaName string, db *Root, w io.Writer) {
 		writeHead("Tables")
 	}
 	for tableName, table := range c.Value.Tables {
-		if table.Description != nil {
-			writer(w, "-- description: %s\n", *table.Description)
+		if table.Description != "" {
+			writer(w, "-- description: %s\n", table.Description)
 		}
 		table.generateSQL(schemaName, tableName, db, w)
 	}
@@ -48,7 +48,7 @@ func (c *ConstraintSchema) generateSQL(schemaName, tableName string, db *Root, w
 	writer(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns))
 }
 
-func (c *Table) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
+func (c *TableClass) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
 	writer(w, "create table %s.%s(\n", schemaName, tableName)
 	for i, column := range c.Columns {
 		column.generateSQL(schemaName, tableName, db, w)
@@ -122,9 +122,9 @@ func (c *DomainSchema) describeSQL() interface{} {
 	return colType + nullable + defValue + check
 }
 
-func (r *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
-	writer(w, "\t%s %s", r.Value.Name, r.Value.Schema.Value.describeSQL())
-	for _, constraint := range r.Value.Constraints {
+func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
+	writer(w, "\t%s %s", c.Value.Name, c.Value.Schema.Value.describeSQL())
+	for _, constraint := range c.Value.Constraints {
 		writer(w, " %s", constraint.describeSQL(schemaName, tableName, nil))
 	}
 }

@@ -209,12 +209,12 @@ func (r *Column) describeGO() ast.Expr {
 	return r.Schema.Value.describeGO()
 }
 
-func (r *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
+func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
 	var decorator = func(e ast.Expr) ast.Expr { return e }
 	if !required {
 		decorator = makeTypeStar
 	}
-	fieldType := r.Value.describeGO()
+	fieldType := c.Value.describeGO()
 	// we myst check our imports if type is a selector
 	if sel, ok := fieldType.(*ast.SelectorExpr); ok {
 		if id, ok := sel.X.(*ast.Ident); ok {
@@ -229,17 +229,17 @@ func (r *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
 	return ast.Field{
 		Doc: nil,
 		Names: []*ast.Ident{
-			makeName(makeExportedName(r.Value.Name)),
+			makeName(makeExportedName(c.Value.Name)),
 		},
 		Type: decorator(fieldType),
 		Tag: makeTagsForField(map[string][]string{
-			"sql": r.Value.tags(),
+			"sql": c.Value.tags(),
 		}),
 		Comment: nil,
 	}
 }
 
-func (c *Table) generateFields(w *ast.File) (fields []*ast.Field) {
+func (c *TableClass) generateFields(w *ast.File) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(c.Columns))
 	for _, column := range c.Columns {
 		field := column.generateField(w, column.Value.Schema.Value.NotNull)
@@ -248,7 +248,7 @@ func (c *Table) generateFields(w *ast.File) (fields []*ast.Field) {
 	return
 }
 
-func (r *TableApi) generateInsertable(table *Table, w *ast.File) (fields []*ast.Field) {
+func (r *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoInsert) {
@@ -259,7 +259,7 @@ func (r *TableApi) generateInsertable(table *Table, w *ast.File) (fields []*ast.
 	return
 }
 
-func (r *TableApi) generateIdentifierOption(table *Table, w *ast.File) (fields []*ast.Field) {
+func (r *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if arrayContains(column.Value.Tags, tagIdentifier) {
@@ -270,7 +270,7 @@ func (r *TableApi) generateIdentifierOption(table *Table, w *ast.File) (fields [
 	return
 }
 
-func (r *TableApi) generateFields(table *Table, w *ast.File) (fields []*ast.Field) {
+func (r *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(r.Options))
 	// TODO move these case to uplevel
 	if len(r.Options) == 0 && r.Type == "insertOne" {
@@ -290,7 +290,7 @@ func (r *TableApi) generateFields(table *Table, w *ast.File) (fields []*ast.Fiel
 			if len(option.OneOf) > 0 {
 				panic("the option must contains 'oneOf' or 'field' not both")
 			}
-			column := TableColumns(table.Columns).find(option.Field)
+			column := table.Columns.find(option.Field)
 			field := column.generateField(w, option.Required || operator.isMult())
 			if operator.isMult() {
 				field.Type = &ast.ArrayType{
@@ -321,10 +321,10 @@ func (r *TableApi) generateFields(table *Table, w *ast.File) (fields []*ast.Fiel
 					panic("nested 'oneOf' does not supported")
 				}
 			}
-			firstColumn := TableColumns(table.Columns).find(option.OneOf[0].Field)
+			firstColumn := ColumnsContainer(table.Columns).find(option.OneOf[0].Field)
 			baseType := firstColumn.generateField(w, true)
 			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := TableColumns(table.Columns).find(oneOf.Field)
+				nextColumn := ColumnsContainer(table.Columns).find(oneOf.Field)
 				nextType := nextColumn.generateField(w, true).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
 					panic("each of 'oneOf' must have same type of data")
@@ -389,7 +389,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 				structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
 				resultFields = table.generateFields(w)
 			)
-			insertNewStructure(w, structName, resultFields, stringRefToSlice(table.Description))
+			insertNewStructure(w, structName, resultFields, stringToSlice(table.Description))
 			if len(table.Api) > 0 {
 				for _, api := range table.Api {
 					var (

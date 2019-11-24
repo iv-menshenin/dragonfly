@@ -413,6 +413,10 @@ var (
 			Template:     findOne,
 			TemplateData: createInsertOne,
 		},
+		"updateOne": { // TODO
+			Template:     findOne,
+			TemplateData: createDynamic,
+		},
 		"deleteOne": {
 			Template:     findOne,
 			TemplateData: createDeleteOne,

@@ -16,6 +16,7 @@ const (
 	schemas    = "schemas"
 
 	// schemas
+	types   = "types"
 	domains = "domains"
 	tables  = "tables"
 
@@ -26,12 +27,17 @@ const (
 
 type (
 	DomainSchema struct {
-		Type      string  `yaml:"type" json:"type"`
-		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
-		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`
-		NotNull   bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
-		Default   *string `yaml:"default,omitempty" json:"default,omitempty"`
-		Check     *string `yaml:"check,omitempty" json:"check,omitempty"`
+		Type      string       `yaml:"type" json:"type"`
+		Length    *int         `yaml:"length,omitempty" json:"length,omitempty"`
+		Precision *int         `yaml:"precision,omitempty" json:"precision,omitempty"`
+		NotNull   bool         `yaml:"not_null,omitempty" json:"not_null,omitempty"`
+		Default   *string      `yaml:"default,omitempty" json:"default,omitempty"`
+		Check     *string      `yaml:"check,omitempty" json:"check,omitempty"`
+		Enum      []EnumEntity `yaml:"enum,omitempty" json:"enum,omitempty"`
+	}
+	EnumEntity struct {
+		Value       string `yaml:"value" json:"value"`
+		Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	}
 	ColumnSchemaRef struct {
 		Value DomainSchema `yaml:"-,inline" json:"-,inline"`
@@ -84,30 +90,59 @@ type (
 		Name    string      `yaml:"name" json:"name"`
 		Options []ApiOption `yaml:"options,omitempty" json:"options,omitempty"`
 	}
-	Table struct {
-		Columns     []ColumnRef        `yaml:"columns" json:"columns"`
-		Constraints []ConstraintSchema `yaml:"constraints,omitempty" json:"constraints,omitempty"`
-		Description *string            `yaml:"description,omitempty" json:"description,omitempty"`
-		Api         []TableApi         `yaml:"api,omitempty" json:"api,omitempty"`
+	ColumnsContainer []ColumnRef
+	ApiContainer     []TableApi
+	TableConstraints []ConstraintSchema
+	TableClass       struct {
+		Inherits    []string         `yaml:"inherits,omitempty" json:"inherits,omitempty"`
+		Columns     ColumnsContainer `yaml:"columns" json:"columns"`
+		Constraints TableConstraints `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+		Description string           `yaml:"description,omitempty" json:"description,omitempty"`
+		Api         ApiContainer     `yaml:"api,omitempty" json:"api,omitempty"`
 	}
 	Schema struct {
 		Name    string                  `yaml:"name" json:"name"`
+		Types   map[string]DomainSchema `yaml:"types,omitempty" json:"types,omitempty"`
 		Domains map[string]DomainSchema `yaml:"domains,omitempty" json:"domains,omitempty"`
-		Tables  map[string]Table        `yaml:"tables,omitempty" json:"tables,omitempty"`
+		Tables  map[string]TableClass   `yaml:"tables,omitempty" json:"tables,omitempty"`
 	}
 	SchemaRef struct {
 		Value Schema  `yaml:"-,inline" json:"-,inline"`
 		Ref   *string `yaml:"$ref,omitempty" json:"$ref,omitempty"`
 	}
 	Components struct {
-		Columns map[string]Column `yaml:"columns" json:"columns"`
-		Classes map[string]Table  `yaml:"classes" json:"classes"`
+		Columns map[string]Column     `yaml:"columns" json:"columns"`
+		Classes map[string]TableClass `yaml:"classes" json:"classes"`
 	}
 	Root struct {
-		Schemas    []SchemaRef `yaml:"schemas" json:"schemas"`
-		Components Components  `yaml:"components" json:"components"`
+		Schemas []SchemaRef `yaml:"schemas" json:"schemas"`
+		// important: avoid getting any components directly, they are not normalized
+		Components Components `yaml:"components" json:"components"`
 	}
 )
+
+func (c *Root) getComponentColumn(name string) (*Column, bool) {
+	column, ok := c.Components.Columns[name]
+	if !ok {
+		return nil, false
+	}
+	if column.Schema.Ref != nil {
+		processRef(c, *column.Schema.Ref, &column.Schema.Value)
+	}
+	return &column, true
+}
+
+func (c *Root) getComponentClass(name string) (*TableClass, bool) {
+	class, ok := c.Components.Classes[name]
+	if !ok {
+		return nil, false
+	}
+	if class.Inherits != nil {
+		panic(fmt.Sprintf("the class '%s' cannot have 'inherits', multi-level inheritance is not supported", name))
+	}
+	class.normalize(nil, name, c)
+	return &class, true
+}
 
 func (c *ConstraintParameters) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var foreign ForeignKey
@@ -192,11 +227,14 @@ func (r *Column) follow(db *Root, path []string, i interface{}) bool {
 	return false
 }
 
-func (r *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
-	if r.Ref != nil {
-		processRef(db, *r.Ref, &r.Value)
+func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
+	if c.Ref != nil {
+		processRef(db, *c.Ref, &c.Value)
 	}
-	r.Value.Schema.normalize(schema, tableName, columnIndex, db)
+	if c.Value.Name == "" {
+		panic(fmt.Sprintf("undefined name for table '%s' column #%d", tableName, columnIndex+1))
+	}
+	c.Value.Schema.normalize(schema, tableName, columnIndex, db)
 }
 
 const (
@@ -217,13 +255,39 @@ func (c *ColumnSchemaRef) normalize(schema *SchemaRef, tableName string, columnI
 	if c.Ref != nil {
 		processRef(db, *c.Ref, &c.Value)
 	}
+	if c.Value.Type == "" {
+		panic(fmt.Sprintf("undefined data type for table '%s' column #%d", tableName, columnIndex+1))
+	}
 }
 
-type (
-	TableColumns []ColumnRef
-)
+func (c ApiContainer) exists(name string) bool {
+	for _, api := range c {
+		if api.Name == name {
+			return true
+		}
+	}
+	return false
+}
 
-func (c TableColumns) find(name string) ColumnRef {
+func (c TableConstraints) exists(name string) bool {
+	for _, constraint := range c {
+		if constraint.Constraint.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (c ColumnsContainer) exists(name string) bool {
+	for _, column := range c {
+		if column.Value.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (c ColumnsContainer) find(name string) ColumnRef {
 	for i, column := range []ColumnRef(c) {
 		if column.Value.Name == name {
 			return []ColumnRef(c)[i]
@@ -232,7 +296,7 @@ func (c TableColumns) find(name string) ColumnRef {
 	panic(fmt.Sprintf("cannot find column '%s'", name))
 }
 
-func (c *Table) follow(db *Root, path []string, i interface{}) bool {
+func (c *TableClass) follow(db *Root, path []string, i interface{}) bool {
 	if len(path) == 0 {
 		// can panic
 		copyFromTo(c, i)
@@ -240,7 +304,7 @@ func (c *Table) follow(db *Root, path []string, i interface{}) bool {
 	}
 	if len(path) > 1 {
 		if path[0] == columns {
-			column := TableColumns(c.Columns).find(path[1])
+			column := c.Columns.find(path[1])
 			copyFromTo(column.Value, i)
 		}
 		// TODO ??
@@ -248,7 +312,7 @@ func (c *Table) follow(db *Root, path []string, i interface{}) bool {
 	return false
 }
 
-func (c *Table) normalize(schema *SchemaRef, tableName string, db *Root) {
+func (c *TableClass) normalize(schema *SchemaRef, tableName string, db *Root) {
 	for i, column := range c.Columns {
 		column.normalize(schema, tableName, i, db)
 		c.Columns[i] = column
@@ -257,12 +321,43 @@ func (c *Table) normalize(schema *SchemaRef, tableName string, db *Root) {
 		constraint.normalize(schema, tableName, i, db)
 		c.Constraints[i] = constraint
 	}
+	for i, api := range c.Api {
+		api.normalize(schema, tableName, i, db)
+		c.Api[i] = api
+	}
+	for _, class := range c.Inherits {
+		classSchema, ok := db.getComponentClass(class)
+		if !ok {
+			panic(fmt.Sprintf("the class component '%s' is not exists", class))
+		}
+		for _, column := range classSchema.Columns {
+			if c.Columns.exists(column.Value.Name) {
+				panic(fmt.Sprintf("cannot inherit '%s' class. column '%s' already exists in table '%s'", class, column.Value.Name, tableName))
+			}
+			c.Columns = append(c.Columns, column)
+		}
+		for _, api := range classSchema.Api {
+			if c.Api.exists(api.Name) {
+				panic(fmt.Sprintf("cannot inherit '%s' class. api '%s' already exists in table '%s'", class, api.Name, tableName))
+			}
+			c.Api = append(c.Api, api)
+		}
+		for _, constraint := range classSchema.Constraints {
+			if c.Constraints.exists(constraint.Constraint.Name) {
+				panic(fmt.Sprintf("cannot inherit '%s' class. constraint '%s' already exists in table '%s'", class, constraint.Constraint.Name, tableName))
+			}
+			c.Constraints = append(c.Constraints, constraint)
+		}
+	}
+}
+
+func (c *TableApi) normalize(schema *SchemaRef, tableName string, apiIndex int, db *Root) {
+	if c.Name == "" {
+		c.Name = makeExportedName(fmt.Sprintf("%s-%s-%s", schema.Value.Name, tableName, c.Type))
+	}
 }
 
 func (c *SchemaRef) normalize(db *Root) {
-	if c.Ref != nil {
-		processRef(db, *c.Ref, &c.Value)
-	}
 	for tableName, table := range c.Value.Tables {
 		table.normalize(c, tableName, db)
 		c.Value.Tables[tableName] = table
@@ -279,6 +374,10 @@ func (c *SchemaRef) follow(db *Root, path []string, i interface{}) bool {
 		return false
 	}
 	switch path[0] {
+	case types:
+		if vType, ok := c.Value.Types[path[1]]; ok {
+			return vType.follow(db, path[2:], i)
+		}
 	case domains:
 		if domain, ok := c.Value.Domains[path[1]]; ok {
 			return domain.follow(db, path[2:], i)
@@ -317,11 +416,11 @@ func (c *Root) follow(db *Root, path []string, i interface{}) bool {
 		}
 		switch path[1] {
 		case columns:
-			if column, ok := c.Components.Columns[path[2]]; ok {
+			if column, ok := c.getComponentColumn(path[2]); ok {
 				return column.follow(db, path[3:], i)
 			}
 		case classes:
-			if class, ok := c.Components.Classes[path[2]]; ok {
+			if class, ok := c.getComponentClass(path[2]); ok {
 				return class.follow(db, path[3:], i)
 			}
 		}
@@ -330,6 +429,13 @@ func (c *Root) follow(db *Root, path []string, i interface{}) bool {
 }
 
 func (c *Root) normalize() {
+	// avoid of breaking links to types
+	for i, schemaRef := range c.Schemas {
+		if schemaRef.Ref != nil {
+			processRef(c, *schemaRef.Ref, &schemaRef.Value)
+			c.Schemas[i] = schemaRef
+		}
+	}
 	for i, schemaRef := range c.Schemas {
 		schemaRef.normalize(c)
 		c.Schemas[i] = schemaRef
