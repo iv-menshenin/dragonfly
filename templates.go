@@ -22,13 +22,13 @@ const (
 	}
 `
 	argmGenArray = `
-	var {%FieldName}Array []string
+	var arr{%FieldName} []string
 	for _, opt := range options.{%FieldName} {
 		argms = append(argms, opt)
-		{%FieldName}Array = append({%FieldName}Array, "$" + strconv.Itoa(len(argms)))
+		arr{%FieldName} = append(arr{%FieldName}, "$" + strconv.Itoa(len(argms)))
 	}
-	if len({%FieldName}Array) > 0 {
-		sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, strings.Join({%FieldName}Array, ", ")}))
+	if len(arr{%FieldName}) > 0 {
+		sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, strings.Join(arr{%FieldName}, ", ")}))
 	}
 `
 	findAll = `
@@ -53,7 +53,7 @@ func {%FunctionName}(ctx context.Context, options {%OptionName}) (result []{%Row
 	}
 	{%ArgmsGenerator}
 	if len(sqlWhere) > 0 {
-		sqlText += " where " + strings.Join(sqlWhere, " and ")
+		sqlText += " where (" + strings.Join(sqlWhere, ") and (") + ")"
 	}
 	if rows, err = db.Query(sqlText, argms...); err != nil {
 		return
@@ -272,13 +272,17 @@ func createDynamic(
 		if field.Tag != nil {
 			tags := tagToMap(field.Tag.Value)
 			colNames := make([]string, 0, 1)
+			colExpressions := make([]string, 0, len(colNames))
 			// first element is column name
 			ci := arrayFind(tags[TagTypeSQL], tagCaseInsensitive) > 0
 			opTagValue, ok := tags[TagTypeOp]
 			if !ok || len(opTagValue) < 1 {
 				opTagValue = []string{string(CompareEqual)}
 			}
+			genTemplate := argmsGenScalar
 			operator := SqlCompareOperator(opTagValue[0])
+			rawOption := fmt.Sprintf("options.%s", field.Names[0].Name)
+			option := rawOption
 			if arrayFind(tags[TagTypeSQL], TagTypeUnion) > 0 {
 				if ci {
 					for _, colName := range tags[TagTypeUnion] {
@@ -295,24 +299,11 @@ func createDynamic(
 				}
 			}
 			if SqlCompareOperator(opTagValue[0]).isMult() {
-				colExpressions := make([]string, 0, len(colNames))
 				for _, colName := range colNames {
 					colExpressions = append(colExpressions, operator.getExpression(colName, "%s"))
 				}
-				ArgmsGenerator = append(
-					ArgmsGenerator,
-					evalTemplateParameters(
-						argmGenArray,
-						map[string]string{
-							cColumnsCount: strconv.Itoa(len(colExpressions)),
-							cFieldName:    field.Names[0].String(),
-							cExpression:   strings.Join(colExpressions, " or "),
-						},
-					),
-				)
+				genTemplate = argmGenArray
 			} else {
-				rawOption := fmt.Sprintf("options.%s", field.Names[0].Name)
-				option := rawOption
 				if ci {
 					// strings.ToLower
 					extOption := ""
@@ -322,39 +313,26 @@ func createDynamic(
 					option = fmt.Sprintf("strings.ToLower(%soptions.%s)", extOption, field.Names[0].Name)
 					imports = append(imports, "\"strings\"")
 				}
-				colExpressions := make([]string, 0, len(colNames))
 				for _, colName := range colNames {
 					colExpressions = append(colExpressions, operator.getExpression(colName, "%s"))
 				}
 				if _, ok := field.Type.(*ast.StarExpr); ok {
-					ArgmsGenerator = append(
-						ArgmsGenerator,
-						evalTemplateParameters(
-							argmGenStar,
-							map[string]string{
-								cColumnsCount: strconv.Itoa(len(colExpressions)),
-								cFieldName:    field.Names[0].String(),
-								cExpression:   strings.Join(colExpressions, " or "),
-								cOption:       option,
-								cRawOption:    rawOption,
-							},
-						),
-					)
-				} else {
-					ArgmsGenerator = append(
-						ArgmsGenerator,
-						evalTemplateParameters(
-							argmsGenScalar,
-							map[string]string{
-								cColumnsCount: strconv.Itoa(len(colExpressions)),
-								cFieldName:    field.Names[0].String(),
-								cExpression:   strings.Join(colExpressions, " or "),
-								cOption:       option,
-							},
-						),
-					)
+					genTemplate = argmGenStar
 				}
 			}
+			ArgmsGenerator = append(
+				ArgmsGenerator,
+				evalTemplateParameters(
+					genTemplate,
+					map[string]string{
+						cColumnsCount: strconv.Itoa(len(colExpressions)),
+						cFieldName:    field.Names[0].String(),
+						cExpression:   strings.Join(colExpressions, " or "),
+						cOption:       option,
+						cRawOption:    rawOption,
+					},
+				),
+			)
 		}
 	}
 
