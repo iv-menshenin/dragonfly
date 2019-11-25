@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 )
 
@@ -27,13 +26,19 @@ const (
 
 type (
 	DomainSchema struct {
-		Type      string       `yaml:"type" json:"type"`
-		Length    *int         `yaml:"length,omitempty" json:"length,omitempty"`
-		Precision *int         `yaml:"precision,omitempty" json:"precision,omitempty"`
-		NotNull   bool         `yaml:"not_null,omitempty" json:"not_null,omitempty"`
-		Default   *string      `yaml:"default,omitempty" json:"default,omitempty"`
-		Check     *string      `yaml:"check,omitempty" json:"check,omitempty"`
-		Enum      []EnumEntity `yaml:"enum,omitempty" json:"enum,omitempty"`
+		Type      string  `yaml:"type" json:"type"`
+		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
+		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`
+		NotNull   bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
+		Default   *string `yaml:"default,omitempty" json:"default,omitempty"`
+		Check     *string `yaml:"check,omitempty" json:"check,omitempty"`
+		// for type `enum` only
+		Enum []EnumEntity `yaml:"enum,omitempty" json:"enum,omitempty"`
+		// for types `record` and `json`
+		Fields []Column `yaml:"fields,omitempty" json:"fields,omitempty"`
+		// for type `map`
+		KeyType   *ColumnSchemaRef `yaml:"key_type,omitempty" json:"key_type,omitempty"`
+		ValueType *ColumnSchemaRef `yaml:"value_type,omitempty" json:"value_type,omitempty"`
 	}
 	EnumEntity struct {
 		Value       string `yaml:"value" json:"value"`
@@ -80,9 +85,9 @@ type (
 		Constraint Constraint `yaml:"constraint" json:"constraint"`
 	}
 	ApiOption struct {
-		Field    string             `yaml:"field,omitempty" json:"field,omitempty"`
+		Column   string             `yaml:"column,omitempty" json:"column,omitempty"`
 		Required bool               `yaml:"required,omitempty" json:"required,omitempty"`
-		OneOf    []ApiOption        `yaml:"oneOf,omitempty" json:"oneOf,omitempty"`
+		OneOf    []ApiOption        `yaml:"one_of,omitempty" json:"one_of,omitempty"`
 		Operator SqlCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 	}
 	TableApi struct {
@@ -132,7 +137,10 @@ func (c *Root) getComponentColumn(name string) (*Column, bool) {
 	return &column, true
 }
 
-func (c *Root) getComponentClass(name string) (*TableClass, bool) {
+func (c *Root) getComponentClass(schema *SchemaRef, tableName string, name string) (*TableClass, bool) {
+	if name == "stdRef" {
+		name = "stdRef"
+	}
 	class, ok := c.Components.Classes[name]
 	if !ok {
 		return nil, false
@@ -140,7 +148,9 @@ func (c *Root) getComponentClass(name string) (*TableClass, bool) {
 	if class.Inherits != nil {
 		panic(fmt.Sprintf("the class '%s' cannot have 'inherits', multi-level inheritance is not supported", name))
 	}
-	class.normalize(nil, name, c)
+	if schema != nil {
+		class.normalize(schema, tableName, c)
+	}
 	return &class, true
 }
 
@@ -238,17 +248,27 @@ func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex i
 }
 
 const (
-	cNN     = "Num"
-	cTable  = "Table"
-	cSchema = "Schema"
+	cNN            = "Num"
+	cTable         = "Table"
+	cSchema        = "Schema"
+	cForeignTable  = "ForeignTable"
+	cForeignColumn = "ForeignColumn"
+	cApiType       = "ApiType"
 )
 
 func (c *ConstraintSchema) normalize(schema *SchemaRef, tableName string, constraintIndex int, db *Root) {
-	c.Constraint.Name = evalTemplateParameters(c.Constraint.Name, map[string]string{
-		cNN:     strconv.Itoa(constraintIndex),
-		cTable:  tableName,
-		cSchema: schema.Value.Name,
-	})
+	constraintNameDefault := map[string]string{
+		"primary key": "pk_{%Schema}_{%Table}",
+		"foreign key": "fk_{%Schema}_{%Table}_{%ForeignTable}",
+		"unique":      "ux_{%Schema}_{%Table}_{%Num}",
+		"default":     "ct_{%Schema}_{%Table}_{%Num}",
+	}
+	if c.Constraint.Name == "" {
+		var ok bool
+		if c.Constraint.Name, ok = constraintNameDefault[strings.ToLower(c.Constraint.Type)]; !ok {
+			c.Constraint.Name = constraintNameDefault["default"]
+		}
+	}
 }
 
 func (c *ColumnSchemaRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
@@ -326,7 +346,7 @@ func (c *TableClass) normalize(schema *SchemaRef, tableName string, db *Root) {
 		c.Api[i] = api
 	}
 	for _, class := range c.Inherits {
-		classSchema, ok := db.getComponentClass(class)
+		classSchema, ok := db.getComponentClass(schema, tableName, class)
 		if !ok {
 			panic(fmt.Sprintf("the class component '%s' is not exists", class))
 		}
@@ -337,15 +357,9 @@ func (c *TableClass) normalize(schema *SchemaRef, tableName string, db *Root) {
 			c.Columns = append(c.Columns, column)
 		}
 		for _, api := range classSchema.Api {
-			if c.Api.exists(api.Name) {
-				panic(fmt.Sprintf("cannot inherit '%s' class. api '%s' already exists in table '%s'", class, api.Name, tableName))
-			}
 			c.Api = append(c.Api, api)
 		}
 		for _, constraint := range classSchema.Constraints {
-			if c.Constraints.exists(constraint.Constraint.Name) {
-				panic(fmt.Sprintf("cannot inherit '%s' class. constraint '%s' already exists in table '%s'", class, constraint.Constraint.Name, tableName))
-			}
 			c.Constraints = append(c.Constraints, constraint)
 		}
 	}
@@ -353,7 +367,7 @@ func (c *TableClass) normalize(schema *SchemaRef, tableName string, db *Root) {
 
 func (c *TableApi) normalize(schema *SchemaRef, tableName string, apiIndex int, db *Root) {
 	if c.Name == "" {
-		c.Name = makeExportedName(fmt.Sprintf("%s-%s-%s", schema.Value.Name, tableName, c.Type))
+		c.Name = "{%Schema}_{%Table}_{%ApiType}"
 	}
 }
 
@@ -420,7 +434,7 @@ func (c *Root) follow(db *Root, path []string, i interface{}) bool {
 				return column.follow(db, path[3:], i)
 			}
 		case classes:
-			if class, ok := c.getComponentClass(path[2]); ok {
+			if class, ok := c.getComponentClass(nil, "", path[2]); ok {
 				return class.follow(db, path[3:], i)
 			}
 		}

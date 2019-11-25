@@ -9,6 +9,7 @@ import (
 	"io"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -285,12 +286,12 @@ func (r *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast
 	for _, option := range r.Options {
 		operator := option.Operator
 		operator.Check()
-		if option.Field != "" {
+		if option.Column != "" {
 			// TODO move to new function
 			if len(option.OneOf) > 0 {
-				panic("the option must contains 'oneOf' or 'field' not both")
+				panic("the option must contains 'one_of' or 'field' not both")
 			}
-			column := table.Columns.find(option.Field)
+			column := table.Columns.find(option.Column)
 			field := column.generateField(w, option.Required || operator.isMult())
 			if operator.isMult() {
 				field.Type = &ast.ArrayType{
@@ -313,21 +314,21 @@ func (r *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast
 			// TODO move to new function
 			unionColumns := make([]string, 0, len(option.OneOf))
 			for _, oneOf := range option.OneOf {
-				unionColumns = append(unionColumns, oneOf.Field)
-				if oneOf.Field == "" {
-					panic("each of 'oneOf' must contains 'fields'")
+				unionColumns = append(unionColumns, oneOf.Column)
+				if oneOf.Column == "" {
+					panic("each of 'one_of' must contains 'column'")
 				}
 				if len(oneOf.OneOf) > 0 {
-					panic("nested 'oneOf' does not supported")
+					panic("nested 'one_of' does not supported")
 				}
 			}
-			firstColumn := ColumnsContainer(table.Columns).find(option.OneOf[0].Field)
+			firstColumn := ColumnsContainer(table.Columns).find(option.OneOf[0].Column)
 			baseType := firstColumn.generateField(w, true)
 			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := ColumnsContainer(table.Columns).find(oneOf.Field)
+				nextColumn := ColumnsContainer(table.Columns).find(oneOf.Column)
 				nextType := nextColumn.generateField(w, true).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
-					panic("each of 'oneOf' must have same type of data")
+					panic("each of 'one_of' must have same type of data")
 				}
 			}
 			baseType.Names = []*ast.Ident{
@@ -351,7 +352,7 @@ func (r *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast
 			fields = append(fields, &baseType)
 			continue
 		}
-		panic("the option must contains 'oneOf' or 'field'")
+		panic("the option must contains 'one_of' or 'column'")
 	}
 	return
 }
@@ -360,7 +361,7 @@ type (
 	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field) *ast.File
 )
 
-func (r *TableApi) getApiBuilder() apiBuilder {
+func (r *TableApi) getApiBuilder(functionName string) apiBuilder {
 	var (
 		ok     bool
 		tplSet templateApi
@@ -368,10 +369,16 @@ func (r *TableApi) getApiBuilder() apiBuilder {
 	if tplSet, ok = funcTemplates[r.Type]; !ok {
 		panic(fmt.Sprintf("cannot find template `%s`", r.Type))
 	}
-	return func(schema *SchemaRef, tableName, rowStructName string, options, row []*ast.Field) (f *ast.File) {
+	return func(schema *SchemaRef, tableName, rowStructName string, queryOptionFields, queryOutputFields []*ast.Field) (f *ast.File) {
 		var (
 			err          error
-			templateData = tplSet.TemplateData(schema, tableName, rowStructName, r, options, row)
+			templateData = tplSet.TemplateData(
+				fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
+				functionName,
+				rowStructName,
+				queryOptionFields,
+				queryOutputFields,
+			)
 		)
 		goSampleCode := evalTemplateParameters(tplSet.Template, templateData)
 		if f, err = parser.ParseFile(token.NewFileSet(), r.Type, strings.NewReader(goSampleCode), 0); err != nil {
@@ -391,11 +398,25 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 			)
 			insertNewStructure(w, structName, resultFields, stringToSlice(table.Description))
 			if len(table.Api) > 0 {
-				for _, api := range table.Api {
+				for i, api := range table.Api {
+					apiName := evalTemplateParameters(
+						api.Name,
+						map[string]string{
+							cNN:      strconv.Itoa(i),
+							cSchema:  schemaName,
+							cTable:   tableName,
+							cApiType: api.Type,
+						},
+					)
+					if apiName == "" {
+						panic(fmt.Sprintf("you must specify name for api #%d in '%s' schema '%s' table", i, schemaName, tableName))
+					} else {
+						apiName = makeExportedName(apiName)
+					}
 					var (
-						optionStructName = makeExportedName(api.Name + "-Option")
+						optionStructName = apiName + "Option"
 						optionFields     = api.generateFields(&table, w)
-						builder          = api.getApiBuilder()
+						builder          = api.getApiBuilder(apiName)
 					)
 					insertNewStructure(w, optionStructName, optionFields, nil)
 					mergeCodeBase(w, builder(c, tableName, structName, optionFields, resultFields))

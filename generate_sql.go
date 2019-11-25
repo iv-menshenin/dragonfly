@@ -44,8 +44,8 @@ func (c *SchemaRef) generateSQL(schemaName string, db *Root, w io.Writer) {
 	}
 }
 
-func (c *ConstraintSchema) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
-	writer(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns))
+func (c *ConstraintSchema) generateSQL(schemaName, tableName string, constraintIndex int, db *Root, w io.Writer) {
+	writer(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns, constraintIndex))
 }
 
 func (c *TableClass) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
@@ -56,8 +56,8 @@ func (c *TableClass) generateSQL(schemaName, tableName string, db *Root, w io.Wr
 			writer(w, ",\n")
 		}
 	}
-	for _, constraint := range c.Constraints {
-		constraint.generateSQL(schemaName, tableName, db, w)
+	for i, constraint := range c.Constraints {
+		constraint.generateSQL(schemaName, tableName, i, db, w)
 	}
 	writer(w, "\n);\n")
 }
@@ -85,9 +85,26 @@ func (c *ConstraintParameters) describeSQL(columns []string) string {
 	return parameters
 }
 
-func (r *Constraint) describeSQL(schemaName, tableName string, columns []string) string {
+func (r *Constraint) describeSQL(schemaName, tableName string, columns []string, constraintIndex int) string {
 	constrType := r.Type
-	constrName := r.Name
+	var (
+		foreignTable  string
+		foreignColumn string
+	)
+	if fk, ok := r.Parameters.Parameter.(ForeignKey); ok {
+		foreignTable = fk.ToTable
+		foreignColumn = fk.ToColumn
+	}
+	constrName := evalTemplateParameters(
+		r.Name,
+		map[string]string{
+			cNN:            strconv.Itoa(constraintIndex),
+			cTable:         tableName,
+			cSchema:        schemaName,
+			cForeignTable:  foreignTable,
+			cForeignColumn: foreignColumn,
+		},
+	)
 	if strings.Count(constrName, "%s") == 1 {
 		constrName = fmt.Sprintf(constrName, tableName)
 	}
@@ -124,8 +141,8 @@ func (c *DomainSchema) describeSQL() interface{} {
 
 func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
 	writer(w, "\t%s %s", c.Value.Name, c.Value.Schema.Value.describeSQL())
-	for _, constraint := range c.Value.Constraints {
-		writer(w, " %s", constraint.describeSQL(schemaName, tableName, nil))
+	for i, constraint := range c.Value.Constraints {
+		writer(w, " %s", constraint.describeSQL(schemaName, tableName, nil, i))
 	}
 }
 

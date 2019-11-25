@@ -16,7 +16,7 @@ const (
 	sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, "$" + strconv.Itoa(len(argms))}))
 `
 	argmGenStar = `
-	if {%Option} != nil {
+	if {%RawOption} != nil {
 		argms = append(argms, {%Option})
 		sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, "$" + strconv.Itoa(len(argms))}))
 	}
@@ -62,7 +62,7 @@ func {%FunctionName}(ctx context.Context, options {%OptionName}) (result []{%Row
 		if err = rows.Err(); err != nil {
 			return
 		}
-		var row AuthAccountsRow
+		var row {%RowName}
 		if err = rows.Scan({%Fields}); err != nil {
 			return
 		}
@@ -107,9 +107,12 @@ func {%FunctionName}(ctx context.Context, options {%OptionName}) (row {%RowName}
 )
 
 type (
-	// TODO refactoring: lets simplify
-	templateDataCreator func(*SchemaRef, string, string, *TableApi, []*ast.Field, []*ast.Field) map[string]string
-	templateApi         struct {
+	templateDataCreator func(
+		fullTableName, functionName, rowStructName string,
+		optionFields, rowFields []*ast.Field,
+	) map[string]string
+
+	templateApi struct {
 		Template     string
 		TemplateData templateDataCreator
 	}
@@ -125,6 +128,7 @@ const (
 	cRowName        = "RowName"
 	cSqlText        = "SqlText"
 	cOptions        = "Options"
+	cRawOption      = "RawOption"
 	cFields         = "Fields"
 	cColumnsCount   = "ColumnsCount"
 	cImports        = "Imports"
@@ -134,23 +138,47 @@ const (
 	cOption         = "Option"
 )
 
+// get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other
+func extractFieldsAndColumnsFromStruct(rowFields []*ast.Field) (fieldNames, columnNames []string) {
+	fieldNames = make([]string, 0, len(rowFields))
+	columnNames = make([]string, 0, len(rowFields))
+	for _, field := range rowFields {
+		if field.Tag != nil {
+			tags := tagToMap(field.Tag.Value)
+			if sqlTags, ok := tags[TagTypeSQL]; ok && len(sqlTags) > 0 && sqlTags[0] != "-" {
+				fieldNames = append(fieldNames, "&row."+field.Names[0].Name)
+				columnNames = append(columnNames, sqlTags[0])
+			}
+		}
+	}
+	return
+}
+
+func extractQueryArgumentsAndColumnsFromStruct(optionFields []*ast.Field) (queryArguments, columnNames []string) {
+	queryArguments = make([]string, 0, len(optionFields))
+	columnNames = make([]string, 0, len(optionFields))
+	for _, field := range optionFields {
+		if field.Tag != nil {
+			tags := tagToMap(field.Tag.Value)
+			if sqlTag, ok := tags[TagTypeSQL]; ok && len(sqlTag) > 0 && tags[TagTypeSQL][0] != "-" {
+				queryArguments = append(queryArguments, "options."+field.Names[0].Name)
+				columnNames = append(columnNames, tags[TagTypeSQL][0])
+			}
+		}
+	}
+	return
+}
+
 func makeSqlBuilderParametersWithWhereClause(
-	schema *SchemaRef,
-	tableName, rowStructName string,
-	api *TableApi,
+	functionName, rowStructName string,
 	optionFields, rowFields []*ast.Field,
 	sqlQueryTemplate string,
 ) map[string]string {
-	table := schema.Value.Tables[tableName]
 	imports := make([]string, 0)
 	whereClause := []string{"1 = 1"}
-	functionName := makeExportedName(schema.Value.Name + "-" + tableName + "-" + api.Type)
-	if api.Name != "" {
-		functionName = makeExportedName(api.Name)
-	}
 	optionName := functionName + "Option"
 	parameters := make([]string, 0, len(optionFields))
-
+	// preparing options
 	for _, field := range optionFields {
 		if field.Tag != nil {
 			tags := tagToMap(field.Tag.Value)
@@ -159,7 +187,11 @@ func makeSqlBuilderParametersWithWhereClause(
 			ci := arrayFind(tags[TagTypeSQL], tagCaseInsensitive) > 0
 			if ci {
 				// strings.ToLower
-				parameters = append(parameters, fmt.Sprintf("strings.ToLower(options.%s)", field.Names[0].Name))
+				extOption := ""
+				if _, ok := field.Type.(*ast.StarExpr); ok {
+					extOption = "*"
+				}
+				parameters = append(parameters, fmt.Sprintf("strings.ToLower(%soptions.%s)", extOption, field.Names[0].Name))
 				imports = append(imports, "\"strings\"")
 			} else {
 				parameters = append(parameters, fmt.Sprintf("options.%s", field.Names[0].Name))
@@ -191,17 +223,13 @@ func makeSqlBuilderParametersWithWhereClause(
 			whereClause = append(whereClause, strings.Join(colExpressions, " or "))
 		}
 	}
-	fieldNames := make([]string, 0, len(rowFields))
-	columnNames := make([]string, 0, len(rowFields))
-	for i, field := range rowFields {
-		fieldNames = append(fieldNames, "&row."+field.Names[0].Name)
-		columnNames = append(columnNames, table.Columns[i].Value.Name)
-	}
+
+	fieldNames, columnNames := extractFieldsAndColumnsFromStruct(rowFields)
+
 	sqlText := evalTemplateParameters(
 		sqlQueryTemplate,
 		map[string]string{
 			"ReturningColumns": strings.Join(columnNames, ", "),
-			"TableFullName":    fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
 			"WhereExpression":  "(" + strings.Join(whereClause, ") and (") + ")",
 		},
 	)
@@ -216,26 +244,26 @@ func makeSqlBuilderParametersWithWhereClause(
 	}
 }
 
-func createSimple(schema *SchemaRef, tableName, rowStructName string, api *TableApi, optionFields, rowFields []*ast.Field) map[string]string {
-	queryTemplate := "`select {%ReturningColumns} from {%TableFullName} where {%WhereExpression};`"
+func createSimple(
+	fullTableName, functionName, rowStructName string,
+	optionFields, rowFields []*ast.Field,
+) map[string]string {
+	queryTemplate := "`select {%ReturningColumns} from " + fullTableName + " where {%WhereExpression};`"
 	return makeSqlBuilderParametersWithWhereClause(
-		schema,
-		tableName,
+		functionName,
 		rowStructName,
-		api,
 		optionFields,
 		rowFields,
 		queryTemplate,
 	)
 }
 
-func createDynamic(schema *SchemaRef, tableName, rowStructName string, api *TableApi, optionFields, rowFields []*ast.Field) map[string]string {
-	table := schema.Value.Tables[tableName]
+func createDynamic(
+	fullTableName, functionName, rowStructName string,
+	optionFields, rowFields []*ast.Field,
+) map[string]string {
+	// TODO rebuild it with the makeSqlBuilderParametersWithWhereClause function helpful
 	imports := []string{`"strconv"`, `"fmt"`}
-	functionName := makeExportedName(schema.Value.Name + "-" + tableName + "-" + api.Type)
-	if api.Name != "" {
-		functionName = makeExportedName(api.Name)
-	}
 	optionName := functionName + "Option"
 	parameters := make([]string, 0, len(optionFields))
 	ArgmsGenerator := make([]string, 0, len(optionFields))
@@ -283,10 +311,15 @@ func createDynamic(schema *SchemaRef, tableName, rowStructName string, api *Tabl
 					),
 				)
 			} else {
-				option := fmt.Sprintf("options.%s", field.Names[0].Name)
+				rawOption := fmt.Sprintf("options.%s", field.Names[0].Name)
+				option := rawOption
 				if ci {
 					// strings.ToLower
-					option = fmt.Sprintf("strings.ToLower(options.%s)", field.Names[0].Name)
+					extOption := ""
+					if _, ok := field.Type.(*ast.StarExpr); ok {
+						extOption = "*"
+					}
+					option = fmt.Sprintf("strings.ToLower(%soptions.%s)", extOption, field.Names[0].Name)
 					imports = append(imports, "\"strings\"")
 				}
 				colExpressions := make([]string, 0, len(colNames))
@@ -303,6 +336,7 @@ func createDynamic(schema *SchemaRef, tableName, rowStructName string, api *Tabl
 								cFieldName:    field.Names[0].String(),
 								cExpression:   strings.Join(colExpressions, " or "),
 								cOption:       option,
+								cRawOption:    rawOption,
 							},
 						),
 					)
@@ -323,17 +357,14 @@ func createDynamic(schema *SchemaRef, tableName, rowStructName string, api *Tabl
 			}
 		}
 	}
-	fieldNames := make([]string, 0, len(rowFields))
-	columnNames := make([]string, 0, len(rowFields))
-	for i, field := range rowFields {
-		fieldNames = append(fieldNames, "&row."+field.Names[0].Name)
-		columnNames = append(columnNames, table.Columns[i].Value.Name)
-	}
+
+	fieldNames, columnNames := extractFieldsAndColumnsFromStruct(rowFields)
+
 	return map[string]string{
 		cFunctionName:   functionName,
 		cOptionName:     optionName,
 		cRowName:        rowStructName,
-		cSqlText:        fmt.Sprintf("`select %s from %s.%s `", strings.Join(columnNames, ", "), schema.Value.Name, tableName),
+		cSqlText:        fmt.Sprintf("`select %s from %s `", strings.Join(columnNames, ", "), fullTableName),
 		cOptions:        strings.Join(parameters, ", "),
 		cFields:         strings.Join(fieldNames, ", "),
 		cImports:        strings.Join(imports, "\n\t"),
@@ -341,54 +372,37 @@ func createDynamic(schema *SchemaRef, tableName, rowStructName string, api *Tabl
 	}
 }
 
-func createInsertOne(schema *SchemaRef, tableName, rowStructName string, api *TableApi, optionFields, rowFields []*ast.Field) map[string]string {
-	table := schema.Value.Tables[tableName]
+func createInsertOne(
+	fullTableName, functionName, rowStructName string,
+	optionFields, rowFields []*ast.Field,
+) map[string]string {
 	imports := make([]string, 0)
-	functionName := makeExportedName(schema.Value.Name + "-" + tableName + "-" + api.Type)
-	if api.Name != "" {
-		functionName = makeExportedName(api.Name)
-	}
 	optionName := functionName + "Option"
-	parameters := make([]string, 0, len(optionFields))
-	inputColumnNames := make([]string, 0, len(optionFields))
-
-	for _, field := range optionFields {
-		if field.Tag != nil {
-			tags := tagToMap(field.Tag.Value)
-			if sqlTag, ok := tags[TagTypeSQL]; ok && len(sqlTag) > 0 && tags[TagTypeSQL][0] != "-" {
-				inputColumnNames = append(inputColumnNames, tags[TagTypeSQL][0])
-				parameters = append(parameters, fmt.Sprintf("options.%s", field.Names[0].Name))
-			}
-		}
-	}
-	fieldNames := make([]string, 0, len(rowFields))
-	columnNames := make([]string, 0, len(rowFields))
-	for i, field := range rowFields {
-		fieldNames = append(fieldNames, "&row."+field.Names[0].Name)
-		columnNames = append(columnNames, table.Columns[i].Value.Name)
-	}
-	placeholders := make([]string, 0, len(parameters))
-	for i, _ := range parameters {
+	queryArgs, inputColumnNames := extractQueryArgumentsAndColumnsFromStruct(optionFields)
+	fieldNames, columnNames := extractFieldsAndColumnsFromStruct(rowFields)
+	placeholders := make([]string, 0, len(queryArgs))
+	for i, _ := range queryArgs {
 		placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
 	}
 	return map[string]string{
 		cFunctionName: functionName,
 		cOptionName:   optionName,
 		cRowName:      rowStructName,
-		cSqlText:      fmt.Sprintf("`insert into %s.%s (%s) values (%s) returning %s;`", schema.Value.Name, tableName, strings.Join(inputColumnNames, ", "), strings.Join(placeholders, ", "), strings.Join(columnNames, ", ")),
-		cOptions:      strings.Join(parameters, ", "),
+		cSqlText:      fmt.Sprintf("`insert into %s (%s) values (%s) returning %s;`", fullTableName, strings.Join(inputColumnNames, ", "), strings.Join(placeholders, ", "), strings.Join(columnNames, ", ")),
+		cOptions:      strings.Join(queryArgs, ", "),
 		cFields:       strings.Join(fieldNames, ", "),
 		cImports:      strings.Join(imports, "\n\t"),
 	}
 }
 
-func createDeleteOne(schema *SchemaRef, tableName, rowStructName string, api *TableApi, optionFields, rowFields []*ast.Field) map[string]string {
-	queryTemplate := "`delete from {%TableFullName} where {%WhereExpression} returning {%ReturningColumns};`"
+func createDeleteOne(
+	fullTableName, functionName, rowStructName string,
+	optionFields, rowFields []*ast.Field,
+) map[string]string {
+	queryTemplate := "`delete from " + fullTableName + " where {%WhereExpression} returning {%ReturningColumns};`"
 	return makeSqlBuilderParametersWithWhereClause(
-		schema,
-		tableName,
+		functionName,
 		rowStructName,
-		api,
 		optionFields,
 		rowFields,
 		queryTemplate,
