@@ -200,3 +200,22 @@ func mergeCodeBase(main, next *ast.File) {
 		main.Decls = append(main.Decls, decl)
 	}
 }
+
+func makeCall(name ast.Expr, args ...ast.Expr) *ast.CallExpr {
+	return &ast.CallExpr{
+		Fun:  name,
+		Args: args,
+	}
+}
+
+func makeReturn(results ...ast.Expr) *ast.ReturnStmt {
+	return &ast.ReturnStmt{
+		Results: results,
+	}
+}
+
+func makeBlock(statements ...ast.Stmt) *ast.BlockStmt {
+	return &ast.BlockStmt{
+		List: statements,
+	}
+}

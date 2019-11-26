@@ -8,7 +8,10 @@ import (
 )
 
 const (
-	enumFunctionName = "Enum"
+	methodReceiverLit = "c"
+
+	enumFunctionName  = "Enum"
+	checkFunctionName = "Check"
 )
 
 type (
@@ -116,44 +119,52 @@ func (c enumTypeDescriber) getFile() *ast.File {
 	for _, entity := range c.domain.Enum {
 		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
 	}
+	objMethodArgSelf := []*ast.Field{
+		{
+			Names: []*ast.Ident{
+				makeName(methodReceiverLit),
+			},
+			Type: makeName(c.typeName),
+		},
+	}
+	returnTypeValueErrorExpr := makeReturn(
+		makeCall(
+			makeName("makeTypeValueError"),
+			makeCall(
+				makeTypeSelector("fmt", "Sprintf"),
+				makeBasicLiteralString("%T"),
+				makeName(methodReceiverLit),
+			),
+			makeCall(makeName("string"), makeName(methodReceiverLit)),
+		),
+	)
+	rangeBody := makeBlock(
+		&ast.IfStmt{
+			Cond: makeCall(
+				makeTypeSelector("strings", "EqualFold"),
+				makeName("s"),
+				makeCall(makeName("string"), makeName(methodReceiverLit)),
+			),
+			Body: makeBlock(makeReturn(makeName("nil"))),
+		},
+	)
 	f.Name = makeName("generated")
 	f.Decls = []ast.Decl{
 		&ast.GenDecl{
 			Tok: token.TYPE,
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
-					Name: &ast.Ident{
-						Name: c.typeName,
-						Obj: &ast.Object{
-							Kind: ast.Typ,
-							Name: c.typeName,
-						},
-					},
+					Name: makeName(c.typeName),
 					Type: makeTypeIdent("string"),
 				},
 			},
 		},
 		&ast.FuncDecl{
 			Recv: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						/*
-							Obj: &ast.Object {
-									Kind: var
-									Name: "c"
-									Decl: *(obj @ 59)
-								}
-						*/
-						Names: []*ast.Ident{
-							makeName("c"),
-						},
-						Type: makeName(c.typeName),
-					},
-				},
+				List: objMethodArgSelf,
 			},
 			Name: makeName(enumFunctionName),
 			Type: &ast.FuncType{
-				Params: &ast.FieldList{}, // TODO maybe nil?
 				Results: &ast.FieldList{
 					List: []*ast.Field{
 						{
@@ -162,18 +173,42 @@ func (c enumTypeDescriber) getFile() *ast.File {
 					},
 				},
 			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.ReturnStmt{
-						Results: []ast.Expr{
-							&ast.CompositeLit{
-								Type: &ast.ArrayType{
-									Elt: makeName("string"),
-								},
-								Elts: enumValues,
-							},
+			Body: makeBlock(
+				makeReturn(
+					&ast.CompositeLit{
+						Type: makeTypeArray(makeName("string")),
+						Elts: enumValues,
+					},
+				),
+			),
+		},
+		&ast.FuncDecl{
+			Recv: &ast.FieldList{
+				List: objMethodArgSelf,
+			},
+			Name: makeName(checkFunctionName),
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Type: makeName("error"),
 						},
 					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.RangeStmt{
+						Key:   makeName("_"),
+						Value: makeName("s"),
+						Tok:   token.DEFINE,
+						X: &ast.CallExpr{
+							Fun: makeTypeSelector(methodReceiverLit, enumFunctionName),
+						},
+						Body: rangeBody,
+					},
+					returnTypeValueErrorExpr,
 				},
 			},
 		},
