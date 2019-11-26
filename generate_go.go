@@ -102,6 +102,12 @@ func (c sqlCompareOperator) getExpression(sLeft, sRight string) string {
 	panic(fmt.Sprintf("cannot find template for operator '%s'", string(c)))
 }
 
+func generateExportedNameFromRef(ref *string) string {
+	refSmts := strings.Split(*ref, "/")
+	// TODO
+	return makeExportedName(strings.Join(refSmts[len(refSmts)-2:], "-"))
+}
+
 func makeExportedName(name string) string {
 	var (
 		reader   io.RuneReader = strings.NewReader(name)
@@ -133,8 +139,8 @@ func makeExportedName(name string) string {
 	return string(exported)
 }
 
-func (c *DomainSchema) describeGO() fieldDescriber {
-	return goTypeParametersBySqlType(c)
+func (c *DomainSchema) describeGO(typeName string) fieldDescriber {
+	return goTypeParametersBySqlType(typeName, c)
 }
 
 func (r *Column) tags() []string {
@@ -148,7 +154,13 @@ func (r *Column) tags() []string {
 }
 
 func (r *Column) describeGO() fieldDescriber {
-	return r.Schema.Value.describeGO()
+	typeName := ""
+	if r.Schema.Ref != nil {
+		typeName = generateExportedNameFromRef(r.Schema.Ref)
+	} else {
+		typeName = makeExportedName(r.Name)
+	}
+	return r.Schema.Value.describeGO("Enum" + typeName)
 }
 
 func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {

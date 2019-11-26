@@ -4,15 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 type (
-	ContextDB struct{}
+	ContextDB      struct{}
+	EnumValueError error
 )
 
 var (
 	EmptyResult = errors.New("got empty result")
 )
+
+func makeTypeValueError(typeName, gotValue string) EnumValueError {
+	return errors.New(fmt.Sprintf("invalid %s value: %s", typeName, gotValue))
+}
 
 func IsEmptyResult(err error) bool {
 	return err == EmptyResult

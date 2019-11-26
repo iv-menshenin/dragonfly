@@ -15,6 +15,13 @@ func makeTypeString() ast.Expr {
 	}
 }
 
+func makeBasicLiteralString(s string) ast.Expr {
+	return &ast.BasicLit{
+		Kind:  token.STRING,
+		Value: fmt.Sprintf("\"%s\"", s),
+	}
+}
+
 func makeTypeIdent(structType string) ast.Expr {
 	return &ast.Ident{
 		Name: structType,
@@ -39,9 +46,7 @@ func makeTypeStar(expr ast.Expr) ast.Expr {
 
 func makeTypeArray(expr ast.Expr) ast.Expr {
 	return &ast.ArrayType{
-		Lbrack: 0,
-		Len:    nil,
-		Elt:    nil,
+		Elt: expr,
 	}
 }
 

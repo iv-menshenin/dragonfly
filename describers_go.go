@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+const (
+	enumFunctionName = "Enum"
+)
+
 type (
 	fieldDescriber interface {
 		getFile() *ast.File
@@ -22,9 +26,10 @@ type (
 	}
 	enumTypeDescriber struct {
 		simpleTypeDescriber
-		domain *DomainSchema
+		typeName string
+		domain   *DomainSchema
 	}
-	makeDescriber func(schema *DomainSchema) fieldDescriber
+	makeDescriber func(string, *DomainSchema) fieldDescriber
 )
 
 /*
@@ -32,7 +37,7 @@ type (
 */
 
 func makeSimpleDescriber(t, p, x string) makeDescriber {
-	return func(*DomainSchema) fieldDescriber {
+	return func(string, *DomainSchema) fieldDescriber {
 		return simpleTypeDescriber{t, p, x}
 	}
 }
@@ -68,7 +73,7 @@ func (c simpleTypeDescriber) fieldTypeExpr() ast.Expr {
 */
 
 func makeSliceDescriber(t, p, x string) makeDescriber {
-	return func(*DomainSchema) fieldDescriber {
+	return func(string, *DomainSchema) fieldDescriber {
 		return sliceTypeDescriber{
 			simpleTypeDescriber{
 				typeLit:     t,
@@ -87,15 +92,95 @@ func (c sliceTypeDescriber) fieldTypeExpr() ast.Expr {
   enumTypeDescriber
 */
 
-func makeEnumDescriberDirectly(domain *DomainSchema) fieldDescriber {
+func makeEnumDescriberDirectly(typeName string, domain *DomainSchema) fieldDescriber {
 	return enumTypeDescriber{
-		simpleTypeDescriber: simpleTypeDescriber{typeLit: "string"},
+		simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
 		domain:              domain,
+		typeName:            typeName,
 	}
 }
 
+// TODO temporary
+var (
+	alreadyDeclared = make(map[string]bool)
+)
+
 func (c enumTypeDescriber) getFile() *ast.File {
-	return c.simpleTypeDescriber.getFile()
+	if _, ok := alreadyDeclared[c.typeName]; ok {
+		return nil
+	}
+	var (
+		f          ast.File
+		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
+	)
+	for _, entity := range c.domain.Enum {
+		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
+	}
+	f.Name = makeName("generated")
+	f.Decls = []ast.Decl{
+		&ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: &ast.Ident{
+						Name: c.typeName,
+						Obj: &ast.Object{
+							Kind: ast.Typ,
+							Name: c.typeName,
+						},
+					},
+					Type: makeTypeIdent("string"),
+				},
+			},
+		},
+		&ast.FuncDecl{
+			Recv: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						/*
+							Obj: &ast.Object {
+									Kind: var
+									Name: "c"
+									Decl: *(obj @ 59)
+								}
+						*/
+						Names: []*ast.Ident{
+							makeName("c"),
+						},
+						Type: makeName(c.typeName),
+					},
+				},
+			},
+			Name: makeName(enumFunctionName),
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{}, // TODO maybe nil?
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Type: makeTypeArray(makeName("string")),
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.CompositeLit{
+								Type: &ast.ArrayType{
+									Elt: makeName("string"),
+								},
+								Elts: enumValues,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	mergeCodeBase(&f, c.simpleTypeDescriber.getFile())
+	alreadyDeclared[c.typeName] = true
+	return &f
 }
 
 var (
@@ -134,9 +219,9 @@ var (
 	}
 )
 
-func goTypeParametersBySqlType(c *DomainSchema) fieldDescriber {
+func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber {
 	if makeFn, ok := knownTypes[strings.ToLower(c.Type)]; ok {
-		return makeFn(c)
+		return makeFn(typeName, c)
 	}
 	panic(fmt.Sprintf("unknown field type '%s'", c.Type))
 }
