@@ -88,7 +88,7 @@ type (
 		Column   string             `yaml:"column,omitempty" json:"column,omitempty"`
 		Required bool               `yaml:"required,omitempty" json:"required,omitempty"`
 		OneOf    []ApiOption        `yaml:"one_of,omitempty" json:"one_of,omitempty"`
-		Operator SqlCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
+		Operator sqlCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 	}
 	TableApi struct {
 		Type    string      `yaml:"type" json:"type"`

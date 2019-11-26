@@ -8,28 +8,27 @@ import (
 	"go/token"
 	"io"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
 type (
-	SqlCompareOperator string
+	sqlCompareOperator string
 )
 
 const (
-	CompareEqual     SqlCompareOperator = "equal"
-	CompareNotEqual  SqlCompareOperator = "notEqual"
-	CompareLike      SqlCompareOperator = "like"
-	CompareNotLike   SqlCompareOperator = "notLike"
-	CompareIn        SqlCompareOperator = "in"
-	CompareNotIn     SqlCompareOperator = "notIn"
-	CompareGreatThan SqlCompareOperator = "great"
-	CompareLessThan  SqlCompareOperator = "less"
-	CompareNotGreat  SqlCompareOperator = "notGreat"
-	CompareNotLess   SqlCompareOperator = "notLess"
-	CompareStarts    SqlCompareOperator = "starts"
+	CompareEqual     sqlCompareOperator = "equal"
+	CompareNotEqual  sqlCompareOperator = "notEqual"
+	CompareLike      sqlCompareOperator = "like"
+	CompareNotLike   sqlCompareOperator = "notLike"
+	CompareIn        sqlCompareOperator = "in"
+	CompareNotIn     sqlCompareOperator = "notIn"
+	CompareGreatThan sqlCompareOperator = "great"
+	CompareLessThan  sqlCompareOperator = "less"
+	CompareNotGreat  sqlCompareOperator = "notGreat"
+	CompareNotLess   sqlCompareOperator = "notLess"
+	CompareStarts    sqlCompareOperator = "starts"
 
 	TagTypeSQL   = "sql"
 	TagTypeUnion = "union"
@@ -42,7 +41,7 @@ const (
 )
 
 var (
-	compareOperators = []SqlCompareOperator{
+	compareOperators = []sqlCompareOperator{
 		CompareEqual,
 		CompareNotEqual,
 		CompareLike,
@@ -55,47 +54,13 @@ var (
 		CompareNotLess,
 		CompareStarts,
 	}
-	multiCompareOperators = []SqlCompareOperator{
+	multiCompareOperators = []sqlCompareOperator{
 		CompareIn,
 		CompareNotIn,
 	}
-
-	knownTypes = map[string]string{
-		"smallserial": "int",
-		"serial":      "int64",
-		"bigserial":   "int64",
-		"bigint":      "int64",
-		"int4":        "int64",
-		"int8":        "int64",
-		"int16":       "int64",
-		"integer":     "int64",
-		"varchar":     "string",
-		"character":   "string",
-		"char":        "string",
-		"bit":         "[]byte",
-		"bool":        "bool",
-		"boolean":     "bool",
-		"date":        "time.Time",
-		"timestamp":   "time.Time",
-		"timestamptz": "time.Time",
-		"timetz":      "time.Time",
-		"float":       "float64",
-		"float8":      "float64",
-		"float16":     "float64",
-		"float32":     "float64",
-		"smallint":    "int",
-		"real":        "float64",
-		"numeric":     "float64",
-		"decimal":     "float64",
-		"json":        "json",
-	}
-	packagesPath = map[string]string{
-		"time": "time",
-	}
-	typeDescr = regexp.MustCompile("(\\w*)(?:\\s*[([]\\s*((\\d*)\\s*,?\\s*)[)\\]])?")
 )
 
-func (c *SqlCompareOperator) Check() {
+func (c *sqlCompareOperator) Check() {
 	if c == nil || *c == "" {
 		*c = CompareEqual
 	}
@@ -107,7 +72,7 @@ func (c *SqlCompareOperator) Check() {
 	panic(fmt.Sprintf("unknown compare operator '%s'", string(*c)))
 }
 
-func (c SqlCompareOperator) isMult() bool {
+func (c sqlCompareOperator) isMult() bool {
 	for _, op := range multiCompareOperators {
 		if op == c {
 			return true
@@ -116,9 +81,9 @@ func (c SqlCompareOperator) isMult() bool {
 	return false
 }
 
-func (c SqlCompareOperator) getExpression(sLeft, sRight string) string {
+func (c sqlCompareOperator) getExpression(sLeft, sRight string) string {
 	c.Check()
-	templates := map[SqlCompareOperator]string{
+	templates := map[sqlCompareOperator]string{
 		CompareEqual:     `%s = %s`,
 		CompareNotEqual:  `% != %s`,
 		CompareLike:      `%s like %s`,
@@ -135,25 +100,6 @@ func (c SqlCompareOperator) getExpression(sLeft, sRight string) string {
 		return fmt.Sprintf(template, sLeft, sRight)
 	}
 	panic(fmt.Sprintf("cannot find template for operator '%s'", string(c)))
-}
-
-func goTypeParametersBySqlType(t string) (rawGoType, importedPackage string) {
-	sub := typeDescr.FindAllStringSubmatch(t, -1)
-	if len(sub) > 0 && len(sub[0]) > 1 {
-		t = sub[0][1]
-	}
-	if gotType, ok := knownTypes[strings.ToLower(t)]; ok {
-		if sects := strings.Split(gotType, "."); len(sects) > 1 {
-			rawGoType = sects[1]
-			importedPackage = sects[0]
-		} else {
-			rawGoType = gotType
-		}
-	}
-	if t == "enum" {
-		rawGoType = "string"
-	}
-	return
 }
 
 func makeExportedName(name string) string {
@@ -187,13 +133,8 @@ func makeExportedName(name string) string {
 	return string(exported)
 }
 
-func (c *DomainSchema) describeGO() ast.Expr {
-	goType, importedPackage := goTypeParametersBySqlType(c.Type)
-	if importedPackage == "" {
-		return makeTypeIdent(goType)
-	} else {
-		return makeTypeSelector(importedPackage, goType)
-	}
+func (c *DomainSchema) describeGO() fieldDescriber {
+	return goTypeParametersBySqlType(c)
 }
 
 func (r *Column) tags() []string {
@@ -206,7 +147,7 @@ func (r *Column) tags() []string {
 	return tags
 }
 
-func (r *Column) describeGO() ast.Expr {
+func (r *Column) describeGO() fieldDescriber {
 	return r.Schema.Value.describeGO()
 }
 
@@ -215,18 +156,10 @@ func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
 	if !required {
 		decorator = makeTypeStar
 	}
-	fieldType := c.Value.describeGO()
-	// we myst check our imports if type is a selector
-	if sel, ok := fieldType.(*ast.SelectorExpr); ok {
-		if id, ok := sel.X.(*ast.Ident); ok {
-			if neededPackage, ok := packagesPath[id.Name]; ok {
-				imp := ast.ImportSpec{
-					Path: &ast.BasicLit{Value: fmt.Sprintf("\"%s\"", neededPackage)},
-				}
-				addImport(w, &imp)
-			}
-		}
-	}
+	fieldDescriber := c.Value.describeGO()
+	fieldType := fieldDescriber.fieldTypeExpr()
+	mergeCodeBase(w, fieldDescriber.getFile())
+
 	return ast.Field{
 		Doc: nil,
 		Names: []*ast.Ident{

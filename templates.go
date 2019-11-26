@@ -200,7 +200,7 @@ func makeSqlBuilderParametersWithWhereClause(
 			if !ok || len(opTagValue) < 1 {
 				opTagValue = []string{string(CompareEqual)}
 			}
-			operator := SqlCompareOperator(opTagValue[0])
+			operator := sqlCompareOperator(opTagValue[0])
 			if arrayFind(tags[TagTypeSQL], TagTypeUnion) > 0 {
 				if ci {
 					for _, colName := range tags[TagTypeUnion] {
@@ -280,7 +280,7 @@ func createDynamic(
 				opTagValue = []string{string(CompareEqual)}
 			}
 			genTemplate := argmsGenScalar
-			operator := SqlCompareOperator(opTagValue[0])
+			operator := sqlCompareOperator(opTagValue[0])
 			rawOption := fmt.Sprintf("options.%s", field.Names[0].Name)
 			option := rawOption
 			if arrayFind(tags[TagTypeSQL], TagTypeUnion) > 0 {
@@ -298,7 +298,7 @@ func createDynamic(
 					colNames = append(colNames, tags[TagTypeSQL][0])
 				}
 			}
-			if SqlCompareOperator(opTagValue[0]).isMult() {
+			if sqlCompareOperator(opTagValue[0]).isMult() {
 				for _, colName := range colNames {
 					colExpressions = append(colExpressions, operator.getExpression(colName, "%s"))
 				}
