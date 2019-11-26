@@ -228,10 +228,10 @@ func copyFromTo(from, to interface{}) {
 	toV.Set(fromV)
 }
 
-func (r *Column) follow(db *Root, path []string, i interface{}) bool {
+func (c *Column) follow(db *Root, path []string, i interface{}) bool {
 	if len(path) == 0 {
 		// can panic
-		copyFromTo(r, i)
+		copyFromTo(c, i)
 		return true
 	}
 	return false

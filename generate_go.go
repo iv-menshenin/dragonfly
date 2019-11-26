@@ -143,9 +143,9 @@ func (c *DomainSchema) describeGO(typeName string) fieldDescriber {
 	return goTypeParametersBySqlType(typeName, c)
 }
 
-func (r *Column) tags() []string {
-	var tags = append([]string{r.Name}, r.Tags...)
-	if r.Schema.Value.NotNull {
+func (c *Column) tags() []string {
+	var tags = append([]string{c.Name}, c.Tags...)
+	if c.Schema.Value.NotNull {
 		tags = append(tags, "required")
 	} else {
 		tags = append(tags, "omitempty")
@@ -153,14 +153,14 @@ func (r *Column) tags() []string {
 	return tags
 }
 
-func (r *Column) describeGO() fieldDescriber {
+func (c *Column) describeGO() fieldDescriber {
 	typeName := ""
-	if r.Schema.Ref != nil {
-		typeName = generateExportedNameFromRef(r.Schema.Ref)
+	if c.Schema.Ref != nil {
+		typeName = generateExportedNameFromRef(c.Schema.Ref)
 	} else {
-		typeName = makeExportedName(r.Name)
+		typeName = makeExportedName(c.Name)
 	}
-	return r.Schema.Value.describeGO("Enum" + typeName)
+	return c.Schema.Value.describeGO("Enum" + typeName)
 }
 
 func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
