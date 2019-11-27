@@ -160,7 +160,7 @@ func (c *Column) describeGO() fieldDescriber {
 	} else {
 		typeName = makeExportedName(c.Name)
 	}
-	return c.Schema.Value.describeGO("Enum" + typeName)
+	return c.Schema.Value.describeGO(typeName)
 }
 
 func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {

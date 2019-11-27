@@ -32,6 +32,14 @@ type (
 		typeName string
 		domain   *DomainSchema
 	}
+	recordTypeDescriber struct {
+		simpleTypeDescriber
+		typeName string
+		domain   *DomainSchema
+	}
+	jsonTypeDescriber struct {
+		recordTypeDescriber
+	}
 	makeDescriber func(string, *DomainSchema) fieldDescriber
 )
 
@@ -218,6 +226,381 @@ func (c enumTypeDescriber) getFile() *ast.File {
 	return &f
 }
 
+/*
+	makeRecordDescriberDirectly
+*/
+
+func makeRecordDescriberDirectly(typeName string, domain *DomainSchema) fieldDescriber {
+	return recordTypeDescriber{
+		simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
+		domain:              domain,
+		typeName:            typeName,
+	}
+}
+
+func (c recordTypeDescriber) getFile() *ast.File {
+	if _, ok := alreadyDeclared[c.typeName]; ok {
+		return nil
+	}
+	var (
+		f          ast.File
+		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
+	)
+	for _, entity := range c.domain.Enum {
+		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
+	}
+	formatLiters := make([]string, 0, len(c.domain.Fields))
+	objFields := make([]*ast.Field, 0, len(c.domain.Fields))
+	formatArgs := make([]ast.Expr, 0, len(c.domain.Fields))
+	for _, f := range c.domain.Fields {
+		intDesc := f.describeGO()
+		objFields = append(objFields, &ast.Field{
+			Names: []*ast.Ident{makeName(f.Name)},
+			Type:  intDesc.fieldTypeExpr(),
+		})
+		if fmtLiter, ok := formatTypes[f.Schema.Value.Type]; ok {
+			formatLiters = append(formatLiters, fmtLiter)
+		} else {
+			panic(fmt.Sprintf("we cannot Scan field '%s' in struct '%s' due to type '%s'", f.Name, c.typeName, f.Schema.Value.Type))
+		}
+		formatArgs = append(formatArgs, &ast.UnaryExpr{
+			Op: token.AND,
+			X:  makeTypeSelector("c", f.Name),
+		})
+	}
+	formatArgs = append([]ast.Expr{
+		&ast.CallExpr{
+			Fun: makeTypeSelector("bytes", "NewReader"),
+			Args: []ast.Expr{
+				&ast.TypeAssertExpr{
+					X:    makeName("value"),
+					Type: makeTypeArray(makeName("uint8")),
+				},
+			},
+		}, makeBasicLiteralString("(" + strings.Join(formatLiters, ",") + ")"),
+	}, formatArgs...)
+	f.Name = makeName("generated")
+	f.Decls = []ast.Decl{
+		&ast.GenDecl{
+			Tok: token.IMPORT,
+			Specs: []ast.Spec{
+				&ast.ImportSpec{
+					Path: &ast.BasicLit{
+						Kind:  token.STRING,
+						Value: "\"bytes\"",
+					},
+				},
+			},
+		},
+		&ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: makeName(c.typeName),
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{List: objFields},
+					},
+				},
+			},
+		},
+		&ast.FuncDecl{
+			Recv: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Names: []*ast.Ident{
+							{
+								Name: "c",
+								Obj: &ast.Object{
+									Kind: ast.Var,
+									Name: "c",
+								},
+							},
+						},
+						Type: &ast.StarExpr{
+							X: &ast.Ident{
+								Name: c.typeName,
+							},
+						},
+					},
+				},
+			},
+			Name: &ast.Ident{
+				Name: "Scan",
+			},
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Names: []*ast.Ident{
+								{
+									Name: "value",
+									Obj: &ast.Object{
+										Kind: ast.Var,
+										Name: "value",
+									},
+								},
+							},
+							Type: &ast.InterfaceType{
+								Methods: &ast.FieldList{},
+							},
+						},
+					},
+				},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Type: &ast.Ident{
+								Name: "error",
+							},
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.IfStmt{
+						Cond: &ast.BinaryExpr{
+							X: &ast.Ident{
+								Name: "value",
+							},
+							Op: token.EQL,
+							Y: &ast.Ident{
+								Name: "nil",
+							},
+						},
+						Body: &ast.BlockStmt{
+							List: []ast.Stmt{
+								&ast.ReturnStmt{
+									Results: []ast.Expr{
+										&ast.Ident{
+											Name: "nil",
+										},
+									},
+								},
+							},
+						},
+					},
+					&ast.AssignStmt{
+						Lhs: []ast.Expr{
+							&ast.Ident{
+								Name: "_",
+								Obj: &ast.Object{
+									Kind: ast.Var,
+									Name: "_",
+								},
+							},
+							&ast.Ident{
+								Name: "err",
+								Obj: &ast.Object{
+									Kind: ast.Var,
+									Name: "err",
+								},
+							},
+						},
+						Tok: token.DEFINE,
+						Rhs: []ast.Expr{
+							&ast.CallExpr{
+								Fun: &ast.SelectorExpr{
+									X: &ast.Ident{
+										Name: "fmt",
+									},
+									Sel: &ast.Ident{
+										Name: "Fscanf",
+									},
+								},
+								Args: formatArgs,
+							},
+						},
+					},
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.Ident{
+								Name: "err",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	mergeCodeBase(&f, c.simpleTypeDescriber.getFile())
+	alreadyDeclared[c.typeName] = true
+	return &f
+}
+
+/*
+	makeJsonDescriberDirectly
+*/
+
+func makeJsonDescriberDirectly(typeName string, domain *DomainSchema) fieldDescriber {
+	return jsonTypeDescriber{
+		recordTypeDescriber: recordTypeDescriber{
+			simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
+			domain:              domain,
+			typeName:            typeName,
+		},
+	}
+}
+
+func (c jsonTypeDescriber) getFile() *ast.File {
+	if _, ok := alreadyDeclared[c.typeName]; ok {
+		return nil
+	}
+	var (
+		f          ast.File
+		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
+	)
+	for _, entity := range c.domain.Enum {
+		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
+	}
+	objFields := make([]*ast.Field, 0, len(c.domain.Fields))
+	for _, f := range c.domain.Fields {
+		intDesc := f.describeGO()
+		objFields = append(objFields, &ast.Field{
+			Names: []*ast.Ident{makeName(f.Name)},
+			Type:  intDesc.fieldTypeExpr(),
+		})
+	}
+	f.Name = makeName("generated")
+	f.Decls = []ast.Decl{
+		&ast.GenDecl{
+			Tok: token.IMPORT,
+			Specs: []ast.Spec{
+				&ast.ImportSpec{
+					Path: &ast.BasicLit{
+						Kind:  token.STRING,
+						Value: "\"encoding/json\"",
+					},
+				},
+			},
+		},
+		&ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: makeName(c.typeName),
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{List: objFields},
+					},
+				},
+			},
+		},
+		&ast.FuncDecl{
+			Recv: &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{
+							&ast.Ident{
+								Name: "c",
+								Obj: &ast.Object{
+									Kind: ast.Var,
+									Name: "c",
+								},
+							},
+						},
+						Type: &ast.StarExpr{
+							X: &ast.Ident{
+								Name: c.typeName,
+							},
+						},
+					},
+				},
+			},
+			Name: &ast.Ident{
+				Name: "Scan",
+			},
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{
+							Names: []*ast.Ident{
+								&ast.Ident{
+									Name: "value",
+									Obj: &ast.Object{
+										Kind: ast.Var,
+										Name: "value",
+									},
+								},
+							},
+							Type: &ast.InterfaceType{
+								Methods:    &ast.FieldList{},
+								Incomplete: false,
+							},
+						},
+					},
+				},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{
+							Type: &ast.Ident{
+								Name: "error",
+							},
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.IfStmt{
+						Cond: &ast.BinaryExpr{
+							X: &ast.Ident{
+								Name: "value",
+							},
+							Op: token.EQL,
+							Y: &ast.Ident{
+								Name: "nil",
+							},
+						},
+						Body: &ast.BlockStmt{
+							List: []ast.Stmt{
+								&ast.ReturnStmt{
+									Results: []ast.Expr{
+										&ast.Ident{
+											Name: "nil",
+										},
+									},
+								},
+							},
+						},
+					},
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.CallExpr{
+								Fun: &ast.SelectorExpr{
+									X: &ast.Ident{
+										Name: "json",
+									},
+									Sel: &ast.Ident{
+										Name: "Unmarshal",
+									},
+								},
+								Args: []ast.Expr{
+									&ast.TypeAssertExpr{
+										X: &ast.Ident{
+											Name: "value",
+										},
+										Type: &ast.ArrayType{
+											Elt: &ast.Ident{
+												Name: "uint8",
+											},
+										},
+									},
+									&ast.Ident{
+										Name: "c",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	mergeCodeBase(&f, c.simpleTypeDescriber.getFile())
+	alreadyDeclared[c.typeName] = true
+	return &f
+}
+
 var (
 	knownTypes = map[string]makeDescriber{
 		"smallserial": makeSimpleDescriber("int", "", ""),
@@ -227,7 +610,7 @@ var (
 		"int4":        makeSimpleDescriber("int16", "", ""),
 		"int8":        makeSimpleDescriber("int32", "", ""),
 		"int16":       makeSimpleDescriber("int64", "", ""),
-		// "integer":     makeSimpleDescriber("int64", "", ""),
+		// "integer": not supported, use types with explicit size, e.g. int8 or int16
 		"varchar":     makeSimpleDescriber("string", "", ""),
 		"character":   makeSimpleDescriber("string", "", ""),
 		"char":        makeSimpleDescriber("string", "", ""),
@@ -238,19 +621,51 @@ var (
 		"timestamp":   makeSimpleDescriber("Time", "time", "\"time\""),
 		"timestamptz": makeSimpleDescriber("Time", "time", "\"time\""),
 		"timetz":      makeSimpleDescriber("Time", "time", "\"time\""),
-		"float":       makeSimpleDescriber("float64", "", ""),
-		"float8":      makeSimpleDescriber("float64", "", ""),
-		"float16":     makeSimpleDescriber("float64", "", ""),
-		"float32":     makeSimpleDescriber("float64", "", ""),
-		"smallint":    makeSimpleDescriber("int", "", ""),
-		"real":        makeSimpleDescriber("float64", "", ""),
-		"numeric":     makeSimpleDescriber("float64", "", ""),
-		"decimal":     makeSimpleDescriber("float64", "", ""),
+		// "float": not supported, use types with explicit size, e.g. float8 or float16
+		"float4":   makeSimpleDescriber("float64", "", ""),
+		"float8":   makeSimpleDescriber("float64", "", ""),
+		"float16":  makeSimpleDescriber("float64", "", ""),
+		"float32":  makeSimpleDescriber("float64", "", ""),
+		"smallint": makeSimpleDescriber("int", "", ""),
+		"real":     makeSimpleDescriber("float64", "", ""),
+		"numeric":  makeSimpleDescriber("float64", "", ""),
+		"decimal":  makeSimpleDescriber("float64", "", ""),
 		// ------------------ TODO
-		"json":   makeSimpleDescriber("json", "", ""),
+		"json":   makeJsonDescriberDirectly,
 		"enum":   makeEnumDescriberDirectly,
 		"map":    makeSimpleDescriber("map[string]string", "", ""),
-		"record": makeSimpleDescriber("map[string]string", "", ""),
+		"record": makeRecordDescriberDirectly,
+	}
+	formatTypes = map[string]string{
+		"smallserial": "%d",
+		"serial":      "%d",
+		"bigserial":   "%d",
+		"bigint":      "%d",
+		"int4":        "%d",
+		"int8":        "%d",
+		"int16":       "%d",
+		"varchar":     "%s",
+		"character":   "%s",
+		"char":        "%s",
+		// "bit": not supported
+		"bool":    "%t",
+		"boolean": "%t",
+		// "date":        not supported
+		// "timestamp":   not supported
+		// "timestamptz": not supported
+		// "timetz":      not supported
+		"float4":   "%f",
+		"float8":   "%f",
+		"float16":  "%f",
+		"float32":  "%f",
+		"smallint": "%d",
+		"real":     "%f",
+		"numeric":  "%f",
+		"decimal":  "%f",
+		// "json":   not supported
+		// "enum":   not supported
+		// "map":    not supported
+		// "record": not supported
 	}
 )
 
