@@ -117,6 +117,14 @@ func makeCall(name ast.Expr, args ...ast.Expr) *ast.CallExpr {
 	}
 }
 
+func makeCallEllipsis(name ast.Expr, args ...ast.Expr) *ast.CallExpr {
+	return &ast.CallExpr{
+		Fun:      name,
+		Args:     args,
+		Ellipsis: token.Pos(1),
+	}
+}
+
 func makeReturn(results ...ast.Expr) *ast.ReturnStmt {
 	return &ast.ReturnStmt{
 		Results: results,
@@ -251,6 +259,9 @@ func makeAddExpressions(exps ...ast.Expr) ast.Expr {
 }
 
 func makeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body ...ast.Stmt) ast.Stmt {
+	if len(body) == 0 {
+		body = []ast.Stmt{makeEmptyReturn()}
+	}
 	if varName != "" {
 		return &ast.IfStmt{
 			Init: makeAssignment(

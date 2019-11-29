@@ -13,7 +13,8 @@ type (
 )
 
 var (
-	EmptyResult = errors.New("got empty result")
+	EmptyResult        = errors.New("got empty result")
+	SingletonViolation = errors.New("singleton violation")
 )
 
 func makeTypeValueError(typeName, gotValue string) EnumValueError {

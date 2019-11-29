@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
-	"go/parser"
 	"go/token"
 	"io"
 	"reflect"
@@ -97,7 +96,7 @@ func (c sqlCompareOperator) getRawExpression() string {
 		CompareStarts:    `%s starts with %s`,
 	}
 	if template, ok := templates[c]; ok {
-		return fmt.Sprintf(template)
+		return template
 	}
 	panic(fmt.Sprintf("cannot find template for operator '%s'", string(c)))
 }
@@ -198,7 +197,7 @@ func (c *TableClass) generateFields(w *ast.File) (fields []*ast.Field) {
 	return
 }
 
-func (r *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []*ast.Field) {
+func (c *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoInsert) {
@@ -209,7 +208,7 @@ func (r *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []
 	return
 }
 
-func (r *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fields []*ast.Field) {
+func (c *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if arrayContains(column.Value.Tags, tagIdentifier) {
@@ -220,19 +219,19 @@ func (r *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fie
 	return
 }
 
-func (r *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(r.Options))
+func (c *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast.Field) {
+	fields = make([]*ast.Field, 0, len(c.Options))
 	// TODO move these case to uplevel
-	if len(r.Options) == 0 && r.Type == "insertOne" {
-		fields = append(fields, r.generateInsertable(table, w)...)
+	if len(c.Options) == 0 && c.Type == "insertOne" {
+		fields = append(fields, c.generateInsertable(table, w)...)
 		return
 	}
-	if len(r.Options) == 0 && r.Type == "deleteOne" {
-		fields = append(fields, r.generateIdentifierOption(table, w)...)
+	if len(c.Options) == 0 && c.Type == "deleteOne" {
+		fields = append(fields, c.generateIdentifierOption(table, w)...)
 		return
 	}
 	// </move these case to uplevel> -------------------
-	for _, option := range r.Options {
+	for _, option := range c.Options {
 		operator := option.Operator
 		operator.Check()
 		if option.Column != "" {
@@ -310,31 +309,22 @@ type (
 	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field) *ast.File
 )
 
-func (r *TableApi) getApiBuilder(functionName string) apiBuilder {
+func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	var (
 		ok     bool
 		tplSet templateApi
 	)
-	if tplSet, ok = funcTemplates[r.Type]; !ok {
-		panic(fmt.Sprintf("cannot find template `%s`", r.Type))
+	if tplSet, ok = funcTemplates[c.Type]; !ok {
+		panic(fmt.Sprintf("cannot find template `%s`", c.Type))
 	}
-	return func(schema *SchemaRef, tableName, rowStructName string, queryOptionFields, queryOutputFields []*ast.Field) (f *ast.File) {
-		var (
-			err          error
-			templateData = tplSet.TemplateData(
-				fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
-				functionName,
-				rowStructName,
-				queryOptionFields,
-				queryOutputFields,
-			)
+	return func(schema *SchemaRef, tableName, rowStructName string, queryOptionFields, queryOutputFields []*ast.Field) *ast.File {
+		return tplSet.TemplateData(
+			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
+			functionName,
+			rowStructName,
+			queryOptionFields,
+			queryOutputFields,
 		)
-		goSampleCode := evalTemplateParameters(tplSet.Template, templateData)
-		if f, err = parser.ParseFile(token.NewFileSet(), r.Type, strings.NewReader(goSampleCode), 0); err != nil {
-			println(goSampleCode)
-			panic(err)
-		}
-		return
 	}
 }
 
