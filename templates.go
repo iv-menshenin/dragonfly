@@ -8,26 +8,6 @@ import (
 // TODO refactoring
 
 const (
-	argmsGenScalar = `
-	argms = append(argms, {%Option})
-	sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, "$" + strconv.Itoa(len(argms))}))
-`
-	argmGenStar = `
-	if {%RawOption} != nil {
-		argms = append(argms, {%Option})
-		sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, "$" + strconv.Itoa(len(argms))}))
-	}
-`
-	argmGenArray = `
-	var arr{%FieldName} []string
-	for _, opt := range options.{%FieldName} {
-		argms = append(argms, opt)
-		arr{%FieldName} = append(arr{%FieldName}, "$" + strconv.Itoa(len(argms)))
-	}
-	if len(arr{%FieldName}) > 0 {
-		sqlWhere = append(sqlWhere, fmt.Sprintf("{%Expression}"{{%ColumnsCount}*, strings.Join(arr{%FieldName}, ", ")}))
-	}
-`
 	findAll = `
 package generated
 
@@ -151,7 +131,7 @@ var (
 		},
 		"insertOne": {
 			Template:     findOne,
-			TemplateData: makeFindFunction(findVariantOnce),
+			TemplateData: makeInsertFunction(findVariantOnce),
 		},
 		"updateOne": { // TODO
 			Template:     findOne,

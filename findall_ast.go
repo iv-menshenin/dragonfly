@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	varArgsName    = "args"
-	varOptionsName = "options"
-	varSqlWhere    = "sqlWhere"
+	varArgsName     = "args"
+	varOptionsName  = "options"
+	varSqlQueryArgs = "sqlArgs"
 )
 
 // get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other
@@ -66,10 +66,10 @@ func makeArrayQueryOption(fieldName, columnName, operator string, ci bool) []ast
 			Cond: makeNotEmptyArrayExpression(arrVariableName),
 			Body: makeBlock(
 				makeAssignment(
-					[]string{varSqlWhere},
+					[]string{varSqlQueryArgs},
 					makeCall(
 						makeName("append"),
-						makeName(varSqlWhere),
+						makeName(varSqlQueryArgs),
 						makeCall(
 							makeTypeSelector("fmt", "Sprintf"),
 							makeBasicLiteralString(operator),
@@ -123,10 +123,10 @@ func makeUnionQueryOption(fieldName string, columnNames []string, operator strin
 			),
 		),
 		makeAssignment(
-			[]string{varSqlWhere},
+			[]string{varSqlQueryArgs},
 			makeCall(
 				makeName("append"),
-				makeName(varSqlWhere),
+				makeName(varSqlQueryArgs),
 				makeCall(
 					makeTypeSelector("fmt", "Sprintf"),
 					append([]ast.Expr{makeBasicLiteralString(strings.Join(operators, " or "))}, callArgs...)...,
@@ -155,10 +155,10 @@ func makeScalarQueryOption(fieldName, columnName, operator string, ci, ref bool)
 			),
 		),
 		makeAssignment(
-			[]string{varSqlWhere},
+			[]string{varSqlQueryArgs},
 			makeCall(
 				makeName("append"),
-				makeName(varSqlWhere),
+				makeName(varSqlQueryArgs),
 				makeCall(
 					makeTypeSelector("fmt", "Sprintf"),
 					makeBasicLiteralString(operator),
@@ -262,23 +262,6 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 func addExecutionBlockToFunctionBody(functionBody []ast.Stmt, rowStructName string, scanBlock scanWrapper, fieldRefs []ast.Expr, lastReturn ast.Stmt) []ast.Stmt {
 	return append(
 		functionBody,
-		&ast.IfStmt{
-			Cond: makeNotEmptyArrayExpression(varSqlWhere),
-			Body: makeBlock(
-				makeAddAssignment(
-					[]string{"sqlText"},
-					makeAddExpressions(
-						makeBasicLiteralString(" where ("),
-						makeCall(
-							makeTypeSelector("strings", "Join"),
-							makeName(varSqlWhere),
-							makeBasicLiteralString(") and ("),
-						),
-						makeBasicLiteralString(")"),
-					),
-				),
-			),
-		},
 		makeAssignmentWithErrChecking(
 			"rows",
 			makeCallEllipsis(
@@ -312,7 +295,7 @@ func addVariablesToFunctionBody(functionBody []ast.Stmt, sqlQuery string) []ast.
 				makeCall(makeName("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0)),
 			),
 			makeVarValue(
-				varSqlWhere,
+				varSqlQueryArgs,
 				makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0)),
 			),
 			makeVarValue(
@@ -325,6 +308,95 @@ func addVariablesToFunctionBody(functionBody []ast.Stmt, sqlQuery string) []ast.
 			makeCall(makeName("getDatabase"), makeName("ctx")),
 			makeEmptyReturn(),
 		),
+	)
+}
+
+func addInsertParametersToFunctionBody(functionBody []ast.Stmt, optionFields []*ast.Field) []ast.Stmt {
+	functionBody = append(
+		functionBody,
+		makeDefinition(
+			[]string{"colNames"},
+			makeCall(
+				makeName("make"),
+				makeTypeArray(makeName("string")),
+				makeBasicLiteralInteger(0),
+			),
+		),
+	)
+	for _, field := range optionFields {
+		tags := tagToMap(field.Tag.Value)
+		colName := tags[TagTypeSQL][0]
+		// TODO encrypt := arrayFind(tags[TagTypeSQL], tagEncrypt) > 0
+		optionExpr := []ast.Stmt{
+			makeAssignment(
+				[]string{"colNames"},
+				makeCall(
+					makeName("append"),
+					makeName("colNames"),
+					makeBasicLiteralString(colName),
+				),
+			),
+			makeAssignment(
+				[]string{varArgsName},
+				makeCall(
+					makeName("append"),
+					makeName(varArgsName),
+					makeTypeSelector(varOptionsName, field.Names[0].Name),
+				),
+			),
+			makeAssignment(
+				[]string{varSqlQueryArgs},
+				makeCall(
+					makeName("append"),
+					makeName(varSqlQueryArgs),
+					makeCall(
+						makeTypeSelector("fmt", "Sprintf"),
+						makeBasicLiteralString("$%d"),
+						makeCall(
+							makeName("len"),
+							makeName(varArgsName),
+						),
+					),
+				),
+			),
+		}
+		if _, ok := field.Type.(*ast.StarExpr); ok {
+			optionExpr = []ast.Stmt{
+				&ast.IfStmt{
+					Cond: makeNotEmptyArrayExpression(varArgsName),
+					Body: makeBlock(optionExpr...),
+				},
+			}
+		}
+		functionBody = append(
+			functionBody,
+			optionExpr...,
+		)
+	}
+	return append(
+		functionBody,
+		&ast.IfStmt{
+			Cond: makeNotEmptyArrayExpression(varSqlQueryArgs),
+			Body: makeBlock(
+				makeAddAssignment(
+					[]string{"sqlText"},
+					makeCall(
+						makeTypeSelector("fmt", "Sprintf"),
+						makeName("sqlText"),
+						makeCall(
+							makeTypeSelector("strings", "Join"),
+							makeName(varSqlQueryArgs),
+							makeBasicLiteralString(", "),
+						),
+						makeCall(
+							makeTypeSelector("strings", "Join"),
+							makeName("colNames"),
+							makeBasicLiteralString(", "),
+						),
+					),
+				),
+			),
+		},
 	)
 }
 
@@ -368,7 +440,26 @@ func addDynamicParametersToFunctionBody(functionBody []ast.Stmt, optionFields []
 			}
 		}
 	}
-	return functionBody
+	return append(
+		functionBody,
+		&ast.IfStmt{
+			Cond: makeNotEmptyArrayExpression(varSqlQueryArgs),
+			Body: makeBlock(
+				makeAddAssignment(
+					[]string{"sqlText"},
+					makeAddExpressions(
+						makeBasicLiteralString(" where ("),
+						makeCall(
+							makeTypeSelector("strings", "Join"),
+							makeName(varSqlQueryArgs),
+							makeBasicLiteralString(") and ("),
+						),
+						makeBasicLiteralString(")"),
+					),
+				),
+			),
+		},
+	)
 }
 
 func makeFindFunction(variant findVariant) ApiFuncBuilder {
@@ -397,7 +488,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			resultExpr = makeTypeArray(makeTypeIdent(rowStructName))
 			lastReturn = makeEmptyReturn()
 		default:
-			panic("cannot resolve 'scanblock'")
+			panic("cannot resolve 'variant'")
 		}
 		var (
 			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
@@ -408,6 +499,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = addDynamicParametersToFunctionBody(functionBody, optionFields)
 		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
 		astFileDecls := []ast.Decl{
+			// TODO generate import from function declaration automatically
 			makeImportDecl(
 				"database/sql",
 				"fmt",
@@ -415,30 +507,75 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 				"strings",
 				"context",
 			),
-			&ast.FuncDecl{
-				Name: makeName(functionName),
-				Type: &ast.FuncType{
-					Params: &ast.FieldList{
-						List: []*ast.Field{
-							makeField("ctx", nil, makeTypeSelector("context", "Context"), nil),
-							makeField(varOptionsName, nil, makeTypeIdent(functionName+"Option"), nil),
-						},
-					},
-					Results: &ast.FieldList{
-						List: []*ast.Field{
-							makeField("result", nil, resultExpr, nil),
-							makeField("err", nil, makeTypeIdent("error"), nil),
-						},
-					},
-				},
-				Body: &ast.BlockStmt{
-					List: functionBody,
-				},
-			},
+			makeApiFunction(functionName, resultExpr, functionBody),
 		}
 		return &ast.File{
 			Name:  makeName("generated"),
 			Decls: astFileDecls,
 		}
+	}
+}
+
+func makeInsertFunction(variant findVariant) ApiFuncBuilder {
+	const (
+		scanVarName = "row"
+	)
+	return func(
+		fullTableName, functionName, rowStructName string,
+		optionFields, rowFields []*ast.Field,
+	) *ast.File {
+		resultExpr := makeTypeIdent(rowStructName)
+		scanBlockWrapper := scanBlockForFindOnce
+		lastReturn := makeReturn(
+			makeName("result"),
+			makeName("EmptyResult"),
+		)
+		var (
+			fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
+		)
+		sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) returning %s", fullTableName, strings.Join(outColumnList, ", "))
+		functionBody := make([]ast.Stmt, 0, len(optionFields)*3+6)
+		functionBody = addVariablesToFunctionBody(functionBody, sqlQuery)
+		functionBody = addInsertParametersToFunctionBody(functionBody, optionFields)
+		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
+
+		astFileDecls := []ast.Decl{
+			// TODO generate import from function declaration automatically
+			makeImportDecl(
+				"database/sql",
+				"fmt",
+				"strconv",
+				"strings",
+				"context",
+			),
+			makeApiFunction(functionName, resultExpr, functionBody),
+		}
+		return &ast.File{
+			Name:  makeName("generated"),
+			Decls: astFileDecls,
+		}
+	}
+}
+
+func makeApiFunction(functionName string, resultExpr ast.Expr, functionBody []ast.Stmt) *ast.FuncDecl {
+	return &ast.FuncDecl{
+		Name: makeName(functionName),
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{
+					makeField("ctx", nil, makeTypeSelector("context", "Context"), nil),
+					makeField(varOptionsName, nil, makeTypeIdent(functionName+"Option"), nil),
+				},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					makeField("result", nil, resultExpr, nil),
+					makeField("err", nil, makeTypeIdent("error"), nil),
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: functionBody,
+		},
 	}
 }

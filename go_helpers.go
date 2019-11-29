@@ -225,13 +225,6 @@ func makeDefinition(lhs []string, rhs ...ast.Expr) ast.Stmt {
 	}
 }
 
-func makeRangeExpression(expr ast.Expr) ast.Expr {
-	return &ast.UnaryExpr{
-		Op: token.RANGE,
-		X:  expr,
-	}
-}
-
 func makeNotEqualExpression(left, right ast.Expr) ast.Expr {
 	return &ast.BinaryExpr{
 		X:  left,
