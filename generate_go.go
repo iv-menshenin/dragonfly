@@ -280,31 +280,12 @@ func (c *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fie
 	return
 }
 
-func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, mutable []*ast.Field) {
-	// TODO split
-	findBy = make([]*ast.Field, 0, len(c.FindOptions))
-	mutable = make([]*ast.Field, 0, len(c.FindOptions))
-	if len(c.ModifyColumns) > 0 {
-		for _, columnName := range c.ModifyColumns {
-			column := table.Columns.find(columnName)
-			required := column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil)
-			field := column.generateField(w, required)
-			mutable = append(mutable, &field)
-		}
-	} else {
-		if c.Type.Operation() == ApiOperationInsert {
-			mutable = append(mutable, c.generateInsertable(table, w)...)
-		}
-		if c.Type.Operation() == ApiOperationUpdate {
-			mutable = append(mutable, c.generateMutable(table, w)...)
-		}
-	}
-	if len(c.FindOptions) == 0 && (c.Type == apiTypeDeleteOne || c.Type == apiTypeInsertOne || c.Type == apiTypeUpdateOne) {
-		findBy = append(findBy, c.generateIdentifierOption(table, w)...)
+func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (findBy []*ast.Field) {
+	if c == nil {
 		return
 	}
-	// </move these case to uplevel> -------------------
-	for _, option := range c.FindOptions {
+	findBy = make([]*ast.Field, 0, len(*c))
+	for _, option := range *c {
 		operator := option.Operator
 		operator.Check()
 		if option.Column != "" {
@@ -343,10 +324,10 @@ func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, muta
 					panic("nested 'one_of' does not supported")
 				}
 			}
-			firstColumn := ColumnsContainer(table.Columns).find(option.OneOf[0].Column)
+			firstColumn := table.Columns.find(option.OneOf[0].Column)
 			baseType := firstColumn.generateField(w, true)
 			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := ColumnsContainer(table.Columns).find(oneOf.Column)
+				nextColumn := table.Columns.find(oneOf.Column)
 				nextType := nextColumn.generateField(w, true).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
 					panic("each of 'one_of' must have same type of data")
@@ -374,6 +355,42 @@ func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, muta
 			continue
 		}
 		panic("the option must contains 'one_of' or 'column'")
+	}
+	return
+}
+
+func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, mutable []*ast.Field) {
+	if c.Type.HasFindOption() {
+		if len(c.FindOptions) > 0 {
+			findBy = c.FindOptions.generateFindFields(table, w)
+		} else {
+			findBy = c.generateIdentifierOption(table, w)
+		}
+	} else {
+		if len(c.FindOptions) > 0 {
+			println(fmt.Sprintf("api type `%s` cannot contains `find_by` options", c.Type))
+		}
+	}
+	if c.Type.HasInputOption() {
+		if len(c.ModifyColumns) > 0 {
+			mutable = make([]*ast.Field, 0, len(c.ModifyColumns))
+			for _, columnName := range c.ModifyColumns {
+				column := table.Columns.find(columnName)
+				field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
+				mutable = append(mutable, &field)
+			}
+		} else {
+			if c.Type.Operation() == ApiOperationInsert {
+				mutable = c.generateInsertable(table, w)
+			}
+			if c.Type.Operation() == ApiOperationUpdate {
+				mutable = c.generateMutable(table, w)
+			}
+		}
+	} else {
+		if len(c.ModifyColumns) > 0 {
+			println(fmt.Sprintf("api type `%s` cannot contains `modify` options", c.Type))
+		}
 	}
 	return
 }

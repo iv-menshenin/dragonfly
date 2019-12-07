@@ -90,11 +90,12 @@ type (
 		OneOf    []ApiFindOption    `yaml:"one_of,omitempty" json:"one_of,omitempty"`
 		Operator sqlCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 	}
-	TableApi struct {
-		Type          ApiType         `yaml:"type" json:"type"`
-		Name          string          `yaml:"name" json:"name"`
-		FindOptions   []ApiFindOption `yaml:"find_by,omitempty" json:"find_by,omitempty"`
-		ModifyColumns []string        `yaml:"modify,omitempty" json:"modify,omitempty"`
+	ApiFindOptions []ApiFindOption
+	TableApi       struct {
+		Type          ApiType        `yaml:"type" json:"type"`
+		Name          string         `yaml:"name" json:"name"`
+		FindOptions   ApiFindOptions `yaml:"find_by,omitempty" json:"find_by,omitempty"`
+		ModifyColumns []string       `yaml:"modify,omitempty" json:"modify,omitempty"`
 	}
 	ColumnsContainer []ColumnRef
 	ApiContainer     []TableApi
