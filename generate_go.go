@@ -16,7 +16,7 @@ type (
 	sqlCompareOperator string
 	ApiDbOperation     int
 	ApiInterface       interface {
-		S() string
+		String() string
 		HasFindOption() bool
 		HasInputOption() bool
 		Operation() ApiDbOperation
@@ -65,7 +65,7 @@ const (
 	apiTypeLookUp    ApiType = "lookUp"
 )
 
-func (c ApiType) S() string {
+func (c ApiType) String() string {
 	return string(c)
 }
 
@@ -387,7 +387,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 		ok     bool
 		tplSet ApiFuncBuilder
 	)
-	if tplSet, ok = funcTemplates[c.Type.S()]; !ok {
+	if tplSet, ok = funcTemplates[c.Type.String()]; !ok {
 		panic(fmt.Sprintf("cannot find template `%s`", c.Type))
 	}
 	return func(
@@ -422,7 +422,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 							cNN:      strconv.Itoa(i),
 							cSchema:  schemaName,
 							cTable:   tableName,
-							cApiType: api.Type.S(),
+							cApiType: api.Type.String(),
 						},
 					)
 					if apiName == "" {
