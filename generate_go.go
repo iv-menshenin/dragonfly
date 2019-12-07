@@ -14,9 +14,22 @@ import (
 
 type (
 	sqlCompareOperator string
+	ApiDbOperation     int
+	ApiInterface       interface {
+		S() string
+		HasFindOption() bool
+		HasInputOption() bool
+		Operation() ApiDbOperation
+	}
+	ApiType string
 )
 
 const (
+	ApiOperationInsert ApiDbOperation = iota
+	ApiOperationUpdate
+	ApiOperationSelect
+	ApiOperationDelete
+
 	CompareEqual     sqlCompareOperator = "equal"
 	CompareNotEqual  sqlCompareOperator = "notEqual"
 	CompareLike      sqlCompareOperator = "like"
@@ -34,10 +47,47 @@ const (
 	TagTypeOp    = "operator"
 
 	tagNoInsert        = "noInsert"
+	tagNoUpdate        = "noUpdate"
+	tagAlwaysUpdate    = "alwaysUpdate"
+	tagDeletedFlag     = "deletedFlag"
+	tagGenerate        = "generate"
 	tagCaseInsensitive = "ci"
 	tagEncrypt         = "encrypt"
 	tagIdentifier      = "identifier"
+
+	generateFunction = "now"
+
+	apiTypeInsertOne ApiType = "insertOne"
+	apiTypeUpdateOne ApiType = "updateOne"
+	apiTypeDeleteOne ApiType = "deleteOne"
+	apiTypeFindOne   ApiType = "findOne"
+	apiTypeFindAll   ApiType = "findAll"
+	apiTypeLookUp    ApiType = "lookUp"
 )
+
+func (c ApiType) S() string {
+	return string(c)
+}
+
+func (c ApiType) HasFindOption() bool {
+	return c == apiTypeUpdateOne || c == apiTypeDeleteOne || c == apiTypeFindOne || c == apiTypeFindAll || c == apiTypeLookUp
+}
+
+func (c ApiType) HasInputOption() bool {
+	return c == apiTypeUpdateOne || c == apiTypeInsertOne
+}
+
+func (c ApiType) Operation() ApiDbOperation {
+	switch c {
+	case apiTypeInsertOne:
+		return ApiOperationInsert
+	case apiTypeUpdateOne:
+		return ApiOperationUpdate
+	case apiTypeDeleteOne:
+		return ApiOperationDelete
+	}
+	return ApiOperationSelect
+}
 
 var (
 	compareOperators = []sqlCompareOperator{
@@ -201,7 +251,18 @@ func (c *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoInsert) {
-			field := column.generateField(w, column.Value.Schema.Value.NotNull)
+			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
+			fields = append(fields, &field)
+		}
+	}
+	return
+}
+
+func (c *TableApi) generateMutable(table *TableClass, w *ast.File) (fields []*ast.Field) {
+	fields = make([]*ast.Field, 0, len(table.Columns))
+	for _, column := range table.Columns {
+		if !arrayContains(column.Value.Tags, tagNoUpdate) {
+			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
 			fields = append(fields, &field)
 		}
 	}
@@ -219,19 +280,31 @@ func (c *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fie
 	return
 }
 
-func (c *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(c.Options))
-	// TODO move these case to uplevel
-	if len(c.Options) == 0 && c.Type == "insertOne" {
-		fields = append(fields, c.generateInsertable(table, w)...)
-		return
+func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, mutable []*ast.Field) {
+	// TODO split
+	findBy = make([]*ast.Field, 0, len(c.FindOptions))
+	mutable = make([]*ast.Field, 0, len(c.FindOptions))
+	if len(c.ModifyColumns) > 0 {
+		for _, columnName := range c.ModifyColumns {
+			column := table.Columns.find(columnName)
+			required := column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil)
+			field := column.generateField(w, required)
+			mutable = append(mutable, &field)
+		}
+	} else {
+		if c.Type.Operation() == ApiOperationInsert {
+			mutable = append(mutable, c.generateInsertable(table, w)...)
+		}
+		if c.Type.Operation() == ApiOperationUpdate {
+			mutable = append(mutable, c.generateMutable(table, w)...)
+		}
 	}
-	if len(c.Options) == 0 && c.Type == "deleteOne" {
-		fields = append(fields, c.generateIdentifierOption(table, w)...)
+	if len(c.FindOptions) == 0 && (c.Type == apiTypeDeleteOne || c.Type == apiTypeInsertOne || c.Type == apiTypeUpdateOne) {
+		findBy = append(findBy, c.generateIdentifierOption(table, w)...)
 		return
 	}
 	// </move these case to uplevel> -------------------
-	for _, option := range c.Options {
+	for _, option := range c.FindOptions {
 		operator := option.Operator
 		operator.Check()
 		if option.Column != "" {
@@ -255,7 +328,7 @@ func (c *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast
 					})
 				}
 			}
-			fields = append(fields, &field)
+			findBy = append(findBy, &field)
 			continue
 		}
 		if len(option.OneOf) > 0 {
@@ -297,7 +370,7 @@ func (c *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast
 				TagTypeUnion: unionColumns,
 				TagTypeOp:    {string(operator)},
 			})
-			fields = append(fields, &baseType)
+			findBy = append(findBy, &baseType)
 			continue
 		}
 		panic("the option must contains 'one_of' or 'column'")
@@ -306,7 +379,7 @@ func (c *TableApi) generateFields(table *TableClass, w *ast.File) (fields []*ast
 }
 
 type (
-	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field) *ast.File
+	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field, []*ast.Field) *ast.File
 )
 
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
@@ -314,15 +387,20 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 		ok     bool
 		tplSet templateApi
 	)
-	if tplSet, ok = funcTemplates[c.Type]; !ok {
+	if tplSet, ok = funcTemplates[c.Type.S()]; !ok {
 		panic(fmt.Sprintf("cannot find template `%s`", c.Type))
 	}
-	return func(schema *SchemaRef, tableName, rowStructName string, queryOptionFields, queryOutputFields []*ast.Field) *ast.File {
+	return func(
+		schema *SchemaRef,
+		tableName, rowStructName string,
+		queryOptionFields, queryInputFields, queryOutputFields []*ast.Field,
+	) *ast.File {
 		return tplSet.TemplateData(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
 			functionName,
 			rowStructName,
 			queryOptionFields,
+			queryInputFields,
 			queryOutputFields,
 		)
 	}
@@ -344,7 +422,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 							cNN:      strconv.Itoa(i),
 							cSchema:  schemaName,
 							cTable:   tableName,
-							cApiType: api.Type,
+							cApiType: api.Type.S(),
 						},
 					)
 					if apiName == "" {
@@ -352,13 +430,16 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 					} else {
 						apiName = makeExportedName(apiName)
 					}
+					if apiName == "AuthAccountsUpdateOne" {
+						// TODO debug
+						apiName = "AuthAccountsUpdateOne"
+					}
 					var (
-						optionStructName = apiName + "Option"
-						optionFields     = api.generateFields(&table, w)
-						builder          = api.getApiBuilder(apiName)
+						optionFields, mutableFields = api.generateOptions(&table, w)
+						builder                     = api.getApiBuilder(apiName)
 					)
-					insertNewStructure(w, optionStructName, optionFields, nil)
-					mergeCodeBase(w, builder(c, tableName, structName, optionFields, resultFields))
+					// insertNewStructure(w, optionStructName, optionFields, nil)
+					mergeCodeBase(w, builder(c, tableName, structName, optionFields, mutableFields, resultFields))
 				}
 			}
 		}

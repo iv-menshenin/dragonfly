@@ -287,3 +287,11 @@ func makeNotEmptyArrayExpression(arrayName string) ast.Expr {
 		Y:  makeBasicLiteralInteger(0),
 	}
 }
+
+func makeNotNullExpression(variable ast.Expr) ast.Expr {
+	return &ast.BinaryExpr{
+		X:  variable,
+		Op: token.NEQ,
+		Y:  makeName("nil"),
+	}
+}

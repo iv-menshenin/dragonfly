@@ -49,7 +49,7 @@ func readAndParseFile(fileName string, i interface{}) {
 			}
 		}
 		if err := decoder(file)(i); err != nil {
-			raise(err)
+			raise(err, "%s\nOn parsing: "+fileName)
 		}
 	}
 }

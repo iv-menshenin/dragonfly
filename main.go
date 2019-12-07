@@ -42,9 +42,18 @@ func printWithoutOperationError() {
 	raise(errors.New("you must select one of the valid operations: validate, generate or help"))
 }
 
-func raise(err error) {
-	if _, newError := fmt.Fprint(os.Stderr, err.Error()); newError != nil {
-		panic(newError)
+func raise(err error, args ...interface{}) {
+	if len(args) > 0 {
+		if argsFmt, ok := args[0].(string); ok {
+			args = append(args, err.Error())
+			if _, newError := fmt.Fprint(os.Stderr, fmt.Sprintf(argsFmt, args[1:]...)); newError != nil {
+				panic(newError)
+			}
+		}
+	} else {
+		if _, newError := fmt.Fprint(os.Stderr, err.Error()); newError != nil {
+			panic(newError)
+		}
 	}
 	os.Exit(1)
 }
