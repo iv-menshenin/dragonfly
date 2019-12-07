@@ -9,10 +9,6 @@ type (
 		fullTableName, functionName, rowStructName string,
 		optionsFields, mutableFields, resultFields []*ast.Field,
 	) *ast.File
-
-	templateApi struct {
-		TemplateData ApiFuncBuilder
-	}
 )
 
 // get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other
@@ -32,28 +28,13 @@ func extractFieldsAndColumnsFromStruct(rowFields []*ast.Field) (fieldNames, colu
 }
 
 var (
-	funcTemplates = map[string]templateApi{
-		"findAll": {
-			TemplateData: makeFindFunction(findVariantAll),
-		},
-		"findOne": {
-			TemplateData: makeFindFunction(findVariantOnce),
-		},
-		"lookUp": {
-			TemplateData: makeFindFunction(findVariantOnce),
-		},
-		"insertOne": {
-			TemplateData: insertOneBuilder,
-		},
-
-		"updateOne": {
-			TemplateData: updateOneBuilder,
-		},
-		"deleteOne": {
-			TemplateData: makeDeleteFunction(findVariantOnce),
-		},
-		"deleteAll": {
-			TemplateData: makeDeleteFunction(findVariantAll),
-		},
+	funcTemplates = map[string]ApiFuncBuilder{
+		"findAll":   makeFindFunction(findVariantAll),
+		"findOne":   makeFindFunction(findVariantOnce),
+		"lookUp":    makeFindFunction(findVariantOnce),
+		"insertOne": insertOneBuilder,
+		"updateOne": updateOneBuilder,
+		"deleteOne": makeDeleteFunction(findVariantOnce),
+		"deleteAll": makeDeleteFunction(findVariantAll),
 	}
 )
