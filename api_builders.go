@@ -621,6 +621,70 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	}
 }
 
+func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
+	const (
+		scanVarName = "row"
+	)
+	return func(
+		fullTableName, functionName, rowStructName string,
+		optionFields, _, rowFields []*ast.Field,
+	) *ast.File {
+		var (
+			scanBlockWrapper scanWrapper
+			resultExpr       ast.Expr
+			lastReturn       ast.Stmt
+		)
+		switch variant {
+		case findVariantOnce:
+			scanBlockWrapper = scanBlockForFindOnce
+			resultExpr = makeTypeIdent(rowStructName)
+			lastReturn = makeReturn(
+				makeName("result"),
+				makeName("EmptyResult"),
+			)
+		case findVariantAll:
+			scanBlockWrapper = scanBlockForFindAll
+			resultExpr = makeTypeArray(makeTypeIdent(rowStructName))
+			lastReturn = makeEmptyReturn()
+		default:
+			panic("cannot resolve 'variant'")
+		}
+		var (
+			findTypes             []ast.Spec
+			findAttrs             []*ast.Field
+			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
+		)
+		sqlQuery := fmt.Sprintf("delete from %s ", fullTableName)
+		functionBody := make([]ast.Stmt, 0, len(optionFields)*3+6)
+		functionBody = addVariablesToFunctionBody(functionBody, len(optionFields), sqlQuery)
+		functionBody, findTypes, findAttrs = addDynamicParametersToFunctionBody(functionName, functionBody, optionFields)
+		functionBody = append(functionBody, makeAssignment(
+			[]string{"sqlText"},
+			makeAddExpressions(makeName("sqlText"), makeBasicLiteralString(fmt.Sprintf(" returning %s", strings.Join(columnList, ", ")))),
+		))
+		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
+		astFileDecls := []ast.Decl{
+			// TODO generate import from function declaration automatically
+			makeImportDecl(
+				"database/sql",
+				"fmt",
+				"strconv",
+				"strings",
+				"context",
+			),
+			&ast.GenDecl{
+				Tok:   token.TYPE,
+				Specs: findTypes,
+			},
+			makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
+		}
+		return &ast.File{
+			Name:  makeName("generated"),
+			Decls: astFileDecls,
+		}
+	}
+}
+
 func updateOneBuilder(
 	fullTableName, functionName, rowStructName string,
 	optionFields, mutableFields, rowFields []*ast.Field,

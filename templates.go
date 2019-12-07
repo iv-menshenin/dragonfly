@@ -50,7 +50,10 @@ var (
 			TemplateData: updateOneBuilder,
 		},
 		"deleteOne": {
-			TemplateData: makeFindFunction(findVariantOnce),
+			TemplateData: makeDeleteFunction(findVariantOnce),
+		},
+		"deleteAll": {
+			TemplateData: makeDeleteFunction(findVariantAll),
 		},
 	}
 )

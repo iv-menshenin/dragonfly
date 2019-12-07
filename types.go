@@ -84,16 +84,17 @@ type (
 		Columns    []string   `yaml:"columns" json:"columns"`
 		Constraint Constraint `yaml:"constraint" json:"constraint"`
 	}
-	ApiOption struct {
+	ApiFindOption struct {
 		Column   string             `yaml:"column,omitempty" json:"column,omitempty"`
 		Required bool               `yaml:"required,omitempty" json:"required,omitempty"`
-		OneOf    []ApiOption        `yaml:"one_of,omitempty" json:"one_of,omitempty"`
+		OneOf    []ApiFindOption    `yaml:"one_of,omitempty" json:"one_of,omitempty"`
 		Operator sqlCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 	}
 	TableApi struct {
-		Type    string      `yaml:"type" json:"type"`
-		Name    string      `yaml:"name" json:"name"`
-		Options []ApiOption `yaml:"options,omitempty" json:"options,omitempty"`
+		Type          ApiType         `yaml:"type" json:"type"`
+		Name          string          `yaml:"name" json:"name"`
+		FindOptions   []ApiFindOption `yaml:"find_by,omitempty" json:"find_by,omitempty"`
+		ModifyColumns []string        `yaml:"modify,omitempty" json:"modify,omitempty"`
 	}
 	ColumnsContainer []ColumnRef
 	ApiContainer     []TableApi
