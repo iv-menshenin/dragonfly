@@ -1,8 +1,16 @@
-package main
+package dragonfly
 
 import (
+	"fmt"
+	"io"
 	"strings"
 )
+
+func writer(w io.Writer, format string, i ...interface{}) {
+	if _, err := fmt.Fprintf(w, format, i...); err != nil {
+		panic(err)
+	}
+}
 
 func arrayContains(a []string, s string) bool {
 	return arrayFind(a, s) > -1

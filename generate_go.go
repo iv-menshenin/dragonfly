@@ -1,4 +1,4 @@
-package main
+package dragonfly
 
 import (
 	"fmt"
@@ -446,7 +446,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 	}
 }
 
-func generateGO(db *Root, schemaName, packageName string, w io.Writer) {
+func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
 	var file = new(ast.File)
 	for _, schema := range db.Schemas {
 		if schemaName == "" || schemaName == schema.Value.Name {

@@ -1,4 +1,4 @@
-package main
+package dragonfly
 
 import (
 	"fmt"
@@ -146,7 +146,7 @@ func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Wri
 	}
 }
 
-func generateSql(db *Root, schemaName string, w io.Writer) {
+func GenerateSql(db *Root, schemaName string, w io.Writer) {
 	for _, schema := range db.Schemas {
 		if schemaName == "" || schemaName == schema.Value.Name {
 			schema.generateSQL(schema.Value.Name, db, w)

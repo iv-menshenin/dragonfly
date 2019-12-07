@@ -1,7 +1,8 @@
-package main
+package dragonfly
 
 import (
 	"encoding/json"
+	"fmt"
 	"gopkg.in/yaml.v2"
 	"io"
 	"os"
@@ -26,8 +27,13 @@ func readAndParseFile(fileName string, i interface{}) {
 		decoder func(r io.Reader) func(v interface{}) error
 	)
 	if file, err := os.Open(fileName); err != nil {
-		raise(err)
+		panic(err)
 	} else {
+		defer func(){
+			if err := file.Close(); err != nil {
+				panic(err)
+			}
+		}()
 		switch strings.ToLower(path.Ext(fileName)) {
 		case ".json":
 			decoder = jsonDecoder
@@ -36,10 +42,10 @@ func readAndParseFile(fileName string, i interface{}) {
 		default:
 			var b = make([]byte, 1, 1)
 			if _, err := file.Read(b); err != nil {
-				raise(err)
+				panic(err)
 			} else {
 				if _, err := file.Seek(0, 0); err != nil {
-					raise(err)
+					panic(err)
 				}
 			}
 			if b[0] == '{' {
@@ -49,7 +55,14 @@ func readAndParseFile(fileName string, i interface{}) {
 			}
 		}
 		if err := decoder(file)(i); err != nil {
-			raise(err, "%s\nOn parsing: "+fileName)
+			panic(fmt.Sprintf("<%T>: %s\nOn parsing: "+fileName, err, err))
 		}
 	}
+}
+
+func ReadDatabaseProjectFile(fileName string) *Root {
+	var root Root
+	readAndParseFile(fileName, &root)
+	root.normalize()
+	return &root
 }

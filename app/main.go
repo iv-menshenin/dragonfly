@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/iv-menshenin/dragonfly"
 	"io"
 	"os"
 	"strings"
@@ -56,12 +57,6 @@ func raise(err error, args ...interface{}) {
 		}
 	}
 	os.Exit(1)
-}
-
-func writer(w io.Writer, format string, i ...interface{}) {
-	if _, err := fmt.Fprintf(w, format, i...); err != nil {
-		raise(err)
-	}
 }
 
 func initFlags() ProgramParams {
@@ -122,7 +117,7 @@ func openFileForWrite(fileName string, onOpened func(w io.Writer) error) error {
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
-				panic(err)
+				raise(err)
 			}
 		}()
 	}
@@ -130,11 +125,10 @@ func openFileForWrite(fileName string, onOpened func(w io.Writer) error) error {
 }
 
 func main() {
-	var root Root
+	var root *dragonfly.Root
 	state := initFlags()
 	readAndParse := func() {
-		readAndParseFile(*state.InputFile, &root)
-		root.normalize()
+		root = dragonfly.ReadDatabaseProjectFile(*state.InputFile)
 	}
 	switch state.ToDo {
 	case ToDoGenerate:
@@ -142,9 +136,9 @@ func main() {
 			readAndParse()
 			switch strings.ToLower(*state.OutputFormat) {
 			case "sql":
-				generateSql(&root, *state.Schema, w)
+				dragonfly.GenerateSql(root, *state.Schema, w)
 			case "go":
-				generateGO(&root, *state.Schema, *state.PackageName, w)
+				dragonfly.GenerateGO(root, *state.Schema, *state.PackageName, w)
 			}
 			return nil
 		})

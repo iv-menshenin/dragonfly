@@ -1,4 +1,4 @@
-package main
+package dragonfly
 
 import (
 	"bytes"
@@ -197,7 +197,7 @@ func (c *ConstraintParameters) UnmarshalJSON(data []byte) error {
 
 func processRef(db *Root, ref string, i interface{}) {
 	if ref == "" {
-		raise(errors.New("cannot resolve empty $ref"))
+		panic(errors.New("cannot resolve empty $ref"))
 	}
 	if chains := strings.Split(strings.TrimSpace(ref), " "); len(chains) > 1 {
 		if chains[0] == "!include" {
@@ -209,7 +209,7 @@ func processRef(db *Root, ref string, i interface{}) {
 	if ref[0] == '#' {
 		chains := strings.Split(ref, "/")[1:]
 		if !db.follow(db, chains, i) {
-			raise(errors.New("cannot resolve $ref: '" + ref + "'"))
+			panic(errors.New("cannot resolve $ref: '" + ref + "'"))
 		}
 	}
 }
