@@ -124,8 +124,16 @@ func (c enumTypeDescriber) getFile() *ast.File {
 		f          ast.File
 		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
 	)
+	allowedValues := make([]ast.Spec, 0, len(c.domain.Enum))
 	for _, entity := range c.domain.Enum {
-		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
+		entityName := makeName(c.typeName + makeExportedName(entity.Value))
+		entityValue := makeBasicLiteralString(entity.Value)
+		allowedValues = append(allowedValues, &ast.ValueSpec{
+			Names:  []*ast.Ident{entityName},
+			Type:   makeName(c.typeName),
+			Values: []ast.Expr{entityValue},
+		})
+		enumValues = append(enumValues, makeCall(makeName("string"), entityName))
 	}
 	objMethodArgSelf := []*ast.Field{
 		{
@@ -166,6 +174,10 @@ func (c enumTypeDescriber) getFile() *ast.File {
 					Type: makeTypeIdent("string"),
 				},
 			},
+		},
+		&ast.GenDecl{
+			Tok:   token.CONST,
+			Specs: allowedValues,
 		},
 		&ast.FuncDecl{
 			Recv: &ast.FieldList{
@@ -488,9 +500,9 @@ func (c jsonTypeDescriber) getFile() *ast.File {
 		&ast.FuncDecl{
 			Recv: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "c",
 								Obj: &ast.Object{
 									Kind: ast.Var,
@@ -512,9 +524,9 @@ func (c jsonTypeDescriber) getFile() *ast.File {
 			Type: &ast.FuncType{
 				Params: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{
+						{
 							Names: []*ast.Ident{
-								&ast.Ident{
+								{
 									Name: "value",
 									Obj: &ast.Object{
 										Kind: ast.Var,
@@ -531,7 +543,7 @@ func (c jsonTypeDescriber) getFile() *ast.File {
 				},
 				Results: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{
+						{
 							Type: &ast.Ident{
 								Name: "error",
 							},
