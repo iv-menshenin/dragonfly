@@ -385,7 +385,7 @@ type (
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	var (
 		ok     bool
-		tplSet templateApi
+		tplSet ApiFuncBuilder
 	)
 	if tplSet, ok = funcTemplates[c.Type.S()]; !ok {
 		panic(fmt.Sprintf("cannot find template `%s`", c.Type))
@@ -395,7 +395,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 		tableName, rowStructName string,
 		queryOptionFields, queryInputFields, queryOutputFields []*ast.Field,
 	) *ast.File {
-		return tplSet.TemplateData(
+		return tplSet(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
 			functionName,
 			rowStructName,
