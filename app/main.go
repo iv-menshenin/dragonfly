@@ -27,6 +27,7 @@ type (
 const (
 	ToDoValidate ToDo = "validate"
 	ToDoGenerate ToDo = "generate"
+	ToDoDiff     ToDo = "diff"
 	ToDoHelp     ToDo = "help"
 )
 
@@ -88,6 +89,16 @@ func initFlags() ProgramParams {
 	}
 	flagSets[ToDoValidate] = fsValidate
 
+	fsDiff := flag.NewFlagSet(string(ToDoDiff), flag.PanicOnError)
+	parameters[ToDoDiff] = ProgramParams{
+		ToDo:        ToDoDiff,
+		InputFile:   fsDiff.String("input", os.Stdin.Name(), "file to input"),
+		OutputFile:  fsDiff.String("output", os.Stdout.Name(), "file to output"),
+		PackageName: fsDiff.String("package", "generated", "go package name"),
+		Schema:      fsDiff.String("schema", "", "generate code for schema"),
+	}
+	flagSets[ToDoDiff] = fsDiff
+
 	fsHelp := flag.NewFlagSet(string(ToDoHelp), flag.PanicOnError)
 	parameters[ToDoHelp] = ProgramParams{
 		ToDo: ToDoHelp,
@@ -147,6 +158,16 @@ func main() {
 		}
 	case ToDoValidate:
 		readAndParse()
+	case ToDoDiff:
+		err := openFileForWrite(*state.OutputFile, func(w io.Writer) error {
+			readAndParse()
+			connStr := "postgres://postgres:%23gidra-stalker-012@34.65.200.205/likepaytest"
+			dragonfly.DatabaseDiff(root, *state.Schema, connStr, w)
+			return nil
+		})
+		if err != nil {
+			raise(err)
+		}
 	case ToDoHelp:
 	}
 }

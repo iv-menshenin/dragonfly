@@ -326,6 +326,32 @@ func (c ColumnsContainer) find(name string) ColumnRef {
 	panic(fmt.Sprintf("cannot find column '%s'", name))
 }
 
+func (c ColumnsContainer) CopyFlatColumns() ColumnsContainer {
+	result := make([]ColumnRef, 0, len(c))
+	for _, column := range c {
+		result = append(result, ColumnRef{
+			Value: Column{
+				Name: column.Value.Name,
+				Schema: ColumnSchemaRef{
+					Value: DomainSchema{
+						Type:      column.Value.Schema.Value.Type,
+						Length:    column.Value.Schema.Value.Length,
+						Precision: column.Value.Schema.Value.Precision,
+						NotNull:   column.Value.Schema.Value.NotNull,
+						Default:   column.Value.Schema.Value.Default,
+					},
+					Ref: column.Value.Schema.Ref,
+				},
+				Constraints: nil,
+				Tags:        nil,
+				Description: "copied from original",
+			},
+			Ref: column.Ref,
+		})
+	}
+	return result
+}
+
 func (c *TableClass) follow(db *Root, path []string, i interface{}) bool {
 	if len(path) == 0 {
 		// can panic
