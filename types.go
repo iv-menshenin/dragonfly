@@ -128,6 +128,14 @@ type (
 	}
 )
 
+func (c ColumnSchemaRef) makeDomainName() (string, bool) {
+	if c.Ref == nil {
+		return "", false
+	}
+	pathSmt := strings.Split(*c.Ref, "/")
+	return pathSmt[len(pathSmt)-1], pathSmt[len(pathSmt)-1] != ""
+}
+
 func (c *Root) getComponentColumn(name string) (*Column, bool) {
 	column, ok := c.Components.Columns[name]
 	if !ok {

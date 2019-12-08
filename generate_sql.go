@@ -140,7 +140,11 @@ func (c *DomainSchema) describeSQL() interface{} {
 }
 
 func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
-	writer(w, "\t%s %s", c.Value.Name, c.Value.Schema.Value.describeSQL())
+	if domain, ok := c.Value.Schema.makeDomainName(); ok {
+		writer(w, "\t%s %s", c.Value.Name, domain)
+	} else {
+		writer(w, "\t%s %s", c.Value.Name, c.Value.Schema.Value.describeSQL())
+	}
 	for i, constraint := range c.Value.Constraints {
 		writer(w, " %s", constraint.describeSQL(schemaName, tableName, nil, i))
 	}
