@@ -25,7 +25,7 @@ const (
 )
 
 type (
-	DomainSchema struct {
+	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
 		Type      string  `yaml:"type" json:"type"`
 		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
 		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`

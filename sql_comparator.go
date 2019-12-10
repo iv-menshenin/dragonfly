@@ -16,6 +16,13 @@ const (
 select table_name, ordinal_position, column_name, data_type, character_maximum_length, column_default, is_nullable != 'NO', numeric_precision, numeric_precision_radix, numeric_scale, domain_schema, domain_name, udt_name
 from information_schema.columns where table_schema=$1;`
 
+	sqlGetDomains = `
+select d.domain_schema, d.domain_name, d.data_type, d.character_maximum_length, d.domain_default, d.numeric_precision,
+       d.numeric_precision_radix, d.numeric_scale, d.udt_name, d.udt_name,
+       exists((select true from pg_type where typnotnull and typtype='d' and typname=d.domain_name limit 1))
+  from information_schema.domains d
+ where d.domain_schema = $1`
+
 	sqlGetForeignKey = `
 select tc.table_schema,
        tc.constraint_name,
@@ -40,7 +47,7 @@ select tc.table_schema,
 
 type (
 	columnStruct struct {
-		Table        string
+		RelationName string
 		Ord          int
 		Column       string
 		Type         string
@@ -81,6 +88,18 @@ type (
 	ColumnRename struct {
 		ColumnCase
 		OldColumnName string
+	}
+
+	DomainMutationCase  interface{}
+	DomainMutationCases []DomainMutationCase
+
+	DomainSetDefault struct {
+		DomainName   string
+		DefaultValue *string
+	}
+	DomainSetNotNull struct {
+		DomainName string
+		NotNull    bool
 	}
 )
 
@@ -222,11 +241,46 @@ func (c TableStruct) findSimilarType(column ColumnRef) (*columnStruct, int) {
 	return nil, -1
 }
 
-func (c TableStruct) checkDiffs(schema *SchemaRef, tableName string) ColumnMutationCases {
-	table, ok := schema.Value.Tables[tableName]
-	if !ok {
-		panic(fmt.Sprintf("cannot found table `%s` in schema `%s`", tableName, schema.Value.Name))
+// TODO DOMAIN CONSTRAINTS
+//   ALTER DOMAIN zipcode RENAME CONSTRAINT zipchk TO zip_check;
+//   ALTER DOMAIN zipcode ADD CONSTRAINT zipchk CHECK (char_length(VALUE) = 5);
+func (c TableStruct) checkDomainDiffs(schema *SchemaRef, domainName string, domain DomainSchema) DomainMutationCases {
+	cases := make(DomainMutationCases, 0, 0)
+	if currentDomainConfig, ok := c.filterTableColumn(domainName); !ok {
+		// TODO NOT EXISTS
+		// TODO CHECK FOR RENAMING
+		// TODO RENAME
+		// TODO SET SCHEMA
+	} else {
+		if (currentDomainConfig.Default != nil && domain.Default == nil) ||
+			(currentDomainConfig.Default == nil && domain.Default != nil) ||
+			(currentDomainConfig.Default != nil && domain.Default != nil && !strings.EqualFold(*currentDomainConfig.Default, *domain.Default)) {
+			cases = append(cases, &DomainSetDefault{
+				DomainName:   domainName,
+				DefaultValue: domain.Default,
+			})
+		}
+		if !currentDomainConfig.Nullable != domain.NotNull {
+			cases = append(cases, &DomainSetNotNull{
+				DomainName: domainName,
+				NotNull:    domain.NotNull,
+			})
+		}
+		if currentDomainConfig.Type != domain.Type {
+			panic(fmt.Sprintf("cannot change type for domain `%s`, actual: %s, next: %s", domainName, currentDomainConfig.Type, domain.Type))
+		}
+		if currentDomainConfig.Max != nil && domain.Length != nil && *currentDomainConfig.Max != *domain.Length {
+			panic(fmt.Sprintf("cannot change data length for domain `%s`, actual: %d, next: %d", domainName, currentDomainConfig.Max, domain.Length))
+		}
 	}
+	return cases
+}
+
+func (c DomainMutationCases) MakeSolution(db *sql.DB, schemaName, domainName string, domain DomainSchema, root *Root) {
+
+}
+
+func (c TableStruct) checkTableDiffs(schema *SchemaRef, tableName string, table TableClass) ColumnMutationCases {
 	deletedColumns := make(TableStruct, 0, 0)
 	for _, columnStruct := range c {
 		if !table.Columns.exists(columnStruct.Column) {
@@ -267,7 +321,7 @@ func (c TableStruct) checkDiffs(schema *SchemaRef, tableName string) ColumnMutat
 func (c TableStruct) filterTableColumns(tableName string) TableStruct {
 	columns := make(TableStruct, 0, 20)
 	for _, column := range c {
-		if column.Table == tableName {
+		if column.RelationName == tableName {
 			columns = append(columns, column)
 		}
 	}
@@ -283,7 +337,7 @@ func (c TableStruct) filterTableColumn(columnName string) (*columnStruct, bool) 
 	return nil, false
 }
 
-func (c *SchemaRef) checkDiff(db *sql.DB, schema string, root *Root, w io.Writer) {
+func getSchemaTables(db *sql.DB, schema string) TableStruct {
 	var columns TableStruct
 	if q, err := db.Query(sqlGetSchemaStruct, schema); err != nil {
 		panic(err)
@@ -292,7 +346,7 @@ func (c *SchemaRef) checkDiff(db *sql.DB, schema string, root *Root, w io.Writer
 		var column columnStruct
 		for q.Next() {
 			if err := q.Scan(
-				&column.Table,
+				&column.RelationName,
 				&column.Ord,
 				&column.Column,
 				&column.Type,
@@ -312,9 +366,52 @@ func (c *SchemaRef) checkDiff(db *sql.DB, schema string, root *Root, w io.Writer
 			}
 		}
 	}
+	return columns
+}
+
+func getSchemaDomains(db *sql.DB, schema string) TableStruct {
+	var columns TableStruct
+	if q, err := db.Query(sqlGetDomains, schema); err != nil {
+		panic(err)
+	} else {
+		columns = make([]columnStruct, 0, 100)
+		var column columnStruct
+		for q.Next() {
+			if err := q.Scan(
+				&column.DomainSchema,
+				&column.Domain,
+				&column.Type,
+				&column.Max,
+				&column.Default,
+				&column.Precision,
+				&column.Radix,
+				&column.Scale,
+				&column.RelationName,
+				&column.UdtName,
+				&column.Nullable,
+			); err != nil {
+				panic(err)
+			} else {
+				columns = append(columns, column)
+			}
+		}
+	}
+	return columns
+}
+
+func (c *SchemaRef) checkDiff(db *sql.DB, schema string, root *Root, w io.Writer) {
+	currentConfig := getSchemaDomains(db, schema)
+	for domainName, domainStruct := range c.Value.Domains {
+		domainMutations := currentConfig.checkDomainDiffs(c, domainName, domainStruct)
+		if len(domainMutations) > 0 {
+			domainMutations.MakeSolution(db, schema, domainName, domainStruct, root)
+		}
+	}
+
+	columns := getSchemaTables(db, schema)
 	for tableName, tableStruct := range c.Value.Tables {
 		tableColumns := columns.filterTableColumns(tableName)
-		columnsMutations := tableColumns.checkDiffs(c, tableName)
+		columnsMutations := tableColumns.checkTableDiffs(c, tableName, tableStruct)
 		if len(columnsMutations) > 0 {
 			columnsMutations.MakeSolution(db, schema, tableName, tableStruct, root)
 		}
