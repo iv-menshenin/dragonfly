@@ -362,6 +362,7 @@ func (c *TableClass) follow(db *Root, path []string, i interface{}) bool {
 		if path[0] == columns {
 			column := c.Columns.find(path[1])
 			copyFromTo(column.Value, i)
+			return true
 		}
 		// TODO ??
 	}

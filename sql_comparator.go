@@ -1,9 +1,7 @@
 package dragonfly
 
 import (
-	"bytes"
 	"database/sql"
-	"fmt"
 	_ "github.com/lib/pq"
 	"io"
 	"math/rand"
@@ -19,9 +17,9 @@ from information_schema.columns where table_schema=$1;`
 	sqlGetDomains = `
 select d.domain_schema, d.domain_name, d.data_type, d.character_maximum_length, d.domain_default, d.numeric_precision,
        d.numeric_precision_radix, d.numeric_scale, d.udt_name, d.udt_name,
-       exists((select true from pg_type where typnotnull and typtype='d' and typname=d.domain_name limit 1))
+       not exists((select true from pg_type where typnotnull and typtype='d' and typname=d.domain_name limit 1))
   from information_schema.domains d
- where d.domain_schema = $1`
+ where d.domain_schema = $1;`
 
 	sqlGetForeignKey = `
 select tc.table_schema,
@@ -43,10 +41,29 @@ select tc.table_schema,
    and tc.table_name=$2
    and ccu.table_schema=$3
    and ccu.table_name=$4;`
+
+	sqlGetTableConstraints = `
+select tc.constraint_name,
+       kcu.column_name
+from information_schema.table_constraints as tc
+join information_schema.key_column_usage as kcu
+  on tc.constraint_name = kcu.constraint_name
+ and tc.table_schema = kcu.table_schema
+ where tc.table_schema=$1
+   and tc.table_name=$2;`
+
+	sqlDomainUsages = `
+select cdu.table_schema, cdu.table_name, cdu.column_name
+  from information_schema.domains d
+  join information_schema.column_domain_usage cdu
+    on cdu.domain_schema = d.domain_schema
+   and cdu.domain_name = d.domain_name
+where d.domain_schema = $1
+  and d.domain_name = $2;`
 )
 
 type (
-	columnStruct struct {
+	ColumnStruct struct {
 		RelationName string
 		Ord          int
 		Column       string
@@ -61,55 +78,8 @@ type (
 		Domain       *string
 		UdtName      string
 	}
-	TableStruct []columnStruct
-
-	ColumnMutationCase interface {
-		GetNewColumnValue(*sql.DB) string
-		GetOldColumnValue(*sql.DB) string
-	}
-	ColumnMutationCases []ColumnMutationCase
-	ColumnCase          struct {
-		TableSchema string
-		TableName   string
-		ColumnName  string
-	}
-	ColumnAdding struct {
-		ColumnCase
-		NewType ColumnRef
-	}
-	ColumnChange struct {
-		ColumnCase
-		OldType columnStruct
-		NewType ColumnRef
-	}
-	ColumnDelete struct {
-		ColumnCase
-	}
-	ColumnRename struct {
-		ColumnCase
-		OldColumnName string
-	}
-
-	DomainMutationCase  interface{}
-	DomainMutationCases []DomainMutationCase
-
-	DomainSetDefault struct {
-		DomainName   string
-		DefaultValue *string
-	}
-	DomainSetNotNull struct {
-		DomainName string
-		NotNull    bool
-	}
+	TableStruct []ColumnStruct
 )
-
-func (c *ColumnCase) GetNewColumnValue(*sql.DB) string {
-	return c.ColumnName
-}
-
-func (c *ColumnCase) GetOldColumnValue(*sql.DB) string {
-	return c.ColumnName
-}
 
 type (
 	TableColumn struct {
@@ -150,200 +120,13 @@ func getForeignKeys(db *sql.DB, mainTableSchema, mainTableName, foreignTableSche
 	return keys
 }
 
-func (c *ColumnAdding) GetOldColumnValue(db *sql.DB) string {
-	if c.NewType.Value.Schema.Value.NotNull && c.NewType.Value.Schema.Value.Default == nil {
-		// resolve foreign keys
-		for _, key := range c.NewType.Value.Constraints {
-			if strings.EqualFold(key.Type, "foreign key") {
-				fkAttrs := key.Parameters.Parameter.(ForeignKey)
-				splitName := strings.Split(fkAttrs.ToTable, ".") // TODO error!
-				fk := getForeignKeys(db, c.TableSchema, c.TableName, splitName[0], splitName[1])
-				if len(fk) == 1 {
-					foreignKey := fk[0]
-					return fmt.Sprintf("(select %s from %s where %s=%s.%s.%s)", fkAttrs.ToColumn, fkAttrs.ToTable, foreignKey.ForeignTable.ColumnName, c.TableSchema, c.TableName, foreignKey.MainTable.ColumnName)
-				}
-			}
-		}
-		panic(fmt.Sprintf("cannot resolve values for new column `%s`", c.ColumnName))
-	}
-	return "null"
-}
-
-func (c *ColumnRename) GetOldColumnValue(*sql.DB) string {
-	return c.OldColumnName
-}
-
-func (c ColumnMutationCases) MakeSolution(db *sql.DB, schemaName, tableName string, table TableClass, root *Root) {
-	w := bytes.NewBufferString(fmt.Sprintf("-- solution for %s table structure change\n", tableName))
-	fullTableName := fmt.Sprintf("%s.%s", schemaName, tableName)
-	tmpTableName := fmt.Sprintf("%s_tmp_%d", tableName, rand.Int())
-	var (
-		tmpTableStruct = TableClass{
-			Columns: table.Columns.CopyFlatColumns(),
-		}
-		newColumnList = make([]string, 0, len(tmpTableStruct.Columns))
-		oldColumnList = make([]string, 0, len(tmpTableStruct.Columns))
-	)
-	for _, mutation := range c {
-		newColumnList = append(newColumnList, mutation.GetNewColumnValue(db))
-		oldColumnList = append(oldColumnList, mutation.GetOldColumnValue(db))
-	}
-	for _, column := range tmpTableStruct.Columns {
-		if !arrayContains(newColumnList, column.Value.Name) {
-			newColumnList = append(newColumnList, column.Value.Name)
-			oldColumnList = append(oldColumnList, column.Value.Name)
-		}
-	}
-	tmpTableStruct.generateSQL(schemaName, tmpTableName, root, w)
-	tmpTableName = fmt.Sprintf("%s.%s", schemaName, tmpTableName)
-	writer(w, "insert into %s(%s) select %s from %s;\n", tmpTableName, strings.Join(newColumnList, ","), strings.Join(oldColumnList, ","), fullTableName)
-	writer(w, "drop table %s;\n", tmpTableName)
-	println(w.String())
-}
-
-func (c columnStruct) checkDiffs(schemaName, tableName string, column ColumnRef) ColumnMutationCases {
-	mutation := make([]ColumnMutationCase, 0, 0)
-	if c.Domain != nil {
-		domain, isDomain := column.Value.Schema.makeDomainName()
-		if !isDomain || !strings.EqualFold(domain, *c.Domain) {
-			mutation = append(mutation, &ColumnChange{
-				ColumnCase: ColumnCase{
-					TableSchema: schemaName,
-					TableName:   tableName,
-					ColumnName:  column.Value.Name,
-				},
-				OldType: c,
-				NewType: column,
-			})
-			return mutation
-		}
-	}
-	return mutation
-}
-
-func (c TableStruct) findSimilarType(column ColumnRef) (*columnStruct, int) {
-	// TODO ...
-	for i, s := range c {
-		if domain, ok := column.Value.Schema.makeDomainName(); ok {
-			if s.Domain != nil && strings.EqualFold(*s.Domain, domain) {
-				return &s, i
-			}
-		} else {
-			if strings.EqualFold(s.Type, column.Value.Schema.Value.Type) {
-				if column.Value.Schema.Value.Length != nil && s.Max != nil && *s.Max == *column.Value.Schema.Value.Length {
-					return &s, i
-				} else if column.Value.Schema.Value.Length == nil && s.Max == nil {
-					return &s, i
-				}
-			}
-		}
-	}
-	return nil, -1
-}
-
-// TODO DOMAIN CONSTRAINTS
-//   ALTER DOMAIN zipcode RENAME CONSTRAINT zipchk TO zip_check;
-//   ALTER DOMAIN zipcode ADD CONSTRAINT zipchk CHECK (char_length(VALUE) = 5);
-func (c TableStruct) checkDomainDiffs(schema *SchemaRef, domainName string, domain DomainSchema) DomainMutationCases {
-	cases := make(DomainMutationCases, 0, 0)
-	if currentDomainConfig, ok := c.filterTableColumn(domainName); !ok {
-		// TODO NOT EXISTS
-		// TODO CHECK FOR RENAMING
-		// TODO RENAME
-		// TODO SET SCHEMA
-	} else {
-		if (currentDomainConfig.Default != nil && domain.Default == nil) ||
-			(currentDomainConfig.Default == nil && domain.Default != nil) ||
-			(currentDomainConfig.Default != nil && domain.Default != nil && !strings.EqualFold(*currentDomainConfig.Default, *domain.Default)) {
-			cases = append(cases, &DomainSetDefault{
-				DomainName:   domainName,
-				DefaultValue: domain.Default,
-			})
-		}
-		if !currentDomainConfig.Nullable != domain.NotNull {
-			cases = append(cases, &DomainSetNotNull{
-				DomainName: domainName,
-				NotNull:    domain.NotNull,
-			})
-		}
-		if currentDomainConfig.Type != domain.Type {
-			panic(fmt.Sprintf("cannot change type for domain `%s`, actual: %s, next: %s", domainName, currentDomainConfig.Type, domain.Type))
-		}
-		if currentDomainConfig.Max != nil && domain.Length != nil && *currentDomainConfig.Max != *domain.Length {
-			panic(fmt.Sprintf("cannot change data length for domain `%s`, actual: %d, next: %d", domainName, currentDomainConfig.Max, domain.Length))
-		}
-	}
-	return cases
-}
-
-func (c DomainMutationCases) MakeSolution(db *sql.DB, schemaName, domainName string, domain DomainSchema, root *Root) {
-
-}
-
-func (c TableStruct) checkTableDiffs(schema *SchemaRef, tableName string, table TableClass) ColumnMutationCases {
-	deletedColumns := make(TableStruct, 0, 0)
-	for _, columnStruct := range c {
-		if !table.Columns.exists(columnStruct.Column) {
-			deletedColumns = append(deletedColumns, columnStruct)
-		}
-	}
-	mutations := make([]ColumnMutationCase, 0, 0)
-	for _, column := range table.Columns {
-		existing, found := c.filterTableColumn(column.Value.Name)
-		if !found {
-			if s, i := deletedColumns.findSimilarType(column); i > -1 {
-				mutations = append(mutations, &ColumnRename{
-					ColumnCase: ColumnCase{
-						TableSchema: schema.Value.Name,
-						TableName:   tableName,
-						ColumnName:  column.Value.Name,
-					},
-					OldColumnName: s.Column,
-				})
-				deletedColumns = append(deletedColumns[:i], deletedColumns[i+1:]...)
-			} else {
-				mutations = append(mutations, &ColumnAdding{
-					ColumnCase: ColumnCase{
-						TableSchema: schema.Value.Name,
-						TableName:   tableName,
-						ColumnName:  column.Value.Name,
-					},
-					NewType: column,
-				})
-			}
-		} else {
-			mutations = append(mutations, existing.checkDiffs(schema.Value.Name, tableName, column)...)
-		}
-	}
-	return mutations
-}
-
-func (c TableStruct) filterTableColumns(tableName string) TableStruct {
-	columns := make(TableStruct, 0, 20)
-	for _, column := range c {
-		if column.RelationName == tableName {
-			columns = append(columns, column)
-		}
-	}
-	return columns
-}
-
-func (c TableStruct) filterTableColumn(columnName string) (*columnStruct, bool) {
-	for _, column := range c {
-		if column.Column == columnName {
-			return &column, true
-		}
-	}
-	return nil, false
-}
-
 func getSchemaTables(db *sql.DB, schema string) TableStruct {
 	var columns TableStruct
 	if q, err := db.Query(sqlGetSchemaStruct, schema); err != nil {
 		panic(err)
 	} else {
-		columns = make([]columnStruct, 0, 100)
-		var column columnStruct
+		columns = make([]ColumnStruct, 0, 100)
+		var column ColumnStruct
 		for q.Next() {
 			if err := q.Scan(
 				&column.RelationName,
@@ -369,13 +152,54 @@ func getSchemaTables(db *sql.DB, schema string) TableStruct {
 	return columns
 }
 
+func getTableConstraints(db *sql.DB, schema, table string) ColumnConstraints {
+	if q, err := db.Query(sqlGetTableConstraints, schema, table); err != nil {
+		panic(err)
+	} else {
+		constraints := make(ColumnConstraints, 0, 10)
+		var constraint ColumnConstraint
+		for q.Next() {
+			if err := q.Scan(
+				&constraint.ColumnName,
+				&constraint.ConstraintName,
+			); err != nil {
+				panic(err)
+			} else {
+				constraints = append(constraints, constraint)
+			}
+		}
+		return constraints
+	}
+}
+
+func getDomainUsages(db *sql.DB, schema, domain string) []ColumnFullName {
+	if q, err := db.Query(sqlDomainUsages, schema, domain); err != nil {
+		panic(err)
+	} else {
+		usages := make([]ColumnFullName, 0, 60)
+		var usage ColumnFullName
+		for q.Next() {
+			if err := q.Scan(
+				&usage.TableSchema,
+				&usage.TableName,
+				&usage.ColumnName,
+			); err != nil {
+				panic(err)
+			} else {
+				usages = append(usages, usage)
+			}
+		}
+		return usages
+	}
+}
+
 func getSchemaDomains(db *sql.DB, schema string) TableStruct {
 	var columns TableStruct
 	if q, err := db.Query(sqlGetDomains, schema); err != nil {
 		panic(err)
 	} else {
-		columns = make([]columnStruct, 0, 100)
-		var column columnStruct
+		columns = make([]ColumnStruct, 0, 100)
+		var column ColumnStruct
 		for q.Next() {
 			if err := q.Scan(
 				&column.DomainSchema,
@@ -399,23 +223,223 @@ func getSchemaDomains(db *sql.DB, schema string) TableStruct {
 	return columns
 }
 
-func (c *SchemaRef) checkDiff(db *sql.DB, schema string, root *Root, w io.Writer) {
-	currentConfig := getSchemaDomains(db, schema)
-	for domainName, domainStruct := range c.Value.Domains {
-		domainMutations := currentConfig.checkDomainDiffs(c, domainName, domainStruct)
-		if len(domainMutations) > 0 {
-			domainMutations.MakeSolution(db, schema, domainName, domainStruct, root)
+func makeDomainsComparator(db *sql.DB, schema string, newDomains map[string]DomainSchema, root *Root) DomainsComparator {
+	domains := make(DomainsComparator, 0, len(newDomains))
+	currDomains := getSchemaDomains(db, schema)
+	for domainName := range newDomains {
+		domainStruct := newDomains[domainName]
+		if current, i := currDomains.findDomain(schema, domainName); i > -1 {
+			domains = append(domains, DomainComparator{
+				Name: NameComparator{
+					Actual: *current.Domain,
+					New:    domainName,
+				},
+				Schema: NameComparator{
+					Actual: schema,
+					New:    schema,
+				},
+				DomainStruct: DomainStructComparator{
+					OldStructure: current,
+					NewStructure: &domainStruct,
+				},
+			})
+			// we prefer to remove the found entity from the collection,
+			// to search without intersections with existing relationships
+			currDomains = append(currDomains[:i], currDomains[i+1:]...)
+		} else {
+			// not found
+			domains = append(domains, DomainComparator{
+				Name: NameComparator{
+					Actual: "",
+					New:    domainName,
+				},
+				Schema: NameComparator{
+					Actual: schema,
+					New:    schema,
+				},
+				DomainStruct: DomainStructComparator{
+					OldStructure: nil,
+					NewStructure: &domainStruct,
+				},
+			})
 		}
+	}
+	// considering that I deleted the found, now in this collection I have everything that remains
+	for _, current := range currDomains {
+		var found = false
+		// these are either superfluous or renamed domains
+		for index, diff := range domains {
+			bindTheseDomains := func() {
+				found = true
+				domains[index] = DomainComparator{
+					Name: NameComparator{
+						Actual: *current.Domain,
+						New:    diff.Name.New,
+					},
+					Schema: NameComparator{
+						Actual: *current.DomainSchema,
+						New:    diff.Schema.New,
+					},
+					DomainStruct: DomainStructComparator{
+						OldStructure: &current,
+						NewStructure: diff.DomainStruct.NewStructure,
+					},
+				}
+			}
+			// try to find among those that have a new name
+			if diff.Name.Actual == "" && strings.EqualFold(diff.DomainStruct.NewStructure.Type, current.UdtName) {
+				// we must make sure our assumption is correct
+				matches := make(map[string]int, 5)
+				usages := getDomainUsages(db, *current.DomainSchema, *current.Domain)
+				for _, usage := range usages {
+					var column Column
+					if root.follow(root, []string{
+						"schemas",
+						usage.TableSchema,
+						"tables",
+						usage.TableName,
+						"columns",
+						usage.ColumnName,
+					}, &column) {
+						// it is the same domain
+						if d, ok := column.Schema.makeDomainName(); ok && strings.EqualFold(d, diff.Name.New) {
+							if _, ok := matches[strings.ToLower(d)]; ok {
+								matches[strings.ToLower(d)] += 1
+							} else {
+								matches[strings.ToLower(d)] = 1
+							}
+						}
+					}
+				}
+				keys, vals := sortMap(matches).getSortedKeysValues()
+				if len(keys) == 1 {
+					bindTheseDomains()
+					break
+				} else if len(keys) > 1 {
+					if vals[0] > vals[1]*2 {
+						bindTheseDomains()
+						break
+					}
+				}
+			}
+		}
+		if !found {
+			// domains to deleting
+			domains = append(domains, DomainComparator{
+				Name: NameComparator{
+					Actual: *current.Domain,
+					New:    "",
+				},
+				Schema: NameComparator{
+					Actual: *current.DomainSchema,
+					New:    "",
+				},
+				DomainStruct: DomainStructComparator{
+					OldStructure: &current,
+					NewStructure: nil,
+				},
+			})
+		}
+	}
+	return domains
+}
+
+func (c *SchemaRef) checkDiff(db *sql.DB, schema string, root *Root, w io.Writer) {
+	statements := make([]SqlStmt, 0, 100)
+	domains := makeDomainsComparator(db, schema, c.Value.Domains, root)
+	for _, domain := range domains {
+		statements = append(statements, domain.makeSolution()...)
+	}
+	for _, stmt := range statements {
+		writer(w, "\n/* statement: %s */\n%s\n", stmt.GetComment(), stmt.MakeStmt())
+	}
+}
+
+type (
+	ColumnFullName struct {
+		TableSchema string
+		TableName   string
+		ColumnName  string
+	}
+	ColumnConstraint struct {
+		ColumnName     string
+		ConstraintName string
+	}
+	ColumnConstraints []ColumnConstraint
+)
+
+type (
+	NameComparator struct {
+		Actual string
+		New    string
+	}
+	ColumnsComparator []ColumnComparator
+	ColumnComparator  struct {
+		Name         NameComparator
+		ActualStruct *ColumnStruct
+		NewStruct    *ColumnRef
+	}
+	TableStructComparator struct {
+		OldStructure *TableStruct
+		NewStructure *TableClass
+	}
+	TableComparator struct {
+		Name             NameComparator
+		Schema           NameComparator
+		TableStruct      TableStructComparator
+		ColumnComparator ColumnsComparator
 	}
 
-	columns := getSchemaTables(db, schema)
-	for tableName, tableStruct := range c.Value.Tables {
-		tableColumns := columns.filterTableColumns(tableName)
-		columnsMutations := tableColumns.checkTableDiffs(c, tableName, tableStruct)
-		if len(columnsMutations) > 0 {
-			columnsMutations.MakeSolution(db, schema, tableName, tableStruct, root)
+	DomainStructComparator struct {
+		OldStructure *ColumnStruct
+		NewStructure *DomainSchema
+	}
+	DomainComparator struct {
+		Name         NameComparator
+		Schema       NameComparator
+		DomainStruct DomainStructComparator
+	}
+	DomainsComparator []DomainComparator
+)
+
+func (c DomainComparator) makeSolution() []SqlStmt {
+	stmts := make([]SqlStmt, 0, 0)
+	if c.DomainStruct.OldStructure == nil {
+		stmts = append(stmts, makeDomain(c.Schema.New, c.Name.New, *c.DomainStruct.NewStructure))
+		return stmts
+	}
+	if c.DomainStruct.NewStructure == nil {
+		// TODO afterinstall
+		stmts = append(stmts, makeDomainDrop(c.Schema.Actual, c.Name.Actual))
+		return stmts
+	}
+	if !strings.EqualFold(c.Schema.New, c.Schema.Actual) {
+		stmts = append(stmts, makeDomainRenameSchema(c.Schema.Actual, c.Name.Actual, c.Schema))
+	}
+	if !strings.EqualFold(c.Name.New, c.Name.Actual) {
+		stmts = append(stmts, makeDomainRenameDomain(c.Schema.New, c.Name.Actual, c.Name))
+	}
+	if (c.DomainStruct.NewStructure.NotNull && c.DomainStruct.OldStructure.Nullable) ||
+		(!c.DomainStruct.NewStructure.NotNull && !c.DomainStruct.OldStructure.Nullable) {
+		stmts = append(stmts, makeDomainSetNotNull(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.NotNull))
+	}
+	if !(c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default == nil) &&
+		((c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default != nil) ||
+			(c.DomainStruct.NewStructure.Default != nil && c.DomainStruct.OldStructure.Default == nil) ||
+			(*c.DomainStruct.NewStructure.Default != *c.DomainStruct.OldStructure.Default)) {
+		stmts = append(stmts, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.OldStructure.Default))
+	}
+	return stmts
+}
+
+func (c TableStruct) findDomain(domainSchema, domainName string) (*ColumnStruct, int) {
+	for i, s := range c {
+		if s.DomainSchema != nil && strings.EqualFold(*s.DomainSchema, domainSchema) &&
+			s.Domain != nil && strings.EqualFold(*s.Domain, domainName) {
+			return &s, i
 		}
 	}
+	return nil, -1
 }
 
 func DatabaseDiff(root *Root, schemaName, dbConnectionString string, w io.Writer) {
