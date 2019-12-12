@@ -2,7 +2,9 @@ package dragonfly
 
 import (
 	"fmt"
+	"go/token"
 	"strconv"
+	"strings"
 )
 
 type (
@@ -14,11 +16,9 @@ type (
 		GetComment() string
 		MakeStmt() string
 	}
-
 	SqlIdent interface {
 		GetName() string
 	}
-
 	SqlExpr interface {
 		Expression() string
 	}
@@ -27,6 +27,7 @@ type (
 		Nullable Nullable
 	}
 	SqlRename struct {
+		Target  SqlTarget
 		OldName SqlIdent
 		NewName SqlIdent
 	}
@@ -37,11 +38,14 @@ type (
 	Literal struct {
 		Text string
 	}
-	SelectorExpr struct {
+	Selector struct {
 		Name      string
 		Container string
 	}
 
+	SchemaExpr struct {
+		SchemaName string
+	}
 	SetMetadataExpr struct {
 		Set SqlExpr
 	}
@@ -49,6 +53,34 @@ type (
 		SetDrop SetDrop
 		Expr    SqlExpr
 	}
+	DropExpr struct {
+		Target            SqlTarget
+		Name              SqlIdent
+		IfExists, Cascade bool
+	}
+	AddExpr struct {
+		Target     SqlTarget
+		Name       SqlIdent
+		Definition SqlExpr
+	}
+	AlterExpr struct {
+		Target SqlTarget
+		Name   SqlIdent
+		Alter  SqlExpr
+	}
+	BinaryExpr struct {
+		Left  SqlExpr
+		Right SqlExpr
+		Op    token.Token
+	}
+	UnaryExpr struct {
+		Ident SqlIdent
+	}
+	BracketBlock struct {
+		Expr      SqlExpr
+		Statement SqlStmt
+	}
+
 	AlterStmt struct {
 		Target SqlTarget
 		Name   SqlIdent
@@ -63,6 +95,22 @@ type (
 		Target SqlTarget
 		Name   SqlIdent
 	}
+	UpdateStmt struct {
+		Table TableDesc
+		Set   []SqlExpr
+		Where SqlExpr
+	}
+	SelectStmt struct {
+		Columns []SqlExpr
+		From    TableDesc
+		Where   SqlExpr
+	}
+
+	TableDesc struct {
+		Table SqlIdent
+		Alias string
+	}
+
 	TypeDescription struct {
 		Type              string
 		Length, Precision *int
@@ -72,7 +120,8 @@ type (
 )
 
 const (
-	TargetSchema SqlTarget = iota
+	TargetNone SqlTarget = iota
+	TargetSchema
 	TargetTable
 	TargetColumn
 	TargetDomain
@@ -107,11 +156,19 @@ func makeSetDropExpr(setDrop bool, expr SqlExpr) SqlExpr {
 	}
 }
 
+func makeAddColumnExpr(column ColumnRef) SqlExpr {
+	return &AddExpr{
+		Target:     TargetColumn,
+		Name:       &Literal{Text: column.Value.Name},
+		Definition: &Literal{Text: column.describeSQL()}, // TODO this is not literal
+	}
+}
+
 func (c *Literal) GetName() string {
 	return c.Text
 }
 
-func (c *SelectorExpr) GetName() string {
+func (c *Selector) GetName() string {
 	return fmt.Sprintf("%s.%s", c.Container, c.Name)
 }
 
@@ -120,7 +177,7 @@ func (c *AlterStmt) GetComment() string {
 }
 
 func (c *AlterStmt) MakeStmt() string {
-	return fmt.Sprintf("alter %s %s %s;", c.Target, c.Name.GetName(), c.Alter.Expression())
+	return fmt.Sprintf("alter %s %s %s", c.Target, c.Name.GetName(), c.Alter.Expression())
 }
 
 func (c *CreateStmt) GetComment() string {
@@ -128,7 +185,7 @@ func (c *CreateStmt) GetComment() string {
 }
 
 func (c *CreateStmt) MakeStmt() string {
-	return fmt.Sprintf("create %s %s %s;", c.Target, c.Name.GetName(), c.Create.Expression())
+	return fmt.Sprintf("create %s %s %s", c.Target, c.Name.GetName(), c.Create.Expression())
 }
 
 func (c *DropStmt) GetComment() string {
@@ -136,33 +193,68 @@ func (c *DropStmt) GetComment() string {
 }
 
 func (c *DropStmt) MakeStmt() string {
-	return fmt.Sprintf("drop %s %s;", c.Target, c.Name.GetName())
+	return fmt.Sprintf("drop %s %s", c.Target, c.Name.GetName())
 }
 
-func makeDomainRenameSchema(schema, domain string, rename NameComparator) SqlStmt {
+func (c *UpdateStmt) GetComment() string {
+	return fmt.Sprintf("updating %s data", c.Table.Table.GetName())
+}
+
+func (c *UpdateStmt) MakeStmt() string {
+	var (
+		clauseSet   = make([]string, 0, len(c.Set))
+		clauseWhere = "1 = 1"
+	)
+	for _, set := range c.Set {
+		clauseSet = append(clauseSet, set.Expression())
+	}
+	if c.Where != nil {
+		clauseWhere = c.Where.Expression()
+	}
+	return fmt.Sprintf("update %s %s set %s where %s", c.Table.Table.GetName(), c.Table.Alias, strings.Join(clauseSet, ", "), clauseWhere)
+}
+
+func (c *SelectStmt) GetComment() string {
+	return fmt.Sprintf("select data from %s", c.From.Table.GetName())
+}
+
+func (c *SelectStmt) MakeStmt() string {
+	var (
+		clauseColumns = make([]string, 0, len(c.Columns))
+		clauseWhere   = "1 = 1"
+	)
+	for _, col := range c.Columns {
+		clauseColumns = append(clauseColumns, col.Expression())
+	}
+	if c.Where != nil {
+		clauseWhere = c.Where.Expression()
+	}
+	return fmt.Sprintf("select %s from %s %s where %s", strings.Join(clauseColumns, ", "), c.From.Table.GetName(), c.From.Alias, clauseWhere)
+}
+
+func makeDomainSetSchema(domain string, rename NameComparator) SqlStmt {
 	return &AlterStmt{
 		Target: TargetDomain,
-		Name: &SelectorExpr{
+		Name: &Selector{
 			Name:      domain,
-			Container: schema,
+			Container: rename.Actual,
 		},
 		Alter: &SetMetadataExpr{
-			Set: &SqlNullable{
-				Nullable: NullableNotNull,
+			Set: &SchemaExpr{
+				SchemaName: rename.New,
 			},
 		},
 	}
 }
 
-func makeDomainRenameDomain(schema, domain string, rename NameComparator) SqlStmt {
+func makeDomainRename(schema string, rename NameComparator) SqlStmt {
 	return &AlterStmt{
 		Target: TargetDomain,
-		Name: &SelectorExpr{
-			Name:      domain,
+		Name: &Selector{
+			Name:      rename.Actual,
 			Container: schema,
 		},
 		Alter: &SqlRename{
-			OldName: &Literal{Text: rename.Actual},
 			NewName: &Literal{Text: rename.New},
 		},
 	}
@@ -171,7 +263,7 @@ func makeDomainRenameDomain(schema, domain string, rename NameComparator) SqlStm
 func makeDomainSetNotNull(schema, domain string, notNull bool) SqlStmt {
 	return &AlterStmt{
 		Target: TargetDomain,
-		Name: &SelectorExpr{
+		Name: &Selector{
 			Name:      domain,
 			Container: schema,
 		},
@@ -183,7 +275,7 @@ func makeDomainSetDefault(schema, domain string, defaultValue *string) SqlStmt {
 	if defaultValue == nil {
 		return &AlterStmt{
 			Target: TargetDomain,
-			Name: &SelectorExpr{
+			Name: &Selector{
 				Name:      domain,
 				Container: schema,
 			},
@@ -192,7 +284,7 @@ func makeDomainSetDefault(schema, domain string, defaultValue *string) SqlStmt {
 	} else {
 		return &AlterStmt{
 			Target: TargetDomain,
-			Name: &SelectorExpr{
+			Name: &Selector{
 				Name:      domain,
 				Container: schema,
 			},
@@ -204,7 +296,7 @@ func makeDomainSetDefault(schema, domain string, defaultValue *string) SqlStmt {
 func makeDomain(schema, domain string, domainSchema DomainSchema) SqlStmt {
 	return &CreateStmt{
 		Target: TargetDomain,
-		Name: &SelectorExpr{
+		Name: &Selector{
 			Name:      domain,
 			Container: schema,
 		},
@@ -222,9 +314,98 @@ func makeDomain(schema, domain string, domainSchema DomainSchema) SqlStmt {
 func makeDomainDrop(schema, domain string) SqlStmt {
 	return &DropStmt{
 		Target: TargetDomain,
-		Name: &SelectorExpr{
+		Name: &Selector{
 			Name:      domain,
 			Container: schema,
+		},
+	}
+}
+
+/* COLUMNS */
+
+func makeColumnRename(schema, table string, name NameComparator) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &SqlRename{
+			Target:  TargetColumn,
+			OldName: &Literal{Text: name.Actual},
+			NewName: &Literal{Text: name.New},
+		},
+	}
+}
+
+func makeColumnAdd(schema, table string, column ColumnRef) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: makeAddColumnExpr(column),
+	}
+}
+
+func makeColumnDrop(schema, table, column string, ifExists, cascade bool) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &DropExpr{
+			Target:   TargetColumn,
+			Name:     &Literal{Text: column},
+			IfExists: ifExists,
+			Cascade:  cascade,
+		},
+	}
+}
+
+func makeColumnAlterSetNotNull(schema, table, column string, notNull bool) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &AlterExpr{
+			Target: TargetColumn,
+			Name:   &Literal{Text: column},
+			Alter:  makeSetDropExpr(notNull, &Literal{Text: "not null"}), // TODO not literal
+		},
+	}
+}
+
+/* TABLE */
+
+func makeTableSetSchema(table string, rename NameComparator) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: rename.Actual,
+		},
+		Alter: &SetMetadataExpr{
+			Set: &SchemaExpr{
+				SchemaName: rename.New,
+			},
+		},
+	}
+}
+
+func makeTableRename(schema string, rename NameComparator) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      rename.Actual,
+			Container: schema,
+		},
+		Alter: &SqlRename{
+			NewName: &Literal{Text: rename.New},
 		},
 	}
 }
@@ -245,6 +426,51 @@ func (c *SetDropExpr) Expression() string {
 	}
 }
 
+func (c *DropExpr) Expression() string {
+	cascadeExpr, ifExistsExpr := "", ""
+	if c.IfExists {
+		ifExistsExpr = " if exists"
+	}
+	if c.Cascade {
+		cascadeExpr = " cascade"
+	}
+	return fmt.Sprintf("drop %s %s %s%s", c.Target, ifExistsExpr, c.Name.GetName(), cascadeExpr)
+}
+
+func (c *AddExpr) Expression() string {
+	return fmt.Sprintf("add %s %s %s", c.Target, c.Name.GetName(), c.Definition.Expression())
+}
+
+func (c *BinaryExpr) Expression() string {
+	return fmt.Sprintf("%s%s%s", c.Left.Expression(), c.Op, c.Right.Expression())
+}
+
+func (c *UnaryExpr) Expression() string {
+	return fmt.Sprintf("%s", c.Ident.GetName())
+}
+
+func (c *BracketBlock) Expression() string {
+	if c.Expr != nil {
+		if c.Statement != nil {
+			panic("BracketBlock allows just Expr or Statement not both")
+		}
+		return fmt.Sprintf("(%s)", c.Expr.Expression())
+	} else {
+		if c.Statement == nil {
+			panic("BracketBlock require Expr or Statement")
+		}
+		return fmt.Sprintf("(\n/* %s */\n%s\n)", c.Statement.GetComment(), c.Statement.MakeStmt())
+	}
+}
+
+func (c *AlterExpr) Expression() string {
+	return fmt.Sprintf("alter %s %s %s", c.Target, c.Name.GetName(), c.Alter.Expression())
+}
+
+func (c *SchemaExpr) Expression() string {
+	return fmt.Sprintf("schema %s", c.SchemaName)
+}
+
 func (c *SetMetadataExpr) Expression() string {
 	return fmt.Sprintf("set %s", c.Set.Expression())
 }
@@ -254,7 +480,10 @@ func (c *Default) Expression() string {
 }
 
 func (c *SqlRename) Expression() string {
-	return fmt.Sprintf("rename to %s", c.NewName.GetName())
+	if c.Target == TargetNone {
+		return fmt.Sprintf("rename to %s", c.NewName.GetName())
+	}
+	return fmt.Sprintf("rename %s %s to %s", c.Target, c.OldName.GetName(), c.NewName.GetName())
 }
 
 func (c *Literal) Expression() string {

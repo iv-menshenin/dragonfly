@@ -24,6 +24,10 @@ const (
 	classes = "classes"
 )
 
+var (
+	elements = []string{components, schemas, types, domains, tables, columns, classes}
+)
+
 type (
 	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
 		Type      string  `yaml:"type" json:"type"`
@@ -75,9 +79,10 @@ type (
 	ConstraintParameters struct {
 		Parameter interface{} `yaml:"-,inline" json:"-,inline"`
 	}
-	Constraint struct {
+	ConstraintType int
+	Constraint     struct {
 		Name       string               `yaml:"name" json:"name"`
-		Type       string               `yaml:"type" json:"type"`
+		Type       ConstraintType       `yaml:"type" json:"type"`
 		Parameters ConstraintParameters `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 	}
 	ConstraintSchema struct {
@@ -128,12 +133,53 @@ type (
 	}
 )
 
-func (c ColumnSchemaRef) makeDomainName() (string, bool) {
-	if c.Ref == nil {
-		return "", false
+const (
+	ConstraintPrimaryKey ConstraintType = iota + 1
+	ConstraintForeignKey
+	ConstraintUniqueKey
+	ConstraintCheck
+)
+
+var (
+	constraintReference = map[string]ConstraintType{
+		"primary key": ConstraintPrimaryKey,
+		"foreign key": ConstraintForeignKey,
+		"unique key":  ConstraintUniqueKey,
+		"primary":     ConstraintPrimaryKey,
+		"foreign":     ConstraintForeignKey,
+		"unique":      ConstraintUniqueKey,
+		"check":       ConstraintCheck,
 	}
-	pathSmt := strings.Split(*c.Ref, "/")
-	return pathSmt[len(pathSmt)-1], pathSmt[len(pathSmt)-1] != ""
+)
+
+func splitPath(path string) (result map[string]string) {
+	pathSmt := strings.Split(path, "/")
+	result = make(map[string]string, len(pathSmt))
+	var pass = false
+	for i, s := range pathSmt {
+		if pass {
+			pass = false
+			continue
+		}
+		if iArrayContains(elements, s) {
+			if i+1 < len(pathSmt) {
+				result[s] = pathSmt[i+1]
+			}
+			pass = true
+			continue
+		}
+	}
+	return
+}
+
+func (c ColumnSchemaRef) makeDomainName() (string, string, bool) { // TODO domain schema
+	if c.Ref == nil {
+		return "", "", false
+	}
+	pathSmt := splitPath(*c.Ref)
+	schema, okSchema := pathSmt[schemas]
+	domain, okDomain := pathSmt[domains]
+	return schema, domain, okSchema && okDomain
 }
 
 func (c *Root) getComponentColumn(name string) (*Column, bool) {
@@ -204,6 +250,38 @@ func (c *ConstraintParameters) UnmarshalJSON(data []byte) error {
 	return errors.New("cannot resolve parameter type")
 }
 
+func (c *ConstraintType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var dataStr string
+	if err := unmarshal(&dataStr); err != nil {
+		return err
+	}
+	if constraintType, ok := constraintReference[strings.ToLower(dataStr)]; !ok {
+		return errors.New(fmt.Sprintf("cannot resolve constraint type %s", dataStr))
+	} else {
+		*c = constraintType
+		return nil
+	}
+}
+
+func (c *ConstraintType) UnmarshalJSON(data []byte) error {
+	dataStr := strings.ToLower(string(data))
+	if constraintType, ok := constraintReference[dataStr]; !ok {
+		return errors.New(fmt.Sprintf("cannot resolve constraint type %s", dataStr))
+	} else {
+		*c = constraintType
+		return nil
+	}
+}
+
+func (c ConstraintType) String() string {
+	for key, value := range constraintReference {
+		if value == c {
+			return key
+		}
+	}
+	return "unknown"
+}
+
 func processRef(db *Root, ref string, i interface{}) {
 	if ref == "" {
 		panic(errors.New("cannot resolve empty $ref"))
@@ -267,16 +345,16 @@ const (
 )
 
 func (c *ConstraintSchema) normalize(schema *SchemaRef, tableName string, constraintIndex int, db *Root) {
-	constraintNameDefault := map[string]string{
-		"primary key": "pk_{%Schema}_{%Table}",
-		"foreign key": "fk_{%Schema}_{%Table}_{%ForeignTable}",
-		"unique":      "ux_{%Schema}_{%Table}_{%Num}",
-		"default":     "ct_{%Schema}_{%Table}_{%Num}",
+	constraintNameDefault := map[ConstraintType]string{
+		ConstraintPrimaryKey: "pk_{%Schema}_{%Table}",
+		ConstraintForeignKey: "fk_{%Schema}_{%Table}_{%ForeignTable}",
+		ConstraintUniqueKey:  "ux_{%Schema}_{%Table}_{%Num}",
+		ConstraintCheck:      "ch_{%Schema}_{%Table}_{%Num}",
 	}
 	if c.Constraint.Name == "" {
 		var ok bool
-		if c.Constraint.Name, ok = constraintNameDefault[strings.ToLower(c.Constraint.Type)]; !ok {
-			c.Constraint.Name = constraintNameDefault["default"]
+		if c.Constraint.Name, ok = constraintNameDefault[c.Constraint.Type]; !ok {
+			panic(fmt.Sprintf("cannot resolve constraint #%d type for table %s", constraintIndex, tableName))
 		}
 	}
 }
@@ -309,19 +387,22 @@ func (c TableConstraints) exists(name string) bool {
 }
 
 func (c ColumnsContainer) exists(name string) bool {
-	for _, column := range c {
-		if column.Value.Name == name {
-			return true
-		}
-	}
-	return false
+	_, found := c.tryToFind(name)
+	return found
 }
 
-func (c ColumnsContainer) find(name string) ColumnRef {
+func (c ColumnsContainer) tryToFind(name string) (*ColumnRef, bool) {
 	for i, column := range []ColumnRef(c) {
-		if column.Value.Name == name {
-			return []ColumnRef(c)[i]
+		if strings.EqualFold(column.Value.Name, name) {
+			return &[]ColumnRef(c)[i], true
 		}
+	}
+	return nil, false
+}
+
+func (c ColumnsContainer) getColumn(name string) ColumnRef {
+	if columnRef, found := c.tryToFind(name); found {
+		return *columnRef
 	}
 	panic(fmt.Sprintf("cannot find column '%s'", name))
 }
@@ -360,7 +441,7 @@ func (c *TableClass) follow(db *Root, path []string, i interface{}) bool {
 	}
 	if len(path) > 1 {
 		if path[0] == columns {
-			column := c.Columns.find(path[1])
+			column := c.Columns.getColumn(path[1])
 			copyFromTo(column.Value, i)
 			return true
 		}

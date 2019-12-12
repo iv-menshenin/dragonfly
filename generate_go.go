@@ -293,7 +293,7 @@ func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (fin
 			if len(option.OneOf) > 0 {
 				panic("the option must contains 'one_of' or 'field' not both")
 			}
-			column := table.Columns.find(option.Column)
+			column := table.Columns.getColumn(option.Column)
 			field := column.generateField(w, option.Required || operator.isMult())
 			if operator.isMult() {
 				field.Type = &ast.ArrayType{
@@ -324,10 +324,10 @@ func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (fin
 					panic("nested 'one_of' does not supported")
 				}
 			}
-			firstColumn := table.Columns.find(option.OneOf[0].Column)
+			firstColumn := table.Columns.getColumn(option.OneOf[0].Column)
 			baseType := firstColumn.generateField(w, true)
 			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := table.Columns.find(oneOf.Column)
+				nextColumn := table.Columns.getColumn(oneOf.Column)
 				nextType := nextColumn.generateField(w, true).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
 					panic("each of 'one_of' must have same type of data")
@@ -375,7 +375,7 @@ func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, muta
 		if len(c.ModifyColumns) > 0 {
 			mutable = make([]*ast.Field, 0, len(c.ModifyColumns))
 			for _, columnName := range c.ModifyColumns {
-				column := table.Columns.find(columnName)
+				column := table.Columns.getColumn(columnName)
 				field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
 				mutable = append(mutable, &field)
 			}
