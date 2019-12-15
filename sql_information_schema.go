@@ -106,7 +106,7 @@ type (
 func (c *ActualSchemas) getUnusedDomainAndSetItAsUsed(schemaName, domainName string) *DomainStruct {
 	domain, ok := c.Schemas[strings.ToLower(schemaName)].Domains[strings.ToLower(domainName)]
 	if ok {
-		*domain.Used = true
+		c.setDomainAsUsed(schemaName, domainName)
 		return &domain
 	}
 	return nil
@@ -147,9 +147,9 @@ func (c *ActualSchemas) getUnusedColumns(schemaName, tableName string) []ColumnS
 func (c *ActualSchemas) getUnusedDomains() (domains []DomainStruct) {
 	domains = make([]DomainStruct, 0, 10)
 	for _, schema := range c.Schemas {
-		for _, domain := range schema.Domains {
+		for name, domain := range schema.Domains {
 			if !*domain.Used {
-				domains = append(domains, domain)
+				domains = append(domains, schema.Domains[name])
 			}
 		}
 	}
@@ -211,6 +211,14 @@ func (c *ActualSchemas) getForeignKey(schemaName, foreignSchema, tableName, fore
 		}
 	}
 	return nil
+}
+
+func (c *ActualSchemas) setDomainAsUsed(domainSchema, domainName string) {
+	domain, ok := c.Schemas[strings.ToLower(domainSchema)].Domains[strings.ToLower(domainName)]
+	if !ok {
+		panic("something went wrong. cannot mark domain as used")
+	}
+	*domain.Used = true
 }
 
 func (c ActualConstraints) filterConstraints(schemaName, tableName string) ActualConstraints {

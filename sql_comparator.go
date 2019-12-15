@@ -71,9 +71,9 @@ func makeUnusedDomainsComparator(
 		}
 	}
 	keys, vals := sortMap(matches).getSortedKeysValues()
-	if len(keys) == 1 || (len(keys) > 1 && vals[0] > vals[1]*2) {
+	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
 		actualDomain := domains[keys[0]]
-		*actualDomain.Used = true
+		db.setDomainAsUsed(actualDomain.DomainSchema, actualDomain.Domain)
 		return &DomainComparator{
 			Name: NameComparator{
 				Actual: actualDomain.Domain,
@@ -354,7 +354,6 @@ func (c *SchemaRef) diffPostponed(
 ) {
 	install = make([]SqlStmt, 0, 0)
 	afterInstall = make([]SqlStmt, 0, 0)
-
 	for _, domainName := range postponed.domains {
 		domain, ok := c.Value.Domains[domainName]
 		if !ok {
@@ -367,6 +366,42 @@ func (c *SchemaRef) diffPostponed(
 		}
 	}
 	// TODO table postponed comparator
+	return
+}
+
+func (c *SchemaRef) prepareDeleting(
+	db *ActualSchemas,
+	schema string,
+	root *Root,
+	w io.Writer,
+) (
+	install []SqlStmt,
+	afterInstall []SqlStmt,
+) {
+	install = make([]SqlStmt, 0, 0)
+	afterInstall = make([]SqlStmt, 0, 0)
+	// TODO drop tables
+	for _, unusedDomain := range db.getUnusedDomains() {
+		if strings.EqualFold(unusedDomain.DomainSchema, schema) {
+			comparator := DomainComparator{
+				Name: NameComparator{
+					Actual: unusedDomain.Domain,
+					New:    "",
+				},
+				Schema: NameComparator{
+					Actual: unusedDomain.DomainSchema,
+					New:    "",
+				},
+				DomainStruct: DomainStructComparator{
+					OldStructure: &unusedDomain,
+					NewStructure: nil,
+				},
+			}
+			first, second := comparator.makeSolution()
+			install = append(install, first...)
+			afterInstall = append(afterInstall, second...)
+		}
+	}
 	return
 }
 
@@ -622,6 +657,14 @@ func DatabaseDiff(root *Root, optionSchemaName string, options ConnectionOptions
 			continue
 		}
 		first, second := schema.diffPostponed(postponedSchema, &actualStructure, schema.Value.Name, root, w)
+		// save needed
+		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
+			install = append(install, first...)
+			afterInstall = append(afterInstall, second...)
+		}
+	}
+	for _, schema := range root.Schemas {
+		first, second := schema.prepareDeleting(&actualStructure, schema.Value.Name, root, w)
 		// save needed
 		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
 			install = append(install, first...)
