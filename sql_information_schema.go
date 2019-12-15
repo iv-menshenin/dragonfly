@@ -115,7 +115,7 @@ func (c *ActualSchemas) getUnusedDomainAndSetItAsUsed(schemaName, domainName str
 func (c *ActualSchemas) getUnusedTableAndSetItAsUsed(schemaName, tableName string) *TableStruct {
 	table, ok := c.Schemas[strings.ToLower(schemaName)].Tables[strings.ToLower(tableName)]
 	if ok {
-		*table.Used = true
+		c.setTableAsUsed(schemaName, tableName)
 		return &table
 	}
 	return nil
@@ -150,6 +150,18 @@ func (c *ActualSchemas) getUnusedDomains() (domains []DomainStruct) {
 		for name, domain := range schema.Domains {
 			if !*domain.Used {
 				domains = append(domains, schema.Domains[name])
+			}
+		}
+	}
+	return domains
+}
+
+func (c *ActualSchemas) getUnusedTables() (domains []TableStruct) {
+	domains = make([]TableStruct, 0, 10)
+	for _, schema := range c.Schemas {
+		for name, table := range schema.Tables {
+			if !*table.Used {
+				domains = append(domains, schema.Tables[name])
 			}
 		}
 	}
@@ -219,6 +231,14 @@ func (c *ActualSchemas) setDomainAsUsed(domainSchema, domainName string) {
 		panic("something went wrong. cannot mark domain as used")
 	}
 	*domain.Used = true
+}
+
+func (c *ActualSchemas) setTableAsUsed(tableSchema, tableName string) {
+	table, ok := c.Schemas[strings.ToLower(tableSchema)].Tables[strings.ToLower(tableName)]
+	if !ok {
+		panic("something went wrong. cannot mark table as used")
+	}
+	*table.Used = true
 }
 
 func (c ActualConstraints) filterConstraints(schemaName, tableName string) ActualConstraints {

@@ -144,6 +144,67 @@ func makeDomainsComparator(
 	return
 }
 
+func makeUnusedTablesComparator(
+	db *ActualSchemas,
+	schemaName string,
+	newTableName string,
+	newTable TableClass,
+	root *Root,
+) (
+	comparator *TableComparator,
+) {
+	tables := make(map[string]TableStruct, 50)
+	matches := make(map[string]int, 50)
+	for _, actualTable := range db.getUnusedTables() {
+		key := fmt.Sprintf("%s.%s", schemaName, newTableName)
+		matches[key] = 0
+		tables[key] = actualTable
+		for _, newColumn := range newTable.Columns {
+			for _, actualColumn := range actualTable.Columns {
+				if strings.EqualFold(newColumn.Value.Name, actualColumn.Column) {
+					matches[key] += 1
+				}
+			}
+		}
+		matches[key] -= len(newTable.Columns) - matches[key]
+	}
+	keys, vals := sortMap(matches).getSortedKeysValues()
+	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
+		actualTable := tables[keys[0]]
+		db.setTableAsUsed(actualTable.Schema, actualTable.Name)
+		return &TableComparator{
+			Name: NameComparator{
+				Actual: actualTable.Name,
+				New:    newTableName,
+			},
+			Schema: NameComparator{
+				Actual: actualTable.Schema,
+				New:    schemaName,
+			},
+			TableStruct: TableStructComparator{
+				OldStructure: &actualTable,
+				NewStructure: &newTable,
+			},
+		}
+	} else {
+		// new table
+		return &TableComparator{
+			Name: NameComparator{
+				Actual: "",
+				New:    newTableName,
+			},
+			Schema: NameComparator{
+				Actual: "",
+				New:    schemaName,
+			},
+			TableStruct: TableStructComparator{
+				OldStructure: nil,
+				NewStructure: &newTable,
+			},
+		}
+	}
+}
+
 func makeTablesComparator(
 	db *ActualSchemas,
 	schema string,
@@ -365,6 +426,17 @@ func (c *SchemaRef) diffPostponed(
 			afterInstall = append(afterInstall, second...)
 		}
 	}
+	for _, tableName := range postponed.tables {
+		table, ok := c.Value.Tables[tableName]
+		if !ok {
+			panic("something went wrong. check the table name character case mistakes")
+		}
+		if comparator := makeUnusedTablesComparator(db, schema, tableName, table, root); comparator != nil {
+			first, second := comparator.makeSolution(db)
+			install = append(install, first...)
+			afterInstall = append(afterInstall, second...)
+		}
+	}
 	// TODO table postponed comparator
 	return
 }
@@ -487,10 +559,12 @@ func (c TableComparator) makeSolution(
 	if !strings.EqualFold(c.Name.Actual, c.Name.New) {
 		install = append(install, makeTableRename(c.Schema.New, c.Name))
 	}
-	for _, columnComparator := range c.ColumnsComparator {
-		first, second := columnComparator.makeSolution(db)
-		install = append(install, first...)
-		afterInstall = append(afterInstall, second...)
+	if c.ColumnsComparator != nil {
+		for _, columnComparator := range c.ColumnsComparator {
+			first, second := columnComparator.makeSolution(db)
+			install = append(install, first...)
+			afterInstall = append(afterInstall, second...)
+		}
 	}
 	// TODO add constraints (afterinstall)
 	return
