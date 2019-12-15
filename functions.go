@@ -84,3 +84,7 @@ func evalTemplateParameters(template string, parameters map[string]string) strin
 	}
 	return s
 }
+
+func refBool(b bool) *bool {
+	return &b
+}

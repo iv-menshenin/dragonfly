@@ -161,8 +161,13 @@ func main() {
 	case ToDoDiff:
 		err := openFileForWrite(*state.OutputFile, func(w io.Writer) error {
 			readAndParse()
-			connStr := "postgres://postgres:%23gidra-stalker-012@34.65.200.205/likepaytest"
-			dragonfly.DatabaseDiff(root, *state.Schema, connStr, w)
+			dragonfly.DatabaseDiff(root, *state.Schema, dragonfly.ConnectionOptions{
+				Driver:   "postgres",
+				UserName: "postgres",
+				Password: os.Getenv("DB_PASSWORD"),
+				Host:     os.Getenv("DB_HOST"),
+				Database: os.Getenv("DB_NAME"),
+			}, w)
 			return nil
 		})
 		if err != nil {
