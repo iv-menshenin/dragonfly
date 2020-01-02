@@ -552,6 +552,14 @@ func (c TableComparator) makeSolution(
 ) {
 	install = make([]SqlStmt, 0, 0)
 	afterInstall = make([]SqlStmt, 0, 0)
+	if c.Schema.Actual == "" && c.Schema.New != "" {
+		install = append(install, makeTableCreate(c.Schema.New, c.Name.New, *c.TableStruct.NewStructure))
+		return
+	}
+	if c.Schema.Actual != "" && c.Schema.New == "" {
+		install = append(install, makeTableDrop(c.Schema.Actual, c.Name.Actual))
+		return
+	}
 	// TODO drop constraints
 	if !strings.EqualFold(c.Schema.Actual, c.Schema.New) {
 		install = append(install, makeTableSetSchema(c.Name.Actual, c.Schema))
