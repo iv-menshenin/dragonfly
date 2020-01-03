@@ -5,11 +5,24 @@ import (
 )
 
 type (
+	AstData struct {
+		// Imports    map[string]*ast.ImportSpec Automatically
+		Types           map[string]*ast.TypeSpec
+		Constants       map[string]*ast.ValueSpec
+		Implementations map[string]*ast.FuncDecl
+	}
 	ApiFuncBuilder func(
 		fullTableName, functionName, rowStructName string,
 		optionsFields, mutableFields, resultFields []*ast.Field,
-	) *ast.File
+	) *AstData
 )
+
+func (astData *AstData) makeAstFile(packageName string) *ast.File {
+	var file ast.File
+	file.Name = makeName(packageName)
+
+	return &file
+}
 
 // get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other
 func extractFieldsAndColumnsFromStruct(rowFields []*ast.Field) (fieldNames, columnNames []string) {
