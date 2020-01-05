@@ -172,14 +172,20 @@ func splitPath(path string) (result map[string]string) {
 	return
 }
 
-func (c ColumnSchemaRef) makeDomainName() (string, string, bool) { // TODO domain schema
+func (c ColumnSchemaRef) makeCustomType() (string, string, bool) {
 	if c.Ref == nil {
 		return "", "", false
 	}
 	pathSmt := splitPath(*c.Ref)
 	schema, okSchema := pathSmt[schemas]
-	domain, okDomain := pathSmt[domains]
-	return schema, domain, okSchema && okDomain
+	if okSchema {
+		if customType, isCustom := pathSmt[domains]; isCustom {
+			return schema, customType, isCustom
+		} else if customType, isCustom := pathSmt[types]; isCustom {
+			return schema, customType, isCustom
+		}
+	}
+	return "", "", false
 }
 
 func (c *Root) getComponentColumn(name string) (*Column, bool) {

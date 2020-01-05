@@ -592,9 +592,9 @@ func makeTableCreate(schemaName, tableName string, tableStruct TableClass) SqlSt
 	var columnsAndConstraintsDefinition = make([]SqlExpr, 0, len(tableStruct.Columns)+len(tableStruct.Constraints))
 	for _, column := range tableStruct.Columns {
 		columnType := ""
-		domainSchema, domainName, isDomain := column.Value.Schema.makeDomainName()
-		if isDomain {
-			columnType = fmt.Sprintf("%s.%s", domainSchema, domainName)
+		customSchema, customType, isCustom := column.Value.Schema.makeCustomType()
+		if isCustom {
+			columnType = fmt.Sprintf("%s.%s", customSchema, customType)
 		} else {
 			columnType = column.Value.Schema.Value.Type
 			if column.Value.Schema.Value.Length != nil {
@@ -606,7 +606,7 @@ func makeTableCreate(schemaName, tableName string, tableStruct TableClass) SqlSt
 			}
 		}
 		var constraints = make([]ConstraintExpr, 0, len(column.Value.Constraints)+1)
-		if !isDomain && column.Value.Schema.Value.NotNull {
+		if !isCustom && column.Value.Schema.Value.NotNull {
 			constraints = append(
 				constraints,
 				&UnnamedConstraintExpr{

@@ -140,8 +140,8 @@ func (c *DomainSchema) describeSQL() interface{} {
 }
 
 func (c *ColumnRef) describeSQL() string {
-	if schema, domain, ok := c.Value.Schema.makeDomainName(); ok {
-		return fmt.Sprintf("%s.%s", schema, domain)
+	if schema, customType, ok := c.Value.Schema.makeCustomType(); ok {
+		return fmt.Sprintf("%s.%s", schema, customType)
 	} else {
 		return fmt.Sprintf("%s", c.Value.Schema.Value.describeSQL())
 	}

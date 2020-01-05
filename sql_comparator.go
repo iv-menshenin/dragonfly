@@ -60,7 +60,7 @@ func makeUnusedDomainsComparator(
 				usage.ColumnName,
 			}, &column) {
 				// it is the same domain
-				if s, d, ok := column.Schema.makeDomainName(); ok && strings.EqualFold(d, newDomainName) && strings.EqualFold(s, schemaName) {
+				if s, d, ok := column.Schema.makeCustomType(); ok && strings.EqualFold(d, newDomainName) && strings.EqualFold(s, schemaName) {
 					if strings.EqualFold(schemaName, actualDomain.DomainSchema) {
 						matches[key] += 2
 					} else {
@@ -289,8 +289,8 @@ func makeColumnsComparator(
 				continue
 			}
 			// comparing data types
-			if domainSchema, domainName, ok := column.NewStruct.Value.Schema.makeDomainName(); ok {
-				if actualColumn.Domain == nil || !strings.EqualFold(domainName, *actualColumn.Domain) || (actualColumn.DomainSchema != nil && !strings.EqualFold(domainSchema, *actualColumn.DomainSchema)) {
+			if customSchema, customType, isCustom := column.NewStruct.Value.Schema.makeCustomType(); isCustom {
+				if actualColumn.Domain == nil || !strings.EqualFold(customType, *actualColumn.Domain) || (actualColumn.DomainSchema != nil && !strings.EqualFold(customSchema, *actualColumn.DomainSchema)) {
 					continue
 				}
 			} else {
@@ -604,11 +604,11 @@ func (c ColumnComparator) makeSolution(db *ActualSchemas) (install []SqlStmt, af
 	install = make([]SqlStmt, 0, 0)
 	afterInstall = make([]SqlStmt, 0, 0)
 	if c.Name.Actual == "" {
-		domainSchema, domainName, isDomain := c.NewStruct.Value.Schema.makeDomainName()
+		customSchema, customType, isCustom := c.NewStruct.Value.Schema.makeCustomType()
 		makeValidateNotNull := false
 		if c.NewStruct.Value.Schema.Value.NotNull && c.NewStruct.Value.Schema.Value.Default == nil {
-			if isDomain {
-				install = append(install, makeDomainSetNotNull(domainSchema, domainName, false))
+			if isCustom {
+				install = append(install, makeDomainSetNotNull(customSchema, customType, false))
 			} else {
 				c.NewStruct.Value.Schema.Value.NotNull = false
 			}
@@ -617,11 +617,11 @@ func (c ColumnComparator) makeSolution(db *ActualSchemas) (install []SqlStmt, af
 		install = append(install, makeColumnAdd(c.SchemaName, c.TableName, *c.NewStruct))
 		if makeValidateNotNull {
 			install = append(install, fixEmptyColumn(db, c.SchemaName, c.TableName, *c.NewStruct)...)
-			if isDomain {
-				install = append(install, makeDomainSetNotNull(domainSchema, domainName, true))
+			if isCustom {
+				install = append(install, makeDomainSetNotNull(customSchema, customType, true))
 			} else {
 				c.NewStruct.Value.Schema.Value.NotNull = false
-				install = append(install, makeColumnAlterSetNotNull(domainSchema, domainName, c.NewStruct.Value.Name, true))
+				install = append(install, makeColumnAlterSetNotNull(customSchema, customType, c.NewStruct.Value.Name, true))
 			}
 		}
 		return
