@@ -16,7 +16,7 @@ const (
 
 type (
 	fieldDescriber interface {
-		getFile() *AstData
+		getFile() []AstDataChain
 		fieldTypeExpr() ast.Expr
 	}
 	simpleTypeDescriber struct {
@@ -53,8 +53,8 @@ func makeSimpleDescriber(t, p, x string) makeDescriber {
 	}
 }
 
-func (c simpleTypeDescriber) getFile() *AstData {
-	return &AstData{}
+func (c simpleTypeDescriber) getFile() []AstDataChain {
+	return nil
 }
 
 func (c simpleTypeDescriber) fieldTypeExpr() ast.Expr {
@@ -97,7 +97,7 @@ func makeEnumDescriberDirectly(typeName string, domain *DomainSchema) fieldDescr
 	}
 }
 
-func (c enumTypeDescriber) getFile() *AstData {
+func (c enumTypeDescriber) getFile() []AstDataChain {
 	var (
 		mainTypeName     = makeName(c.typeName)
 		enumValues       = make([]ast.Expr, 0, len(c.domain.Enum))
@@ -142,7 +142,7 @@ func (c enumTypeDescriber) getFile() *AstData {
 			Body: makeBlock(makeReturn(makeName("nil"))),
 		},
 	)
-	main := &AstData{
+	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
 			mainTypeName.Name: {
 				Name: mainTypeName,
@@ -208,8 +208,7 @@ func (c enumTypeDescriber) getFile() *AstData {
 			},
 		),
 	}
-	mergeCodeBase(main, c.simpleTypeDescriber.getFile())
-	return main
+	return append(c.simpleTypeDescriber.getFile(), main)
 }
 
 /*
@@ -224,7 +223,7 @@ func makeRecordDescriberDirectly(typeName string, domain *DomainSchema) fieldDes
 	}
 }
 
-func (c recordTypeDescriber) getFile() *AstData {
+func (c recordTypeDescriber) getFile() []AstDataChain {
 	var (
 		enumValues   = make([]ast.Expr, 0, len(c.domain.Enum))
 		formatLiters = make([]string, 0, len(c.domain.Fields))
@@ -261,7 +260,7 @@ func (c recordTypeDescriber) getFile() *AstData {
 			},
 		}, makeBasicLiteralString("(" + strings.Join(formatLiters, ",") + ")"),
 	}, formatArgs...)
-	main := &AstData{
+	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
 			makeName(c.typeName).Name: {
 				Name: makeName(c.typeName),
@@ -395,8 +394,7 @@ func (c recordTypeDescriber) getFile() *AstData {
 			},
 		),
 	}
-	mergeCodeBase(main, c.simpleTypeDescriber.getFile())
-	return main
+	return append(c.simpleTypeDescriber.getFile(), main)
 }
 
 /*
@@ -413,7 +411,7 @@ func makeJsonDescriberDirectly(typeName string, domain *DomainSchema) fieldDescr
 	}
 }
 
-func (c jsonTypeDescriber) getFile() *AstData {
+func (c jsonTypeDescriber) getFile() []AstDataChain {
 	var (
 		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
 		objFields  = make([]*ast.Field, 0, len(c.domain.Fields))
@@ -428,7 +426,7 @@ func (c jsonTypeDescriber) getFile() *AstData {
 			Type:  intDesc.fieldTypeExpr(),
 		})
 	}
-	main := &AstData{
+	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
 			makeName(c.typeName).Name: {
 				Name: makeName(c.typeName),
@@ -553,8 +551,7 @@ func (c jsonTypeDescriber) getFile() *AstData {
 			},
 		),
 	}
-	mergeCodeBase(main, c.simpleTypeDescriber.getFile())
-	return main
+	return append(c.simpleTypeDescriber.getFile(), main)
 }
 
 var (

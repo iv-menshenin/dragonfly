@@ -137,13 +137,19 @@ func makeBlock(statements ...ast.Stmt) *ast.BlockStmt {
 	}
 }
 
-func makeImportDecl(imports ...string) ast.Decl {
+func makeImportDecl(imports map[string]string) ast.Decl {
 	var impSpec = make([]ast.Spec, 0, len(imports))
-	for _, imp := range imports {
+	for packageKey, packagePath := range imports {
+		packageAlias := makeName(packageKey)
+		pathSgms := strings.Split(packagePath, "/")
+		if pathSgms[len(pathSgms)-1] == packageKey {
+			packageAlias = nil
+		}
 		impSpec = append(impSpec, &ast.ImportSpec{
+			Name: packageAlias,
 			Path: &ast.BasicLit{
 				Kind:  token.STRING,
-				Value: fmt.Sprintf("\"%s\"", imp),
+				Value: fmt.Sprintf("\"%s\"", packagePath),
 			},
 		})
 	}

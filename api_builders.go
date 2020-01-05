@@ -17,6 +17,9 @@ const (
 )
 
 func exprToString(expr ast.Expr) string {
+	if i, ok := expr.(*ast.StarExpr); ok {
+		return exprToString(i.X)
+	}
 	if i, ok := expr.(*ast.Ident); ok {
 		return i.Name
 	}
@@ -614,7 +617,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	return func(
 		fullTableName, functionName, rowStructName string,
 		optionFields, _, rowFields []*ast.Field,
-	) *AstData {
+	) AstDataChain {
 		var (
 			scanBlockWrapper scanWrapper
 			resultExpr       ast.Expr
@@ -645,7 +648,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = addVariablesToFunctionBody(functionBody, len(optionFields), sqlQuery)
 		functionBody, findTypes, findAttrs = addDynamicParametersToFunctionBody(functionName, functionBody, optionFields)
 		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-		return &AstData{
+		return AstDataChain{
 			Types:     typeDeclsToMap(findTypes),
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
@@ -662,7 +665,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	return func(
 		fullTableName, functionName, rowStructName string,
 		optionFields, _, rowFields []*ast.Field,
-	) *AstData {
+	) AstDataChain {
 		var (
 			scanBlockWrapper scanWrapper
 			resultExpr       ast.Expr
@@ -697,7 +700,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			makeAddExpressions(makeName("sqlText"), makeBasicLiteralString(fmt.Sprintf(" returning %s", strings.Join(columnList, ", ")))),
 		))
 		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-		return &AstData{
+		return AstDataChain{
 			Types:     typeDeclsToMap(findTypes),
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
@@ -710,7 +713,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 func updateOneBuilder(
 	fullTableName, functionName, rowStructName string,
 	optionFields, mutableFields, rowFields []*ast.Field,
-) *AstData {
+) AstDataChain {
 	const (
 		scanVarName = "row"
 	)
@@ -731,7 +734,7 @@ func updateOneBuilder(
 	functionBody, inputTypes, inputAttrs = addInsertParametersToFunctionBody(functionName, functionBody, mutableFields)
 	functionBody, findTypes, findAttrs = addDynamicParametersToFunctionBody(functionName, functionBody, optionFields)
 	functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-	return &AstData{
+	return AstDataChain{
 		Types:     typeDeclsToMap(append(inputTypes, findTypes...)),
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
@@ -743,7 +746,7 @@ func updateOneBuilder(
 func insertOneBuilder(
 	fullTableName, functionName, rowStructName string,
 	_, mutableFields, rowFields []*ast.Field,
-) *AstData {
+) AstDataChain {
 	const (
 		scanVarName = "row"
 	)
@@ -763,7 +766,7 @@ func insertOneBuilder(
 	functionBody = addVariablesToFunctionBody(functionBody, len(mutableFields), sqlQuery)
 	functionBody, functionTypes, functionAttrs = addInsertParametersToFunctionBody(functionName, functionBody, mutableFields)
 	functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-	return &AstData{
+	return AstDataChain{
 		Types:     typeDeclsToMap(functionTypes),
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{

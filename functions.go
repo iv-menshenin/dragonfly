@@ -34,6 +34,13 @@ func (c sortMap) getSortedKeysValues() (keys []string, values []int) {
 	return
 }
 
+func mergeStringMap(a, b map[string]string) map[string]string {
+	for key, val := range b {
+		a[key] = val
+	}
+	return a
+}
+
 func writer(w io.Writer, format string, i ...interface{}) {
 	if _, err := fmt.Fprintf(w, format, i...); err != nil {
 		panic(err)

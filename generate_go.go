@@ -397,7 +397,7 @@ func (c *TableApi) generateOptions(table *TableClass, w *AstData) (findBy, mutab
 }
 
 type (
-	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field, []*ast.Field) *AstData
+	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field, []*ast.Field) AstDataChain
 )
 
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
@@ -412,7 +412,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 		schema *SchemaRef,
 		tableName, rowStructName string,
 		queryOptionFields, queryInputFields, queryOutputFields []*ast.Field,
-	) *AstData {
+	) AstDataChain {
 		return tplSet(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
 			functionName,
@@ -431,12 +431,22 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 				structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
 				resultFields = table.generateFields(w)
 			)
-			w.Types[structName] = &ast.TypeSpec{
-				Name: makeName(structName),
-				Type: &ast.StructType{
-					Fields: &ast.FieldList{List: resultFields},
+			if err := mergeCodeBase(w, []AstDataChain{
+				{
+					Types: map[string]*ast.TypeSpec{
+						structName: {
+							Name: makeName(structName),
+							Type: &ast.StructType{
+								Fields: &ast.FieldList{List: resultFields},
+							},
+							Comment: makeComment(stringToSlice(table.Description)),
+						},
+					},
+					Constants:       nil,
+					Implementations: nil,
 				},
-				Comment: makeComment(stringToSlice(table.Description)),
+			}); err != nil {
+				panic(err)
 			}
 			if len(table.Api) > 0 {
 				for i, api := range table.Api {
@@ -462,8 +472,11 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 						optionFields, mutableFields = api.generateOptions(&table, w)
 						builder                     = api.getApiBuilder(apiName)
 					)
-					// insertNewStructure(w, optionStructName, optionFields, nil)
-					mergeCodeBase(w, builder(c, tableName, structName, optionFields, mutableFields, resultFields))
+					if err := mergeCodeBase(w, []AstDataChain{
+						builder(c, tableName, structName, optionFields, mutableFields, resultFields),
+					}); err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
@@ -529,99 +542,45 @@ func insertNewStructure(w *ast.File, name string, fields []*ast.Field, comments 
 	insertTypeSpec(w, newType)
 }
 
-func isImportSpec(decl ast.Decl, callback func(spec *ast.ImportSpec)) bool {
-	if gen, ok := decl.(*ast.GenDecl); ok {
-		if gen.Tok == token.IMPORT {
-			if callback != nil {
-				for _, spec := range gen.Specs {
-					if imp, ok := spec.(*ast.ImportSpec); ok {
-						callback(imp)
-					}
-				}
-			}
-			return true
-		}
-	}
-	return false
-}
-
-func addImport(w *ast.File, imp *ast.ImportSpec) {
-	isImportPathExists := func(in *ast.GenDecl, what ast.Spec) bool {
-		if p, ok := what.(*ast.ImportSpec); ok {
-			path := p.Path.Value
-			for _, imp := range in.Specs {
-				if p, ok := imp.(*ast.ImportSpec); ok {
-					if p.Path != nil && p.Path.Value == path {
-						return true
+func mergeCodeBase(main *AstData, chains []AstDataChain) error {
+	for _, next := range chains {
+		for name, spec := range next.Types {
+			for _, chain := range main.Chains {
+				if spec2, ok := chain.Types[name]; ok {
+					if !reflect.DeepEqual(spec2, spec) {
+						return errors.New(fmt.Sprintf("type `%s` repeated with different contents", name))
+					} else {
+						// TODO WARNING
+						delete(next.Types, name)
 					}
 				}
 			}
 		}
-		return false
-	}
-	getIdForImport := func() int {
-		for i, decl := range w.Decls {
-			if isImportSpec(decl, nil) {
-				return i
+		for name, cnst := range next.Constants {
+			for _, chain := range main.Chains {
+				if cnst2, ok := chain.Constants[name]; ok {
+					if !reflect.DeepEqual(cnst2, cnst) {
+						panic(fmt.Sprintf("constant `%s` repeated with different contents", name))
+					} else {
+						// TODO WARNING
+						delete(next.Constants, name)
+					}
+				}
 			}
 		}
-		return -1
-	}
-	importInd := getIdForImport()
-	if importInd < 0 {
-		importInd = 0
-		newDecls := make([]ast.Decl, 1, len(w.Decls)+1)
-		newDecls[0] = &ast.GenDecl{
-			Tok:   token.IMPORT,
-			Specs: nil,
-		}
-		w.Decls = append(newDecls, w.Decls...)
-	}
-	if gen, ok := w.Decls[importInd].(*ast.GenDecl); ok {
-		if !isImportPathExists(gen, imp) {
-			gen.Specs = append(gen.Specs, imp)
-			w.Decls[importInd] = gen
-		}
-	}
-}
-
-func mergeCodeBase(main, next *AstData) error {
-	if next == nil {
-		return nil
-	}
-	if main == nil {
-		main = next
-		return nil
-	}
-	for name, spec := range next.Types {
-		if spec2, ok := main.Types[name]; ok {
-			if !reflect.DeepEqual(spec2, spec) {
-				return errors.New(fmt.Sprintf("type `%s` repeated with different contents", name))
-			} else {
-				// TODO WARNING
+		for name, impl := range next.Implementations {
+			for _, chain := range main.Chains {
+				if impl2, ok := chain.Implementations[name]; ok {
+					if !reflect.DeepEqual(impl2, impl) {
+						panic(fmt.Sprintf("constant `%s` repeated with different contents", name))
+					} else {
+						// TODO WARNING
+						delete(next.Implementations, name)
+					}
+				}
 			}
 		}
-		main.Types[name] = spec
-	}
-	for name, cnst := range next.Constants {
-		if cnst2, ok := main.Constants[name]; ok {
-			if !reflect.DeepEqual(cnst2, cnst) {
-				panic(fmt.Sprintf("constant `%s` repeated with different contents", name))
-			} else {
-				// TODO WARNING
-			}
-		}
-		main.Constants[name] = cnst
-	}
-	for name, impl := range next.Implementations {
-		if impl2, ok := main.Implementations[name]; ok {
-			if !reflect.DeepEqual(impl2, impl) {
-				panic(fmt.Sprintf("constant `%s` repeated with different contents", name))
-			} else {
-				// TODO WARNING
-			}
-		}
-		main.Implementations[name] = impl
+		main.Chains = append(main.Chains, next)
 	}
 	return nil
 }
