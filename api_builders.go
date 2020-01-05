@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -14,6 +15,54 @@ const (
 	varInputOptionsName = "values"
 	varArgPlaceholders  = "sqlArgs"
 )
+
+func exprToString(expr ast.Expr) string {
+	if i, ok := expr.(*ast.StarExpr); ok {
+		return exprToString(i.X)
+	}
+	if i, ok := expr.(*ast.Ident); ok {
+		return i.Name
+	}
+	if i, ok := expr.(*ast.SelectorExpr); ok {
+		return exprToString(i.X) + "." + exprToString(i.Sel)
+	}
+	return ""
+}
+
+// TODO other place?
+// TODO TypeSpec type
+func typeDeclsToMap(types []*ast.TypeSpec) map[string]*ast.TypeSpec {
+	result := make(map[string]*ast.TypeSpec, len(types))
+	for i, spec := range types {
+		if r, ok := result[spec.Name.Name]; ok {
+			if reflect.DeepEqual(r, spec) {
+				continue
+			}
+			panic(fmt.Sprintf("name `%s` repeated", spec.Name.Name))
+		}
+		result[spec.Name.Name] = types[i]
+	}
+	return result
+}
+
+// TODO other place?
+func funcDeclsToMap(functions []*ast.FuncDecl) map[string]*ast.FuncDecl {
+	result := make(map[string]*ast.FuncDecl, len(functions))
+	for i, f := range functions {
+		funcName := f.Name.Name
+		if f.Recv != nil && len(f.Recv.List) > 0 {
+			funcName = fmt.Sprintf("%s.%s", exprToString(f.Recv.List[0].Type), funcName)
+		}
+		if r, ok := result[funcName]; ok {
+			if reflect.DeepEqual(r, f) {
+				continue
+			}
+			panic(fmt.Sprintf("name `%s` repeated", funcName))
+		}
+		result[funcName] = functions[i]
+	}
+	return result
+}
 
 // get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other
 func extractFieldRefsAndColumnsFromStruct(varName string, rowFields []*ast.Field) (fieldRefs []ast.Expr, columnNames []string) {
@@ -386,7 +435,7 @@ func addInsertParametersToFunctionBody(
 	optionFields []*ast.Field,
 ) (
 	[]ast.Stmt,
-	[]ast.Spec,
+	[]*ast.TypeSpec,
 	[]*ast.Field,
 ) {
 	funcInputOptionName := varInputOptionsName
@@ -457,8 +506,8 @@ func addInsertParametersToFunctionBody(
 				),
 			},
 		),
-		[]ast.Spec{
-			&ast.TypeSpec{
+		[]*ast.TypeSpec{
+			{
 				Name: makeName(funcInputOptionTypeName),
 				Type: &ast.StructType{
 					Fields:     &ast.FieldList{List: optionStructFields},
@@ -480,7 +529,7 @@ func addDynamicParametersToFunctionBody(
 	optionFields []*ast.Field,
 ) (
 	[]ast.Stmt,
-	[]ast.Spec,
+	[]*ast.TypeSpec,
 	[]*ast.Field,
 ) {
 	funcOptionName := varFindOptionsName
@@ -544,8 +593,8 @@ func addDynamicParametersToFunctionBody(
 				),
 			},
 		),
-		[]ast.Spec{
-			&ast.TypeSpec{
+		[]*ast.TypeSpec{
+			{
 				Name: makeName(funcOptionTypeName),
 				Type: &ast.StructType{
 					Fields:     &ast.FieldList{List: optionFields},
@@ -568,7 +617,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	return func(
 		fullTableName, functionName, rowStructName string,
 		optionFields, _, rowFields []*ast.Field,
-	) *ast.File {
+	) AstDataChain {
 		var (
 			scanBlockWrapper scanWrapper
 			resultExpr       ast.Expr
@@ -590,7 +639,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			panic("cannot resolve 'variant'")
 		}
 		var (
-			findTypes             []ast.Spec
+			findTypes             []*ast.TypeSpec
 			findAttrs             []*ast.Field
 			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
 		)
@@ -599,24 +648,12 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = addVariablesToFunctionBody(functionBody, len(optionFields), sqlQuery)
 		functionBody, findTypes, findAttrs = addDynamicParametersToFunctionBody(functionName, functionBody, optionFields)
 		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-		astFileDecls := []ast.Decl{
-			// TODO generate import from function declaration automatically
-			makeImportDecl(
-				"database/sql",
-				"fmt",
-				"strconv",
-				"strings",
-				"context",
-			),
-			&ast.GenDecl{
-				Tok:   token.TYPE,
-				Specs: findTypes,
+		return AstDataChain{
+			Types:     typeDeclsToMap(findTypes),
+			Constants: nil,
+			Implementations: map[string]*ast.FuncDecl{
+				functionName: makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
 			},
-			makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
-		}
-		return &ast.File{
-			Name:  makeName("generated"),
-			Decls: astFileDecls,
 		}
 	}
 }
@@ -628,7 +665,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	return func(
 		fullTableName, functionName, rowStructName string,
 		optionFields, _, rowFields []*ast.Field,
-	) *ast.File {
+	) AstDataChain {
 		var (
 			scanBlockWrapper scanWrapper
 			resultExpr       ast.Expr
@@ -650,7 +687,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			panic("cannot resolve 'variant'")
 		}
 		var (
-			findTypes             []ast.Spec
+			findTypes             []*ast.TypeSpec
 			findAttrs             []*ast.Field
 			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
 		)
@@ -663,24 +700,12 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			makeAddExpressions(makeName("sqlText"), makeBasicLiteralString(fmt.Sprintf(" returning %s", strings.Join(columnList, ", ")))),
 		))
 		functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-		astFileDecls := []ast.Decl{
-			// TODO generate import from function declaration automatically
-			makeImportDecl(
-				"database/sql",
-				"fmt",
-				"strconv",
-				"strings",
-				"context",
-			),
-			&ast.GenDecl{
-				Tok:   token.TYPE,
-				Specs: findTypes,
+		return AstDataChain{
+			Types:     typeDeclsToMap(findTypes),
+			Constants: nil,
+			Implementations: map[string]*ast.FuncDecl{
+				functionName: makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
 			},
-			makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
-		}
-		return &ast.File{
-			Name:  makeName("generated"),
-			Decls: astFileDecls,
 		}
 	}
 }
@@ -688,7 +713,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 func updateOneBuilder(
 	fullTableName, functionName, rowStructName string,
 	optionFields, mutableFields, rowFields []*ast.Field,
-) *ast.File {
+) AstDataChain {
 	const (
 		scanVarName = "row"
 	)
@@ -699,7 +724,7 @@ func updateOneBuilder(
 		makeName("EmptyResult"),
 	)
 	var (
-		inputTypes, findTypes    []ast.Spec
+		inputTypes, findTypes    []*ast.TypeSpec
 		inputAttrs, findAttrs    []*ast.Field
 		fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
 	)
@@ -709,31 +734,19 @@ func updateOneBuilder(
 	functionBody, inputTypes, inputAttrs = addInsertParametersToFunctionBody(functionName, functionBody, mutableFields)
 	functionBody, findTypes, findAttrs = addDynamicParametersToFunctionBody(functionName, functionBody, optionFields)
 	functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-
-	astFileDecls := []ast.Decl{
-		makeImportDecl(
-			"database/sql",
-			"fmt",
-			"strconv",
-			"strings",
-			"context",
-		),
-		&ast.GenDecl{
-			Tok:   token.TYPE,
-			Specs: append(inputTypes, findTypes...),
+	return AstDataChain{
+		Types:     typeDeclsToMap(append(inputTypes, findTypes...)),
+		Constants: nil,
+		Implementations: map[string]*ast.FuncDecl{
+			functionName: makeApiFunction(functionName, resultExpr, functionBody, append(inputAttrs, findAttrs...)...),
 		},
-		makeApiFunction(functionName, resultExpr, functionBody, append(inputAttrs, findAttrs...)...),
-	}
-	return &ast.File{
-		Name:  makeName("generated"),
-		Decls: astFileDecls,
 	}
 }
 
 func insertOneBuilder(
 	fullTableName, functionName, rowStructName string,
 	_, mutableFields, rowFields []*ast.Field,
-) *ast.File {
+) AstDataChain {
 	const (
 		scanVarName = "row"
 	)
@@ -744,7 +757,7 @@ func insertOneBuilder(
 		makeName("EmptyResult"),
 	)
 	var (
-		functionTypes            []ast.Spec
+		functionTypes            []*ast.TypeSpec
 		functionAttrs            []*ast.Field
 		fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(scanVarName, rowFields)
 	)
@@ -753,25 +766,12 @@ func insertOneBuilder(
 	functionBody = addVariablesToFunctionBody(functionBody, len(mutableFields), sqlQuery)
 	functionBody, functionTypes, functionAttrs = addInsertParametersToFunctionBody(functionName, functionBody, mutableFields)
 	functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
-
-	astFileDecls := []ast.Decl{
-		// TODO generate import from function declaration automatically
-		makeImportDecl(
-			"database/sql",
-			"fmt",
-			"strconv",
-			"strings",
-			"context",
-		),
-		&ast.GenDecl{
-			Tok:   token.TYPE,
-			Specs: functionTypes,
+	return AstDataChain{
+		Types:     typeDeclsToMap(functionTypes),
+		Constants: nil,
+		Implementations: map[string]*ast.FuncDecl{
+			functionName: makeApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
 		},
-		makeApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
-	}
-	return &ast.File{
-		Name:  makeName("generated"),
-		Decls: astFileDecls,
 	}
 }
 

@@ -1,6 +1,7 @@
 package dragonfly
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -216,7 +217,7 @@ func (c *Column) describeGO() fieldDescriber {
 	return c.Schema.Value.describeGO(typeName)
 }
 
-func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
+func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	var decorator = func(e ast.Expr) ast.Expr { return e }
 	if !required {
 		decorator = makeTypeStar
@@ -238,7 +239,7 @@ func (c *ColumnRef) generateField(w *ast.File, required bool) ast.Field {
 	}
 }
 
-func (c *TableClass) generateFields(w *ast.File) (fields []*ast.Field) {
+func (c *TableClass) generateFields(w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(c.Columns))
 	for _, column := range c.Columns {
 		field := column.generateField(w, column.Value.Schema.Value.NotNull)
@@ -247,7 +248,7 @@ func (c *TableClass) generateFields(w *ast.File) (fields []*ast.Field) {
 	return
 }
 
-func (c *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []*ast.Field) {
+func (c *TableApi) generateInsertable(table *TableClass, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoInsert) {
@@ -258,7 +259,7 @@ func (c *TableApi) generateInsertable(table *TableClass, w *ast.File) (fields []
 	return
 }
 
-func (c *TableApi) generateMutable(table *TableClass, w *ast.File) (fields []*ast.Field) {
+func (c *TableApi) generateMutable(table *TableClass, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoUpdate) {
@@ -269,7 +270,7 @@ func (c *TableApi) generateMutable(table *TableClass, w *ast.File) (fields []*as
 	return
 }
 
-func (c *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fields []*ast.Field) {
+func (c *TableApi) generateIdentifierOption(table *TableClass, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if arrayContains(column.Value.Tags, tagIdentifier) {
@@ -280,7 +281,7 @@ func (c *TableApi) generateIdentifierOption(table *TableClass, w *ast.File) (fie
 	return
 }
 
-func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (findBy []*ast.Field) {
+func (c *ApiFindOptions) generateFindFields(table *TableClass, w *AstData) (findBy []*ast.Field) {
 	if c == nil {
 		return
 	}
@@ -293,7 +294,7 @@ func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (fin
 			if len(option.OneOf) > 0 {
 				panic("the option must contains 'one_of' or 'field' not both")
 			}
-			column := table.Columns.find(option.Column)
+			column := table.Columns.getColumn(option.Column)
 			field := column.generateField(w, option.Required || operator.isMult())
 			if operator.isMult() {
 				field.Type = &ast.ArrayType{
@@ -324,10 +325,10 @@ func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (fin
 					panic("nested 'one_of' does not supported")
 				}
 			}
-			firstColumn := table.Columns.find(option.OneOf[0].Column)
+			firstColumn := table.Columns.getColumn(option.OneOf[0].Column)
 			baseType := firstColumn.generateField(w, true)
 			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := table.Columns.find(oneOf.Column)
+				nextColumn := table.Columns.getColumn(oneOf.Column)
 				nextType := nextColumn.generateField(w, true).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
 					panic("each of 'one_of' must have same type of data")
@@ -359,7 +360,7 @@ func (c *ApiFindOptions) generateFindFields(table *TableClass, w *ast.File) (fin
 	return
 }
 
-func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, mutable []*ast.Field) {
+func (c *TableApi) generateOptions(table *TableClass, w *AstData) (findBy, mutable []*ast.Field) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
 			findBy = c.FindOptions.generateFindFields(table, w)
@@ -375,7 +376,7 @@ func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, muta
 		if len(c.ModifyColumns) > 0 {
 			mutable = make([]*ast.Field, 0, len(c.ModifyColumns))
 			for _, columnName := range c.ModifyColumns {
-				column := table.Columns.find(columnName)
+				column := table.Columns.getColumn(columnName)
 				field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
 				mutable = append(mutable, &field)
 			}
@@ -396,7 +397,7 @@ func (c *TableApi) generateOptions(table *TableClass, w *ast.File) (findBy, muta
 }
 
 type (
-	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field, []*ast.Field) *ast.File
+	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field, []*ast.Field) AstDataChain
 )
 
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
@@ -411,7 +412,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 		schema *SchemaRef,
 		tableName, rowStructName string,
 		queryOptionFields, queryInputFields, queryOutputFields []*ast.Field,
-	) *ast.File {
+	) AstDataChain {
 		return tplSet(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
 			functionName,
@@ -423,14 +424,30 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	}
 }
 
-func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
+func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 	if len(c.Value.Tables) > 0 {
 		for tableName, table := range c.Value.Tables {
 			var (
 				structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
 				resultFields = table.generateFields(w)
 			)
-			insertNewStructure(w, structName, resultFields, stringToSlice(table.Description))
+			if err := mergeCodeBase(w, []AstDataChain{
+				{
+					Types: map[string]*ast.TypeSpec{
+						structName: {
+							Name: makeName(structName),
+							Type: &ast.StructType{
+								Fields: &ast.FieldList{List: resultFields},
+							},
+							Comment: makeComment(stringToSlice(table.Description)),
+						},
+					},
+					Constants:       nil,
+					Implementations: nil,
+				},
+			}); err != nil {
+				panic(err)
+			}
 			if len(table.Api) > 0 {
 				for i, api := range table.Api {
 					apiName := evalTemplateParameters(
@@ -455,8 +472,11 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 						optionFields, mutableFields = api.generateOptions(&table, w)
 						builder                     = api.getApiBuilder(apiName)
 					)
-					// insertNewStructure(w, optionStructName, optionFields, nil)
-					mergeCodeBase(w, builder(c, tableName, structName, optionFields, mutableFields, resultFields))
+					if err := mergeCodeBase(w, []AstDataChain{
+						builder(c, tableName, structName, optionFields, mutableFields, resultFields),
+					}); err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
@@ -464,13 +484,13 @@ func (c *SchemaRef) generateGO(schemaName string, w *ast.File) {
 }
 
 func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
-	var file = new(ast.File)
+	var astData AstData
 	for _, schema := range db.Schemas {
 		if schemaName == "" || schemaName == schema.Value.Name {
-			schema.generateGO(schema.Value.Name, file)
+			schema.generateGO(schema.Value.Name, &astData)
 		}
 	}
-	file.Name = makeName(packageName)
+	file := astData.makeAstFile(packageName)
 	if err := format.Node(w, token.NewFileSet(), file); err != nil {
 		panic(err)
 	}
@@ -522,76 +542,45 @@ func insertNewStructure(w *ast.File, name string, fields []*ast.Field, comments 
 	insertTypeSpec(w, newType)
 }
 
-func isImportSpec(decl ast.Decl, callback func(spec *ast.ImportSpec)) bool {
-	if gen, ok := decl.(*ast.GenDecl); ok {
-		if gen.Tok == token.IMPORT {
-			if callback != nil {
-				for _, spec := range gen.Specs {
-					if imp, ok := spec.(*ast.ImportSpec); ok {
-						callback(imp)
-					}
-				}
-			}
-			return true
-		}
-	}
-	return false
-}
-
-func addImport(w *ast.File, imp *ast.ImportSpec) {
-	isImportPathExists := func(in *ast.GenDecl, what ast.Spec) bool {
-		if p, ok := what.(*ast.ImportSpec); ok {
-			path := p.Path.Value
-			for _, imp := range in.Specs {
-				if p, ok := imp.(*ast.ImportSpec); ok {
-					if p.Path != nil && p.Path.Value == path {
-						return true
+func mergeCodeBase(main *AstData, chains []AstDataChain) error {
+	for _, next := range chains {
+		for name, spec := range next.Types {
+			for _, chain := range main.Chains {
+				if spec2, ok := chain.Types[name]; ok {
+					if !reflect.DeepEqual(spec2, spec) {
+						return errors.New(fmt.Sprintf("type `%s` repeated with different contents", name))
+					} else {
+						// TODO WARNING
+						delete(next.Types, name)
 					}
 				}
 			}
 		}
-		return false
-	}
-	getIdForImport := func() int {
-		for i, decl := range w.Decls {
-			if isImportSpec(decl, nil) {
-				return i
+		for name, cnst := range next.Constants {
+			for _, chain := range main.Chains {
+				if cnst2, ok := chain.Constants[name]; ok {
+					if !reflect.DeepEqual(cnst2, cnst) {
+						panic(fmt.Sprintf("constant `%s` repeated with different contents", name))
+					} else {
+						// TODO WARNING
+						delete(next.Constants, name)
+					}
+				}
 			}
 		}
-		return -1
-	}
-	importInd := getIdForImport()
-	if importInd < 0 {
-		importInd = 0
-		newDecls := make([]ast.Decl, 1, len(w.Decls)+1)
-		newDecls[0] = &ast.GenDecl{
-			Tok:   token.IMPORT,
-			Specs: nil,
+		for name, impl := range next.Implementations {
+			for _, chain := range main.Chains {
+				if impl2, ok := chain.Implementations[name]; ok {
+					if !reflect.DeepEqual(impl2, impl) {
+						panic(fmt.Sprintf("constant `%s` repeated with different contents", name))
+					} else {
+						// TODO WARNING
+						delete(next.Implementations, name)
+					}
+				}
+			}
 		}
-		w.Decls = append(newDecls, w.Decls...)
+		main.Chains = append(main.Chains, next)
 	}
-	if gen, ok := w.Decls[importInd].(*ast.GenDecl); ok {
-		if !isImportPathExists(gen, imp) {
-			gen.Specs = append(gen.Specs, imp)
-			w.Decls[importInd] = gen
-		}
-	}
-}
-
-func mergeCodeBase(main, next *ast.File) {
-	if next == nil {
-		return
-	}
-	if main == nil {
-		main = next
-		return
-	}
-	for _, decl := range next.Decls {
-		if isImportSpec(decl, func(imp *ast.ImportSpec) {
-			addImport(main, imp)
-		}) {
-			continue
-		}
-		main.Decls = append(main.Decls, decl)
-	}
+	return nil
 }

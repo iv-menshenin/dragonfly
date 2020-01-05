@@ -16,7 +16,7 @@ const (
 
 type (
 	fieldDescriber interface {
-		getFile() *ast.File
+		getFile() []AstDataChain
 		fieldTypeExpr() ast.Expr
 	}
 	simpleTypeDescriber struct {
@@ -53,21 +53,7 @@ func makeSimpleDescriber(t, p, x string) makeDescriber {
 	}
 }
 
-func (c simpleTypeDescriber) getFile() *ast.File {
-	if c.packagePath != "" {
-		return &ast.File{
-			Decls: []ast.Decl{
-				&ast.GenDecl{
-					Tok: token.IMPORT,
-					Specs: []ast.Spec{
-						&ast.ImportSpec{
-							Path: &ast.BasicLit{Value: c.packagePath},
-						},
-					},
-				},
-			},
-		}
-	}
+func (c simpleTypeDescriber) getFile() []AstDataChain {
 	return nil
 }
 
@@ -111,37 +97,29 @@ func makeEnumDescriberDirectly(typeName string, domain *DomainSchema) fieldDescr
 	}
 }
 
-// TODO temporary
-var (
-	alreadyDeclared = make(map[string]bool)
-)
-
-func (c enumTypeDescriber) getFile() *ast.File {
-	if _, ok := alreadyDeclared[c.typeName]; ok {
-		return nil
-	}
+func (c enumTypeDescriber) getFile() []AstDataChain {
 	var (
-		f          ast.File
-		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
+		mainTypeName     = makeName(c.typeName)
+		enumValues       = make([]ast.Expr, 0, len(c.domain.Enum))
+		allowedValues    = make(map[string]*ast.ValueSpec, len(c.domain.Enum))
+		objMethodArgSelf = []*ast.Field{
+			{
+				Names: []*ast.Ident{
+					makeName(methodReceiverLit),
+				},
+				Type: mainTypeName,
+			},
+		}
 	)
-	allowedValues := make([]ast.Spec, 0, len(c.domain.Enum))
 	for _, entity := range c.domain.Enum {
 		entityName := makeName(c.typeName + makeExportedName(entity.Value))
 		entityValue := makeBasicLiteralString(entity.Value)
-		allowedValues = append(allowedValues, &ast.ValueSpec{
+		allowedValues[entityName.Name] = &ast.ValueSpec{
 			Names:  []*ast.Ident{entityName},
 			Type:   makeName(c.typeName),
 			Values: []ast.Expr{entityValue},
-		})
+		}
 		enumValues = append(enumValues, makeCall(makeName("string"), entityName))
-	}
-	objMethodArgSelf := []*ast.Field{
-		{
-			Names: []*ast.Ident{
-				makeName(methodReceiverLit),
-			},
-			Type: makeName(c.typeName),
-		},
 	}
 	returnTypeValueErrorExpr := makeReturn(
 		makeCall(
@@ -164,78 +142,73 @@ func (c enumTypeDescriber) getFile() *ast.File {
 			Body: makeBlock(makeReturn(makeName("nil"))),
 		},
 	)
-	f.Name = makeName("generated")
-	f.Decls = []ast.Decl{
-		&ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: makeName(c.typeName),
-					Type: makeTypeIdent("string"),
+	main := AstDataChain{
+		Types: map[string]*ast.TypeSpec{
+			mainTypeName.Name: {
+				Name: mainTypeName,
+				Type: makeTypeIdent("string"),
+			},
+		},
+		Constants: allowedValues,
+		Implementations: funcDeclsToMap(
+			[]*ast.FuncDecl{
+				{
+					Recv: &ast.FieldList{
+						List: objMethodArgSelf,
+					},
+					Name: makeName(enumFunctionName),
+					Type: &ast.FuncType{
+						Results: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Type: makeTypeArray(makeName("string")),
+								},
+							},
+						},
+					},
+					Body: makeBlock(
+						makeReturn(
+							&ast.CompositeLit{
+								Type: makeTypeArray(makeName("string")),
+								Elts: enumValues,
+							},
+						),
+					),
 				},
-			},
-		},
-		&ast.GenDecl{
-			Tok:   token.CONST,
-			Specs: allowedValues,
-		},
-		&ast.FuncDecl{
-			Recv: &ast.FieldList{
-				List: objMethodArgSelf,
-			},
-			Name: makeName(enumFunctionName),
-			Type: &ast.FuncType{
-				Results: &ast.FieldList{
-					List: []*ast.Field{
-						{
-							Type: makeTypeArray(makeName("string")),
+				{
+					Recv: &ast.FieldList{
+						List: objMethodArgSelf,
+					},
+					Name: makeName(checkFunctionName),
+					Type: &ast.FuncType{
+						Params: &ast.FieldList{},
+						Results: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Type: makeName("error"),
+								},
+							},
+						},
+					},
+					Body: &ast.BlockStmt{
+						List: []ast.Stmt{
+							&ast.RangeStmt{
+								Key:   makeName("_"),
+								Value: makeName("s"),
+								Tok:   token.DEFINE,
+								X: &ast.CallExpr{
+									Fun: makeTypeSelector(methodReceiverLit, enumFunctionName),
+								},
+								Body: rangeBody,
+							},
+							returnTypeValueErrorExpr,
 						},
 					},
 				},
 			},
-			Body: makeBlock(
-				makeReturn(
-					&ast.CompositeLit{
-						Type: makeTypeArray(makeName("string")),
-						Elts: enumValues,
-					},
-				),
-			),
-		},
-		&ast.FuncDecl{
-			Recv: &ast.FieldList{
-				List: objMethodArgSelf,
-			},
-			Name: makeName(checkFunctionName),
-			Type: &ast.FuncType{
-				Params: &ast.FieldList{},
-				Results: &ast.FieldList{
-					List: []*ast.Field{
-						{
-							Type: makeName("error"),
-						},
-					},
-				},
-			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.RangeStmt{
-						Key:   makeName("_"),
-						Value: makeName("s"),
-						Tok:   token.DEFINE,
-						X: &ast.CallExpr{
-							Fun: makeTypeSelector(methodReceiverLit, enumFunctionName),
-						},
-						Body: rangeBody,
-					},
-					returnTypeValueErrorExpr,
-				},
-			},
-		},
+		),
 	}
-	mergeCodeBase(&f, c.simpleTypeDescriber.getFile())
-	alreadyDeclared[c.typeName] = true
-	return &f
+	return append(c.simpleTypeDescriber.getFile(), main)
 }
 
 /*
@@ -250,20 +223,16 @@ func makeRecordDescriberDirectly(typeName string, domain *DomainSchema) fieldDes
 	}
 }
 
-func (c recordTypeDescriber) getFile() *ast.File {
-	if _, ok := alreadyDeclared[c.typeName]; ok {
-		return nil
-	}
+func (c recordTypeDescriber) getFile() []AstDataChain {
 	var (
-		f          ast.File
-		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
+		enumValues   = make([]ast.Expr, 0, len(c.domain.Enum))
+		formatLiters = make([]string, 0, len(c.domain.Fields))
+		objFields    = make([]*ast.Field, 0, len(c.domain.Fields))
+		formatArgs   = make([]ast.Expr, 0, len(c.domain.Fields))
 	)
 	for _, entity := range c.domain.Enum {
 		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
 	}
-	formatLiters := make([]string, 0, len(c.domain.Fields))
-	objFields := make([]*ast.Field, 0, len(c.domain.Fields))
-	formatArgs := make([]ast.Expr, 0, len(c.domain.Fields))
 	for _, f := range c.domain.Fields {
 		intDesc := f.describeGO()
 		objFields = append(objFields, &ast.Field{
@@ -291,153 +260,141 @@ func (c recordTypeDescriber) getFile() *ast.File {
 			},
 		}, makeBasicLiteralString("(" + strings.Join(formatLiters, ",") + ")"),
 	}, formatArgs...)
-	f.Name = makeName("generated")
-	f.Decls = []ast.Decl{
-		&ast.GenDecl{
-			Tok: token.IMPORT,
-			Specs: []ast.Spec{
-				&ast.ImportSpec{
-					Path: &ast.BasicLit{
-						Kind:  token.STRING,
-						Value: "\"bytes\"",
-					},
+	main := AstDataChain{
+		Types: map[string]*ast.TypeSpec{
+			makeName(c.typeName).Name: {
+				Name: makeName(c.typeName),
+				Type: &ast.StructType{
+					Fields: &ast.FieldList{List: objFields},
 				},
 			},
 		},
-		&ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: makeName(c.typeName),
-					Type: &ast.StructType{
-						Fields: &ast.FieldList{List: objFields},
-					},
-				},
-			},
-		},
-		&ast.FuncDecl{
-			Recv: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Names: []*ast.Ident{
+		Constants: nil,
+		Implementations: funcDeclsToMap(
+			[]*ast.FuncDecl{
+				{
+					Recv: &ast.FieldList{
+						List: []*ast.Field{
 							{
-								Name: "c",
-								Obj: &ast.Object{
-									Kind: ast.Var,
-									Name: "c",
+								Names: []*ast.Ident{
+									{
+										Name: "c",
+										Obj: &ast.Object{
+											Kind: ast.Var,
+											Name: "c",
+										},
+									},
 								},
-							},
-						},
-						Type: &ast.StarExpr{
-							X: &ast.Ident{
-								Name: c.typeName,
-							},
-						},
-					},
-				},
-			},
-			Name: &ast.Ident{
-				Name: "Scan",
-			},
-			Type: &ast.FuncType{
-				Params: &ast.FieldList{
-					List: []*ast.Field{
-						{
-							Names: []*ast.Ident{
-								{
-									Name: "value",
-									Obj: &ast.Object{
-										Kind: ast.Var,
-										Name: "value",
+								Type: &ast.StarExpr{
+									X: &ast.Ident{
+										Name: c.typeName,
 									},
 								},
 							},
-							Type: &ast.InterfaceType{
-								Methods: &ast.FieldList{},
+						},
+					},
+					Name: &ast.Ident{
+						Name: "Scan",
+					},
+					Type: &ast.FuncType{
+						Params: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Names: []*ast.Ident{
+										{
+											Name: "value",
+											Obj: &ast.Object{
+												Kind: ast.Var,
+												Name: "value",
+											},
+										},
+									},
+									Type: &ast.InterfaceType{
+										Methods: &ast.FieldList{},
+									},
+								},
+							},
+						},
+						Results: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Type: &ast.Ident{
+										Name: "error",
+									},
+								},
 							},
 						},
 					},
-				},
-				Results: &ast.FieldList{
-					List: []*ast.Field{
-						{
-							Type: &ast.Ident{
-								Name: "error",
-							},
-						},
-					},
-				},
-			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.IfStmt{
-						Cond: &ast.BinaryExpr{
-							X: &ast.Ident{
-								Name: "value",
-							},
-							Op: token.EQL,
-							Y: &ast.Ident{
-								Name: "nil",
-							},
-						},
-						Body: &ast.BlockStmt{
-							List: []ast.Stmt{
-								&ast.ReturnStmt{
-									Results: []ast.Expr{
-										&ast.Ident{
-											Name: "nil",
+					Body: &ast.BlockStmt{
+						List: []ast.Stmt{
+							&ast.IfStmt{
+								Cond: &ast.BinaryExpr{
+									X: &ast.Ident{
+										Name: "value",
+									},
+									Op: token.EQL,
+									Y: &ast.Ident{
+										Name: "nil",
+									},
+								},
+								Body: &ast.BlockStmt{
+									List: []ast.Stmt{
+										&ast.ReturnStmt{
+											Results: []ast.Expr{
+												&ast.Ident{
+													Name: "nil",
+												},
+											},
 										},
 									},
 								},
 							},
-						},
-					},
-					&ast.AssignStmt{
-						Lhs: []ast.Expr{
-							&ast.Ident{
-								Name: "_",
-								Obj: &ast.Object{
-									Kind: ast.Var,
-									Name: "_",
-								},
-							},
-							&ast.Ident{
-								Name: "err",
-								Obj: &ast.Object{
-									Kind: ast.Var,
-									Name: "err",
-								},
-							},
-						},
-						Tok: token.DEFINE,
-						Rhs: []ast.Expr{
-							&ast.CallExpr{
-								Fun: &ast.SelectorExpr{
-									X: &ast.Ident{
-										Name: "fmt",
+							&ast.AssignStmt{
+								Lhs: []ast.Expr{
+									&ast.Ident{
+										Name: "_",
+										Obj: &ast.Object{
+											Kind: ast.Var,
+											Name: "_",
+										},
 									},
-									Sel: &ast.Ident{
-										Name: "Fscanf",
+									&ast.Ident{
+										Name: "err",
+										Obj: &ast.Object{
+											Kind: ast.Var,
+											Name: "err",
+										},
 									},
 								},
-								Args: formatArgs,
+								Tok: token.DEFINE,
+								Rhs: []ast.Expr{
+									&ast.CallExpr{
+										Fun: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "fmt",
+											},
+											Sel: &ast.Ident{
+												Name: "Fscanf",
+											},
+										},
+										Args: formatArgs,
+									},
+								},
 							},
-						},
-					},
-					&ast.ReturnStmt{
-						Results: []ast.Expr{
-							&ast.Ident{
-								Name: "err",
+							&ast.ReturnStmt{
+								Results: []ast.Expr{
+									&ast.Ident{
+										Name: "err",
+									},
+								},
 							},
 						},
 					},
 				},
 			},
-		},
+		),
 	}
-	mergeCodeBase(&f, c.simpleTypeDescriber.getFile())
-	alreadyDeclared[c.typeName] = true
-	return &f
+	return append(c.simpleTypeDescriber.getFile(), main)
 }
 
 /*
@@ -454,18 +411,14 @@ func makeJsonDescriberDirectly(typeName string, domain *DomainSchema) fieldDescr
 	}
 }
 
-func (c jsonTypeDescriber) getFile() *ast.File {
-	if _, ok := alreadyDeclared[c.typeName]; ok {
-		return nil
-	}
+func (c jsonTypeDescriber) getFile() []AstDataChain {
 	var (
-		f          ast.File
 		enumValues = make([]ast.Expr, 0, len(c.domain.Enum))
+		objFields  = make([]*ast.Field, 0, len(c.domain.Fields))
 	)
 	for _, entity := range c.domain.Enum {
 		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
 	}
-	objFields := make([]*ast.Field, 0, len(c.domain.Fields))
 	for _, f := range c.domain.Fields {
 		intDesc := f.describeGO()
 		objFields = append(objFields, &ast.Field{
@@ -473,132 +426,122 @@ func (c jsonTypeDescriber) getFile() *ast.File {
 			Type:  intDesc.fieldTypeExpr(),
 		})
 	}
-	f.Name = makeName("generated")
-	f.Decls = []ast.Decl{
-		&ast.GenDecl{
-			Tok: token.IMPORT,
-			Specs: []ast.Spec{
-				&ast.ImportSpec{
-					Path: &ast.BasicLit{
-						Kind:  token.STRING,
-						Value: "\"encoding/json\"",
-					},
+	main := AstDataChain{
+		Types: map[string]*ast.TypeSpec{
+			makeName(c.typeName).Name: {
+				Name: makeName(c.typeName),
+				Type: &ast.StructType{
+					Fields: &ast.FieldList{List: objFields},
 				},
 			},
 		},
-		&ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: makeName(c.typeName),
-					Type: &ast.StructType{
-						Fields: &ast.FieldList{List: objFields},
-					},
-				},
-			},
-		},
-		&ast.FuncDecl{
-			Recv: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Names: []*ast.Ident{
+		Constants: nil,
+		Implementations: funcDeclsToMap(
+			[]*ast.FuncDecl{
+				{
+					Recv: &ast.FieldList{
+						List: []*ast.Field{
 							{
-								Name: "c",
-								Obj: &ast.Object{
-									Kind: ast.Var,
-									Name: "c",
-								},
-							},
-						},
-						Type: &ast.StarExpr{
-							X: &ast.Ident{
-								Name: c.typeName,
-							},
-						},
-					},
-				},
-			},
-			Name: &ast.Ident{
-				Name: "Scan",
-			},
-			Type: &ast.FuncType{
-				Params: &ast.FieldList{
-					List: []*ast.Field{
-						{
-							Names: []*ast.Ident{
-								{
-									Name: "value",
-									Obj: &ast.Object{
-										Kind: ast.Var,
-										Name: "value",
-									},
-								},
-							},
-							Type: &ast.InterfaceType{
-								Methods:    &ast.FieldList{},
-								Incomplete: false,
-							},
-						},
-					},
-				},
-				Results: &ast.FieldList{
-					List: []*ast.Field{
-						{
-							Type: &ast.Ident{
-								Name: "error",
-							},
-						},
-					},
-				},
-			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.IfStmt{
-						Cond: &ast.BinaryExpr{
-							X: &ast.Ident{
-								Name: "value",
-							},
-							Op: token.EQL,
-							Y: &ast.Ident{
-								Name: "nil",
-							},
-						},
-						Body: &ast.BlockStmt{
-							List: []ast.Stmt{
-								&ast.ReturnStmt{
-									Results: []ast.Expr{
-										&ast.Ident{
-											Name: "nil",
+								Names: []*ast.Ident{
+									{
+										Name: "c",
+										Obj: &ast.Object{
+											Kind: ast.Var,
+											Name: "c",
 										},
 									},
 								},
-							},
-						},
-					},
-					&ast.ReturnStmt{
-						Results: []ast.Expr{
-							&ast.CallExpr{
-								Fun: &ast.SelectorExpr{
+								Type: &ast.StarExpr{
 									X: &ast.Ident{
-										Name: "json",
-									},
-									Sel: &ast.Ident{
-										Name: "Unmarshal",
+										Name: c.typeName,
 									},
 								},
-								Args: []ast.Expr{
-									&ast.TypeAssertExpr{
-										X: &ast.Ident{
+							},
+						},
+					},
+					Name: &ast.Ident{
+						Name: "Scan",
+					},
+					Type: &ast.FuncType{
+						Params: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Names: []*ast.Ident{
+										{
 											Name: "value",
-										},
-										Type: &ast.ArrayType{
-											Elt: &ast.Ident{
-												Name: "uint8",
+											Obj: &ast.Object{
+												Kind: ast.Var,
+												Name: "value",
 											},
 										},
 									},
-									&ast.Ident{
-										Name: "c",
+									Type: &ast.InterfaceType{
+										Methods:    &ast.FieldList{},
+										Incomplete: false,
+									},
+								},
+							},
+						},
+						Results: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Type: &ast.Ident{
+										Name: "error",
+									},
+								},
+							},
+						},
+					},
+					Body: &ast.BlockStmt{
+						List: []ast.Stmt{
+							&ast.IfStmt{
+								Cond: &ast.BinaryExpr{
+									X: &ast.Ident{
+										Name: "value",
+									},
+									Op: token.EQL,
+									Y: &ast.Ident{
+										Name: "nil",
+									},
+								},
+								Body: &ast.BlockStmt{
+									List: []ast.Stmt{
+										&ast.ReturnStmt{
+											Results: []ast.Expr{
+												&ast.Ident{
+													Name: "nil",
+												},
+											},
+										},
+									},
+								},
+							},
+							&ast.ReturnStmt{
+								Results: []ast.Expr{
+									&ast.CallExpr{
+										Fun: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "json",
+											},
+											Sel: &ast.Ident{
+												Name: "Unmarshal",
+											},
+										},
+										Args: []ast.Expr{
+											&ast.TypeAssertExpr{
+												X: &ast.Ident{
+													Name: "value",
+												},
+												Type: &ast.ArrayType{
+													Elt: &ast.Ident{
+														Name: "uint8",
+													},
+												},
+											},
+											&ast.Ident{
+												Name: "c",
+											},
+										},
 									},
 								},
 							},
@@ -606,11 +549,9 @@ func (c jsonTypeDescriber) getFile() *ast.File {
 					},
 				},
 			},
-		},
+		),
 	}
-	mergeCodeBase(&f, c.simpleTypeDescriber.getFile())
-	alreadyDeclared[c.typeName] = true
-	return &f
+	return append(c.simpleTypeDescriber.getFile(), main)
 }
 
 var (

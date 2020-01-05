@@ -6,6 +6,41 @@ import (
 	"strings"
 )
 
+type (
+	sortMap map[string]int
+)
+
+// sorting in decreasing order map[string]int by their values. upper values are greater, lower values are less
+func (c sortMap) getSortedKeysValues() (keys []string, values []int) {
+	keys = make([]string, len(c), len(c))
+	values = make([]int, len(c), len(c))
+	for key, value := range c {
+		var found = 0
+		for i, val := range values {
+			found = i
+			if val > value {
+				continue
+			}
+			if val == value && keys[i] > key {
+				continue
+			}
+			break
+		}
+		copy(keys[found+1:], keys[found:])
+		copy(values[found+1:], values[found:])
+		keys[found] = key
+		values[found] = value
+	}
+	return
+}
+
+func mergeStringMap(a, b map[string]string) map[string]string {
+	for key, val := range b {
+		a[key] = val
+	}
+	return a
+}
+
 func writer(w io.Writer, format string, i ...interface{}) {
 	if _, err := fmt.Fprintf(w, format, i...); err != nil {
 		panic(err)
@@ -55,4 +90,8 @@ func evalTemplateParameters(template string, parameters map[string]string) strin
 		s = strings.ReplaceAll(s, "{%"+key+"}", val)
 	}
 	return s
+}
+
+func refBool(b bool) *bool {
+	return &b
 }

@@ -112,7 +112,7 @@ func (r *Constraint) describeSQL(schemaName, tableName string, columns []string,
 		constrName = fmt.Sprintf(constrName, schemaName, tableName)
 	}
 	var parameters = r.Parameters.describeSQL(columns)
-	return "constraint " + constrName + " " + constrType + parameters
+	return fmt.Sprintf("constraint %s %s%s", constrName, constrType, parameters)
 }
 
 func (c *DomainSchema) describeSQL() interface{} {
@@ -139,8 +139,16 @@ func (c *DomainSchema) describeSQL() interface{} {
 	return colType + nullable + defValue + check
 }
 
+func (c *ColumnRef) describeSQL() string {
+	if schema, domain, ok := c.Value.Schema.makeDomainName(); ok {
+		return fmt.Sprintf("%s.%s", schema, domain)
+	} else {
+		return fmt.Sprintf("%s", c.Value.Schema.Value.describeSQL())
+	}
+}
+
 func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
-	writer(w, "\t%s %s", c.Value.Name, c.Value.Schema.Value.describeSQL())
+	writer(w, "\t%s %s", c.Value.Name, c.describeSQL())
 	for i, constraint := range c.Value.Constraints {
 		writer(w, " %s", constraint.describeSQL(schemaName, tableName, nil, i))
 	}
