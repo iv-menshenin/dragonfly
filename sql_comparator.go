@@ -149,7 +149,6 @@ func makeUnusedTablesComparator(
 	schemaName string,
 	newTableName string,
 	newTable TableClass,
-	root *Root,
 ) (
 	comparator *TableComparator,
 ) {
@@ -380,25 +379,26 @@ func (c *SchemaRef) diffKnown(
 	root *Root,
 	w io.Writer,
 ) (
+	preInstall []SqlStmt,
 	install []SqlStmt,
 	afterInstall []SqlStmt,
 	postponed postponedObjects,
 ) {
+	preInstall = make([]SqlStmt, 0, 0)
 	install = make([]SqlStmt, 0, 0)
-	afterInstall = make([]SqlStmt, 0, 0)
-	domains, domainsPostponed := makeDomainsComparator(db, schema, c.Value.Domains) // TODO postponed
+	domains, domainsPostponed := makeDomainsComparator(db, schema, c.Value.Domains)
 	postponed.domains = domainsPostponed
 	for _, domain := range domains {
 		first, second := domain.makeSolution()
-		install = append(install, first...)
+		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
-	tables, tablesPostponed := makeTablesComparator(db, schema, c.Value.Tables) // TODO postponed
+	tables, tablesPostponed := makeTablesComparator(db, schema, c.Value.Tables)
 	postponed.tables = tablesPostponed
 	for _, table := range tables {
 		first, second := table.makeSolution(db)
-		install = append(install, first...)
-		afterInstall = append(afterInstall, second...)
+		preInstall = append(preInstall, first...)
+		install = append(install, second...)
 	}
 	return
 }
@@ -410,9 +410,11 @@ func (c *SchemaRef) diffPostponed(
 	root *Root,
 	w io.Writer,
 ) (
+	preInstall []SqlStmt,
 	install []SqlStmt,
 	afterInstall []SqlStmt,
 ) {
+	preInstall = make([]SqlStmt, 0, 0)
 	install = make([]SqlStmt, 0, 0)
 	afterInstall = make([]SqlStmt, 0, 0)
 	for _, domainName := range postponed.domains {
@@ -422,7 +424,7 @@ func (c *SchemaRef) diffPostponed(
 		}
 		if comparator := makeUnusedDomainsComparator(db, schema, domainName, domain, root); comparator != nil {
 			first, second := comparator.makeSolution()
-			install = append(install, first...)
+			preInstall = append(preInstall, first...)
 			afterInstall = append(afterInstall, second...)
 		}
 	}
@@ -431,7 +433,7 @@ func (c *SchemaRef) diffPostponed(
 		if !ok {
 			panic("something went wrong. check the table name character case mistakes")
 		}
-		if comparator := makeUnusedTablesComparator(db, schema, tableName, table, root); comparator != nil {
+		if comparator := makeUnusedTablesComparator(db, schema, tableName, table); comparator != nil {
 			first, second := comparator.makeSolution(db)
 			install = append(install, first...)
 			afterInstall = append(afterInstall, second...)
@@ -447,9 +449,11 @@ func (c *SchemaRef) prepareDeleting(
 	root *Root,
 	w io.Writer,
 ) (
+	preInstall []SqlStmt,
 	install []SqlStmt,
 	afterInstall []SqlStmt,
 ) {
+	preInstall = make([]SqlStmt, 0, 0)
 	install = make([]SqlStmt, 0, 0)
 	afterInstall = make([]SqlStmt, 0, 0)
 	// TODO drop tables
@@ -470,7 +474,7 @@ func (c *SchemaRef) prepareDeleting(
 				},
 			}
 			first, second := comparator.makeSolution()
-			install = append(install, first...)
+			preInstall = append(preInstall, first...)
 			afterInstall = append(afterInstall, second...)
 		}
 	}
@@ -514,32 +518,37 @@ type (
 	DomainsComparator []DomainComparator
 )
 
-func (c DomainComparator) makeSolution() (install []SqlStmt, afterInstall []SqlStmt) {
-	install = make([]SqlStmt, 0, 0)
-	afterInstall = make([]SqlStmt, 0, 0)
+/*
+	pre-install: create domain, alter domain (except 'set not null')
+	post-install: drop domain and 'set not null'
+*/
+func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []SqlStmt) {
+	preInstall = make([]SqlStmt, 0, 0)
+	postInstall = make([]SqlStmt, 0, 0)
 	if c.DomainStruct.OldStructure == nil {
-		install = append(install, makeDomain(c.Schema.New, c.Name.New, *c.DomainStruct.NewStructure))
+		preInstall = append(preInstall, makeDomain(c.Schema.New, c.Name.New, *c.DomainStruct.NewStructure))
 		return
 	}
 	if c.DomainStruct.NewStructure == nil {
-		afterInstall = append(afterInstall, makeDomainDrop(c.Schema.Actual, c.Name.Actual))
+		postInstall = append(postInstall, makeDomainDrop(c.Schema.Actual, c.Name.Actual))
 		return
 	}
 	if !strings.EqualFold(c.Schema.New, c.Schema.Actual) {
-		install = append(install, makeDomainSetSchema(c.Name.Actual, c.Schema))
+		preInstall = append(preInstall, makeDomainSetSchema(c.Name.Actual, c.Schema))
 	}
 	if !strings.EqualFold(c.Name.New, c.Name.Actual) {
-		install = append(install, makeDomainRename(c.Schema.New, c.Name))
+		preInstall = append(preInstall, makeDomainRename(c.Schema.New, c.Name))
 	}
-	if (c.DomainStruct.NewStructure.NotNull && c.DomainStruct.OldStructure.Nullable) ||
-		(!c.DomainStruct.NewStructure.NotNull && !c.DomainStruct.OldStructure.Nullable) {
-		install = append(install, makeDomainSetNotNull(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.NotNull))
+	if c.DomainStruct.NewStructure.NotNull && c.DomainStruct.OldStructure.Nullable {
+		postInstall = append(postInstall, makeDomainSetNotNull(c.Schema.New, c.Name.New, true))
+	} else if !c.DomainStruct.NewStructure.NotNull && !c.DomainStruct.OldStructure.Nullable {
+		preInstall = append(preInstall, makeDomainSetNotNull(c.Schema.New, c.Name.New, false))
 	}
 	if !(c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default == nil) &&
 		((c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default != nil) ||
 			(c.DomainStruct.NewStructure.Default != nil && c.DomainStruct.OldStructure.Default == nil) ||
 			(*c.DomainStruct.NewStructure.Default != *c.DomainStruct.OldStructure.Default)) {
-		install = append(install, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.Default))
+		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.Default))
 	}
 	return
 }
@@ -719,18 +728,20 @@ func DatabaseDiff(root *Root, optionSchemaName string, options ConnectionOptions
 
 	var (
 		actualStructure        = GetAllDatabaseInformation(db, options.Database)
+		preInstall             = make([]SqlStmt, 0, 0)
 		install                = make([]SqlStmt, 0, 0)
 		afterInstall           = make([]SqlStmt, 0, 0)
 		postponedSchemaObjects = make(map[string]postponedObjects, 0)
 	)
 	for _, schema := range root.Schemas {
 		// process all
-		first, second, postponed := schema.diffKnown(&actualStructure, schema.Value.Name, root, w)
+		pre, ins, after, postponed := schema.diffKnown(&actualStructure, schema.Value.Name, root, w)
 		postponedSchemaObjects[schema.Value.Name] = postponed
 		// save needed
 		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
-			install = append(install, first...)
-			afterInstall = append(afterInstall, second...)
+			preInstall = append(preInstall, pre...)
+			install = append(install, ins...)
+			afterInstall = append(afterInstall, after...)
 		}
 	}
 	for _, schema := range root.Schemas {
@@ -738,23 +749,29 @@ func DatabaseDiff(root *Root, optionSchemaName string, options ConnectionOptions
 		if !ok {
 			continue
 		}
-		first, second := schema.diffPostponed(postponedSchema, &actualStructure, schema.Value.Name, root, w)
+		pre, ins, after := schema.diffPostponed(postponedSchema, &actualStructure, schema.Value.Name, root, w)
 		// save needed
 		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
-			install = append(install, first...)
-			afterInstall = append(afterInstall, second...)
+			preInstall = append(preInstall, pre...)
+			install = append(install, ins...)
+			afterInstall = append(afterInstall, after...)
 		}
 	}
 	for _, schema := range root.Schemas {
-		first, second := schema.prepareDeleting(&actualStructure, schema.Value.Name, root, w)
+		pre, ins, after := schema.prepareDeleting(&actualStructure, schema.Value.Name, root, w)
 		// save needed
 		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
-			install = append(install, first...)
-			afterInstall = append(afterInstall, second...)
+			preInstall = append(preInstall, pre...)
+			install = append(install, ins...)
+			afterInstall = append(afterInstall, after...)
 		}
 	}
 
 	writer(w, "/*\n    BEGIN OF UPDATE SCRIPT\n    SCHEMA FILTER: %s\n*/", optionSchemaName)
+	writer(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
+	for _, stmt := range preInstall {
+		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+	}
 	writer(w, "\n/* SECTION INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range install {
 		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
