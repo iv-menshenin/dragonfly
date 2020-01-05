@@ -490,8 +490,8 @@ func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
 			schema.generateGO(schema.Value.Name, &astData)
 		}
 	}
-	file := astData.makeAstFile(packageName)
-	if err := format.Node(w, token.NewFileSet(), file); err != nil {
+	file, fset := astData.makeAstFile(packageName)
+	if err := format.Node(w, fset, file); err != nil {
 		panic(err)
 	}
 }
@@ -527,19 +527,6 @@ func insertTypeSpec(w *ast.File, newType ast.TypeSpec) {
 	} else {
 		(*genDecls).(*ast.GenDecl).Specs = append((*genDecls).(*ast.GenDecl).Specs, &newType)
 	}
-}
-
-func insertNewStructure(w *ast.File, name string, fields []*ast.Field, comments []string) {
-	var newType = ast.TypeSpec{
-		Doc:  nil,
-		Name: makeName(name),
-		Type: &ast.StructType{
-			Fields:     &ast.FieldList{List: fields},
-			Incomplete: false,
-		},
-		Comment: makeComment(comments),
-	}
-	insertTypeSpec(w, newType)
 }
 
 func mergeCodeBase(main *AstData, chains []AstDataChain) error {

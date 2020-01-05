@@ -177,16 +177,18 @@ func (c AstDataChain) extractImports() map[string]string {
 	return imports
 }
 
-func (c *AstData) makeAstFile(packageName string) *ast.File {
+func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 	var file ast.File
 	file.Name = makeName(packageName)
 	imports := make(map[string]string, 0)
-	// TODO auto import list generation
+	var lPos token.Pos = 1
 	for _, chain := range c.Chains {
 		imports = mergeStringMap(imports, chain.extractImports())
 		typeSpecs := make([]ast.Spec, 0, len(chain.Types))
 		for _, typeDecl := range chain.Types {
 			if typeDecl != nil {
+				typeDecl.Name.NamePos = lPos
+				lPos++
 				typeSpecs = append(typeSpecs, typeDecl)
 			}
 		}
@@ -199,6 +201,10 @@ func (c *AstData) makeAstFile(packageName string) *ast.File {
 		constSpecs := make([]ast.Spec, 0, len(chain.Constants))
 		for _, constDecl := range chain.Constants {
 			if constDecl != nil {
+				for i := range constDecl.Names {
+					constDecl.Names[i].NamePos = lPos
+					lPos++
+				}
 				constSpecs = append(constSpecs, constDecl)
 			}
 		}
@@ -211,6 +217,12 @@ func (c *AstData) makeAstFile(packageName string) *ast.File {
 		funcSpecs := make([]ast.Decl, 0, len(chain.Implementations))
 		for _, funcDecl := range chain.Implementations {
 			if funcDecl != nil {
+				funcDecl.Type.Func = lPos
+				if funcDecl.Type.Params != nil {
+					funcDecl.Type.Params.Opening = lPos
+				}
+				funcDecl.Name.NamePos = lPos
+				lPos++
 				funcSpecs = append(funcSpecs, funcDecl)
 			}
 		}
@@ -221,12 +233,14 @@ func (c *AstData) makeAstFile(packageName string) *ast.File {
 	if len(imports) > 0 {
 		file.Decls = append(
 			[]ast.Decl{
-				makeImportDecl(imports),
+				makeImportDecl(&lPos, imports),
 			},
 			file.Decls...,
 		)
 	}
-	return &file
+	fset := token.NewFileSet()
+	ast.SortImports(fset, &file)
+	return &file, fset
 }
 
 // get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other

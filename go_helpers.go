@@ -137,25 +137,40 @@ func makeBlock(statements ...ast.Stmt) *ast.BlockStmt {
 	}
 }
 
-func makeImportDecl(imports map[string]string) ast.Decl {
+func makeImportSpec(lPos *token.Pos, imports map[string]string) []ast.Spec {
 	var impSpec = make([]ast.Spec, 0, len(imports))
 	for packageKey, packagePath := range imports {
 		packageAlias := makeName(packageKey)
 		pathSgms := strings.Split(packagePath, "/")
 		if pathSgms[len(pathSgms)-1] == packageKey {
 			packageAlias = nil
+		} else {
+			packageAlias.NamePos = *lPos
 		}
 		impSpec = append(impSpec, &ast.ImportSpec{
 			Name: packageAlias,
 			Path: &ast.BasicLit{
-				Kind:  token.STRING,
-				Value: fmt.Sprintf("\"%s\"", packagePath),
+				ValuePos: *lPos,
+				Kind:     token.STRING,
+				Value:    fmt.Sprintf("\"%s\"", packagePath),
 			},
 		})
+		*lPos++
 	}
+	return impSpec
+}
+
+func makeImportDecl(lPos *token.Pos, imports map[string]string) ast.Decl {
+	var (
+		impSpec []ast.Spec
+		lParen  = *lPos
+	)
+	*lPos++
+	impSpec = makeImportSpec(lPos, imports)
 	return &ast.GenDecl{
-		Tok:   token.IMPORT,
-		Specs: impSpec,
+		Lparen: lParen,
+		Tok:    token.IMPORT,
+		Specs:  impSpec,
 	}
 }
 
