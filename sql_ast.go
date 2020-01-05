@@ -813,7 +813,7 @@ func (c *ColumnDefinitionExpr) Expression() string {
 	for _, constraint := range c.Constraints {
 		constraints += fmt.Sprintf(" %s %s", constraint.ConstraintString(), constraint.ConstraintParams())
 	}
-	return fmt.Sprintf("%s %s%s%s", c.Name, c.DataType, collation, constraints)
+	return fmt.Sprintf("\n\t%s %s%s%s", c.Name, c.DataType, collation, constraints)
 }
 
 func (c *BracketBlock) Expression() string {
@@ -825,7 +825,7 @@ func (c *BracketBlock) Expression() string {
 		for _, expr := range c.Expr {
 			exprs = append(exprs, expr.Expression())
 		}
-		return fmt.Sprintf("(%s)", strings.Join(exprs, ", "))
+		return fmt.Sprintf("(\n/* defined: */%s\n)", strings.Join(exprs, ", "))
 	} else {
 		if c.Statement == nil {
 			panic("BracketBlock require Expr or Statement")
