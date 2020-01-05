@@ -204,6 +204,17 @@ func makeUnusedTablesComparator(
 	}
 }
 
+func makeTypesComparator(
+	db *ActualSchemas,
+	schema string,
+	newTypes map[string]DomainSchema,
+) (
+	typesComparator ?,
+	postpone []string,
+) {
+	// TODO
+}
+
 func makeTablesComparator(
 	db *ActualSchemas,
 	schema string,
@@ -393,6 +404,13 @@ func (c *SchemaRef) diffKnown(
 		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
+	customTypes, _ := makeTypesComparator(db, schema, c.Value.Types) // TODO postponed
+	for _, domain := range customTypes {
+		first, second := domain.makeSolution()
+		preInstall = append(preInstall, first...)
+		afterInstall = append(afterInstall, second...)
+	}
+
 	tables, tablesPostponed := makeTablesComparator(db, schema, c.Value.Tables)
 	postponed.tables = tablesPostponed
 	for _, table := range tables {

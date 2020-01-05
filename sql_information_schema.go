@@ -39,9 +39,41 @@ select tc.table_schema, tc.table_name, tc.constraint_schema, tc.constraint_name,
   and tc.constraint_type='FOREIGN KEY'
 where tc.table_schema not in ('information_schema','pg_catalog')
   and lower(tc.table_catalog) = $1;`
+
+	sqlGetRecordTypes = `
+select n.nspname, t.typname, a.attname, a.attnum, at.typname, at.typnotnull,
+       information_schema._pg_char_max_length(a.atttypid, a.atttypmod),
+       information_schema._pg_numeric_precision(a.atttypid, a.atttypmod),
+       information_schema._pg_numeric_scale(a.atttypid, a.atttypmod)
+from pg_catalog.pg_type t
+inner join pg_catalog.pg_namespace n on n.oid = t.typnamespace
+inner join pg_catalog.pg_attribute a on a.attrelid = t.typrelid
+inner join pg_catalog.pg_type at on at.oid = a.atttypid
+where n.nspname not in ('information_schema','pg_catalog')
+  and t.typtype = 'c'
+  and not a.attisdropped
+  and exists(
+      select 1 from information_schema.user_defined_types dt
+      where dt.user_defined_type_schema = n.nspname and dt.user_defined_type_name = t.typname
+        and lower(dt.user_defined_type_catalog) = $1
+  )
+order by n.nspname, t.typname, a.attnum;`
 )
 
 type (
+	TypeStruct struct {
+		Schema       string
+		TypeName     string
+		AttrName     string
+		AttrOrd      int
+		AttrType     string
+		AttrRequired bool
+		MaxLength    *int
+		Precision    *int
+		Scale        *int
+		Used         *bool // WARNING: not allowed nil here
+	}
+	TypesStruct  map[string][]TypeStruct
 	DomainStruct struct {
 		DomainSchema string
 		Domain       string
@@ -93,10 +125,11 @@ type (
 	} // TODO hide type and make builder, for protection Used field
 	TablesStruct map[string]TableStruct
 	SchemaStruct struct {
-		Name    string
-		Owner   string
-		Tables  TablesStruct
-		Domains DomainsStruct
+		Name        string
+		Owner       string
+		Tables      TablesStruct
+		Domains     DomainsStruct
+		RecordTypes TypesStruct
 	}
 	ActualSchemas struct {
 		Schemas map[string]SchemaStruct
@@ -335,6 +368,34 @@ func getAllDomains(db *sql.DB, catalog string) (domains []DomainStruct) {
 	return domains
 }
 
+func getAllRecords(db *sql.DB, catalog string) (attributes []TypeStruct) {
+	if q, err := db.Query(sqlGetRecordTypes, strings.ToLower(catalog)); err != nil {
+		panic(err)
+	} else {
+		attributes = make([]TypeStruct, 0, 100)
+		var attr TypeStruct
+		for q.Next() {
+			if err := q.Scan(
+				&attr.Schema,
+				&attr.TypeName,
+				&attr.AttrName,
+				&attr.AttrOrd,
+				&attr.AttrType,
+				&attr.AttrRequired,
+				&attr.MaxLength,
+				&attr.Precision,
+				&attr.Scale,
+			); err != nil {
+				panic(err)
+			} else {
+				attr.Used = refBool(false)
+				attributes = append(attributes, attr)
+			}
+		}
+	}
+	return attributes
+}
+
 func getAllConstraints(db *sql.DB, catalog string) (constraints ActualConstraints) {
 	constraints = make(ActualConstraints, 0)
 	type constraintFlat struct {
@@ -407,6 +468,7 @@ func getAllConstraints(db *sql.DB, catalog string) (constraints ActualConstraint
 func GetAllDatabaseInformation(db *sql.DB, dbName string) (info ActualSchemas) {
 	info = getAllSchemaNames(db, dbName)
 	allDomains := getAllDomains(db, dbName)
+	allRecordTypes := getAllRecords(db, dbName)
 	allTables := getAllTables(db, dbName)
 	allConstraints := getAllConstraints(db, dbName)
 	for schemaName := range info.Schemas {
@@ -414,6 +476,18 @@ func GetAllDatabaseInformation(db *sql.DB, dbName string) (info ActualSchemas) {
 		for i, domain := range allDomains {
 			if strings.EqualFold(domain.DomainSchema, schemaName) {
 				schemaDomains[strings.ToLower(domain.Domain)] = allDomains[i]
+			}
+		}
+		schemaTypes := make(map[string][]TypeStruct)
+		for i, recordType := range allRecordTypes {
+			if strings.EqualFold(recordType.Schema, schemaName) {
+				if e, ok := schemaTypes[strings.ToLower(recordType.TypeName)]; ok {
+					schemaTypes[strings.ToLower(recordType.TypeName)] = append(e, allRecordTypes[i])
+				} else {
+					schemaTypes[strings.ToLower(recordType.TypeName)] = []TypeStruct{
+						allRecordTypes[i],
+					}
+				}
 			}
 		}
 		schemaColumns := make(map[string]map[string]ColumnStruct)
@@ -430,6 +504,7 @@ func GetAllDatabaseInformation(db *sql.DB, dbName string) (info ActualSchemas) {
 		}
 		schema := info.Schemas[schemaName]
 		schema.Domains = schemaDomains
+		schema.RecordTypes = schemaTypes
 		for tableName, tableStruct := range schemaColumns {
 			table := TableStruct{
 				Used:        refBool(false),
