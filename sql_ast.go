@@ -825,7 +825,7 @@ func (c *BracketBlock) Expression() string {
 		for _, expr := range c.Expr {
 			exprs = append(exprs, expr.Expression())
 		}
-		return fmt.Sprintf("(\n/* defined: */%s\n)", strings.Join(exprs, ", "))
+		return fmt.Sprintf("(\n/* begin */%s\n/* end */\n)", strings.Join(exprs, ", "))
 	} else {
 		if c.Statement == nil {
 			panic("BracketBlock require Expr or Statement")

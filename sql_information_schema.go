@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 )
 
@@ -86,9 +87,9 @@ type (
 		Scale        *int
 		UdtName      string
 		Used         *bool // WARNING: not allowed nil here
-	} // TODO hide type and make builder, for protection Used field
-	DomainsStruct map[string]DomainStruct
-	ColumnStruct  struct {
+	} // TODO hide type and make builder, for protection used field
+
+	rawColumnStruct struct {
 		TableSchema  string
 		TableName    string
 		Ord          int
@@ -103,9 +104,8 @@ type (
 		DomainSchema *string
 		Domain       *string
 		UdtName      string
-		Used         *bool // WARNING: not allowed nil here
-	} // TODO hide type and make builder, for protection Used field
-	ColumnsStruct   map[string]ColumnStruct
+	}
+
 	TableConstraint struct {
 		TableSchema      string
 		TableName        string
@@ -119,16 +119,16 @@ type (
 	TableStruct       struct {
 		Schema      string
 		Name        string
-		Columns     ColumnsStruct
+		Columns     ColumnsContainer
 		Constraints ActualConstraints
 		Used        *bool // WARNING: not allowed nil here
-	} // TODO hide type and make builder, for protection Used field
+	} // TODO hide type and make builder, for protection used field
 	TablesStruct map[string]TableStruct
 	SchemaStruct struct {
 		Name        string
 		Owner       string
 		Tables      TablesStruct
-		Domains     DomainsStruct
+		Domains     SchemaDomains
 		RecordTypes TypesStruct
 	}
 	ActualSchemas struct {
@@ -136,7 +136,56 @@ type (
 	}
 )
 
-func (c *ActualSchemas) getUnusedDomainAndSetItAsUsed(schemaName, domainName string) *DomainStruct {
+func (c *DomainStruct) toDomainSchema() DomainSchema {
+	return DomainSchema{
+		Type:      c.Type,
+		Length:    c.Max,
+		Precision: c.Precision,
+		NotNull:   !c.Nullable,
+		Default:   c.Default,
+		Check:     nil, // TODO
+		Enum:      nil, // TODO
+		Fields:    nil, // TODO
+		KeyType:   nil, // TODO
+		ValueType: nil, // TODO
+		used:      refBool(false),
+	}
+}
+
+func (c *rawColumnStruct) toColumnRef() ColumnRef {
+	var columnSchemaRef *string = nil
+	if c.DomainSchema != nil && c.Domain != nil {
+		columnSchemaRef = stringToRef(fmt.Sprintf(pathToDomainTemplate, *c.DomainSchema, *c.Domain))
+	}
+	return ColumnRef{
+		Value: Column{
+			Name: c.Column,
+			Schema: ColumnSchemaRef{
+				Value: DomainSchema{
+					Type:      c.Type,
+					Length:    c.Max,
+					Precision: c.Precision,
+					NotNull:   !c.Nullable,
+					Default:   c.Default,
+					Check:     nil, // TODO
+					Enum:      nil, // TODO
+					Fields:    nil, // TODO
+					KeyType:   nil, // TODO
+					ValueType: nil, // TODO
+					used:      refBool(false),
+				},
+				Ref: columnSchemaRef,
+			},
+			Constraints: nil,
+			Tags:        nil,
+			Description: "",
+		},
+		Ref:  nil,
+		used: refBool(false),
+	}
+}
+
+func (c *ActualSchemas) getUnusedDomainAndSetItAsUsed(schemaName, domainName string) *DomainSchema {
 	domain, ok := c.Schemas[strings.ToLower(schemaName)].Domains[strings.ToLower(domainName)]
 	if ok {
 		c.setDomainAsUsed(schemaName, domainName)
@@ -154,35 +203,41 @@ func (c *ActualSchemas) getUnusedTableAndSetItAsUsed(schemaName, tableName strin
 	return nil
 }
 
-func (c *ActualSchemas) getUnusedColumnAndSetItAsUsed(schemaName, tableName, columnName string) *ColumnStruct {
-	column, ok := c.Schemas[strings.ToLower(schemaName)].Tables[strings.ToLower(tableName)].Columns[strings.ToLower(columnName)]
+func (c *ActualSchemas) getUnusedColumnAndSetItAsUsed(schemaName, tableName, columnName string) *ColumnRef {
+	column, ok := c.Schemas[strings.ToLower(schemaName)].Tables[strings.ToLower(tableName)].Columns.tryToFind(columnName)
 	if ok {
-		*column.Used = true
-		return &column
+		*column.used = true
+		return column
 	}
 	return nil
 }
 
-func (c *ActualSchemas) getUnusedColumns(schemaName, tableName string) []ColumnStruct {
+func (c *ActualSchemas) getUnusedColumns(schemaName, tableName string) []ColumnRef {
 	table, ok := c.Schemas[strings.ToLower(schemaName)].Tables[strings.ToLower(tableName)]
 	if !ok {
 		return nil
 	}
-	columns := make([]ColumnStruct, 0, len(table.Columns))
+	columns := make([]ColumnRef, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		if !*column.Used {
+		if !*column.used {
 			columns = append(columns, column)
 		}
 	}
 	return columns
 }
 
-func (c *ActualSchemas) getUnusedDomains() (domains []DomainStruct) {
-	domains = make([]DomainStruct, 0, 10)
-	for _, schema := range c.Schemas {
+func (c *ActualSchemas) getUnusedDomains() (domains map[string]map[string]DomainSchema) {
+	domains = make(map[string]map[string]DomainSchema, 10)
+	for schemaName, schema := range c.Schemas {
 		for name, domain := range schema.Domains {
-			if !*domain.Used {
-				domains = append(domains, schema.Domains[name])
+			if !*domain.used {
+				if _, ok := domains[schemaName]; ok {
+					domains[schemaName][name] = schema.Domains[name]
+				} else {
+					domains[schemaName] = map[string]DomainSchema{
+						name: schema.Domains[name],
+					}
+				}
 			}
 		}
 	}
@@ -227,13 +282,13 @@ func (c *ActualSchemas) getDomainUsages(domainSchema, domainName string) []Colum
 	var usages = make([]ColumnFullName, 0, 50)
 	for schemaName, schema := range c.Schemas {
 		for tableName, table := range schema.Tables {
-			for columnName, column := range table.Columns {
-				if column.DomainSchema != nil && column.Domain != nil {
-					if strings.EqualFold(*column.DomainSchema, domainSchema) && strings.EqualFold(*column.Domain, domainName) {
+			for _, column := range table.Columns {
+				if domainSchema1, domainName1, ok := column.Value.Schema.makeCustomType(); ok {
+					if strings.EqualFold(domainSchema1, domainSchema) && strings.EqualFold(domainName1, domainName) {
 						usages = append(usages, ColumnFullName{
 							TableSchema: schemaName,
 							TableName:   tableName,
-							ColumnName:  columnName,
+							ColumnName:  column.Value.Name,
 						})
 					}
 				}
@@ -263,7 +318,7 @@ func (c *ActualSchemas) setDomainAsUsed(domainSchema, domainName string) {
 	if !ok {
 		panic("something went wrong. cannot mark domain as used")
 	}
-	*domain.Used = true
+	*domain.used = true
 }
 
 func (c *ActualSchemas) setTableAsUsed(tableSchema, tableName string) {
@@ -298,7 +353,7 @@ func getAllSchemaNames(db *sql.DB, catalog string) (list ActualSchemas) {
 				panic(err)
 			} else {
 				schema.Tables = make(TablesStruct, 0)
-				schema.Domains = make(DomainsStruct, 0)
+				schema.Domains = make(SchemaDomains, 0)
 				list.Schemas[strings.ToLower(schema.Name)] = schema
 			}
 		}
@@ -306,12 +361,12 @@ func getAllSchemaNames(db *sql.DB, catalog string) (list ActualSchemas) {
 	return
 }
 
-func getAllTables(db *sql.DB, catalog string) (columns []ColumnStruct) {
+func getAllTables(db *sql.DB, catalog string) (columns []rawColumnStruct) {
 	if q, err := db.Query(sqlGetAllTableColumns, strings.ToLower(catalog)); err != nil {
 		panic(err)
 	} else {
-		columns = make([]ColumnStruct, 0, 100)
-		var column ColumnStruct
+		columns = make([]rawColumnStruct, 0, 100)
+		var column rawColumnStruct
 		for q.Next() {
 			if err := q.Scan(
 				&column.TableSchema,
@@ -331,7 +386,6 @@ func getAllTables(db *sql.DB, catalog string) (columns []ColumnStruct) {
 			); err != nil {
 				panic(err)
 			} else {
-				column.Used = refBool(false)
 				columns = append(columns, column)
 			}
 		}
@@ -472,10 +526,10 @@ func GetAllDatabaseInformation(db *sql.DB, dbName string) (info ActualSchemas) {
 	allTables := getAllTables(db, dbName)
 	allConstraints := getAllConstraints(db, dbName)
 	for schemaName := range info.Schemas {
-		schemaDomains := make(map[string]DomainStruct)
+		schemaDomains := make(SchemaDomains, 0)
 		for i, domain := range allDomains {
 			if strings.EqualFold(domain.DomainSchema, schemaName) {
-				schemaDomains[strings.ToLower(domain.Domain)] = allDomains[i]
+				schemaDomains[strings.ToLower(domain.Domain)] = allDomains[i].toDomainSchema()
 			}
 		}
 		schemaTypes := make(map[string][]TypeStruct)
@@ -490,16 +544,14 @@ func GetAllDatabaseInformation(db *sql.DB, dbName string) (info ActualSchemas) {
 				}
 			}
 		}
-		schemaColumns := make(map[string]map[string]ColumnStruct)
+		schemaColumns := make(map[string]ColumnsContainer)
 		for i, columnStruct := range allTables {
 			if strings.EqualFold(columnStruct.TableSchema, schemaName) {
 				tableName := columnStruct.TableName
 				if _, ok := schemaColumns[strings.ToLower(tableName)]; !ok {
-					schemaColumns[strings.ToLower(tableName)] = make(map[string]ColumnStruct, 20)
+					schemaColumns[strings.ToLower(tableName)] = make(ColumnsContainer, 0, 20)
 				}
-				columnName := columnStruct.Column
-				// there is no columns with same names
-				schemaColumns[strings.ToLower(tableName)][strings.ToLower(columnName)] = allTables[i]
+				schemaColumns[strings.ToLower(tableName)] = append(schemaColumns[strings.ToLower(tableName)], allTables[i].toColumnRef())
 			}
 		}
 		schema := info.Schemas[schemaName]

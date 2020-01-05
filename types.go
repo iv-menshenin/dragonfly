@@ -22,6 +22,8 @@ const (
 	// components
 	columns = "columns"
 	classes = "classes"
+
+	pathToDomainTemplate = "#/schemas/%s/domains/%s"
 )
 
 var (
@@ -43,6 +45,7 @@ type (
 		// for type `map`
 		KeyType   *ColumnSchemaRef `yaml:"key_type,omitempty" json:"key_type,omitempty"`
 		ValueType *ColumnSchemaRef `yaml:"value_type,omitempty" json:"value_type,omitempty"`
+		used      *bool
 	}
 	EnumEntity struct {
 		Value       string `yaml:"value" json:"value"`
@@ -62,6 +65,7 @@ type (
 	ColumnRef struct {
 		Value Column  `yaml:"-,inline" json:"-,inline"`
 		Ref   *string `yaml:"$ref,omitempty" json:"$ref,omitempty"`
+		used  *bool
 	}
 	ForeignKey struct {
 		ToTable  string  `yaml:"table" json:"table"`
@@ -112,10 +116,11 @@ type (
 		Description string           `yaml:"description,omitempty" json:"description,omitempty"`
 		Api         ApiContainer     `yaml:"api,omitempty" json:"api,omitempty"`
 	}
-	Schema struct {
+	SchemaDomains map[string]DomainSchema
+	Schema        struct {
 		Name    string                  `yaml:"name" json:"name"`
 		Types   map[string]DomainSchema `yaml:"types,omitempty" json:"types,omitempty"`
-		Domains map[string]DomainSchema `yaml:"domains,omitempty" json:"domains,omitempty"`
+		Domains SchemaDomains           `yaml:"domains,omitempty" json:"domains,omitempty"`
 		Tables  map[string]TableClass   `yaml:"tables,omitempty" json:"tables,omitempty"`
 	}
 	SchemaRef struct {
