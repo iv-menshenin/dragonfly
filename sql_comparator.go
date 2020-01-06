@@ -1,13 +1,10 @@
 package dragonfly
 
 import (
-	"database/sql"
 	"fmt"
 	_ "github.com/lib/pq"
 	"go/token"
-	"io"
 	"math/rand"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -26,18 +23,18 @@ type (
 )
 
 func makeUnusedDomainsComparator(
-	db *ActualSchemas,
+	current *Root,
 	schemaName string,
 	newDomainName string,
 	newDomain DomainSchema,
-	root *Root,
+	new *Root,
 ) (
 	comparator *DomainComparator,
 ) {
 	domains := make(map[string]DomainSchema, 50)
 	matches := make(map[string]int, 50)
 	// considering that I deleted the found, now in this collection I have everything that remains
-	for domainSchemaName, actualDomains := range db.getUnusedDomains() {
+	for domainSchemaName, actualDomains := range current.getUnusedDomains() {
 		for actualDomainName, actualDomain := range actualDomains {
 			key := fmt.Sprintf("%s.%s", domainSchemaName, actualDomainName)
 			domains[key] = actualDomain
@@ -49,10 +46,10 @@ func makeUnusedDomainsComparator(
 			if newDomain.NotNull != actualDomain.NotNull {
 				continue
 			}
-			usages := db.getDomainUsages(domainSchemaName, actualDomainName)
+			usages := current.getDomainUsages(domainSchemaName, actualDomainName)
 			for _, usage := range usages {
 				var column Column
-				if root.follow(root, []string{
+				if new.follow(new, []string{
 					"schemas",
 					usage.TableSchema,
 					"tables",
@@ -76,7 +73,7 @@ func makeUnusedDomainsComparator(
 	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
 		actualDomainSchemaName, actualDomainName := strings.Split(keys[0], ".")[0], strings.Split(keys[0], ".")[1]
 		actualDomain := domains[keys[0]]
-		db.setDomainAsUsed(actualDomainSchemaName, actualDomainName)
+		*actualDomain.used = true
 		return &DomainComparator{
 			Name: NameComparator{
 				Actual: actualDomainName,
@@ -111,7 +108,7 @@ func makeUnusedDomainsComparator(
 }
 
 func makeDomainsComparator(
-	db *ActualSchemas,
+	current *Root,
 	schema string,
 	newDomains map[string]DomainSchema,
 ) (
@@ -123,7 +120,7 @@ func makeDomainsComparator(
 	for domainName := range newDomains {
 		var (
 			newDomain = newDomains[domainName] // copy because we need a reference value
-			oldDomain = db.getUnusedDomainAndSetItAsUsed(schema, domainName)
+			oldDomain = current.getUnusedDomainAndSetItAsUsed(schema, domainName)
 		)
 		if oldDomain != nil {
 			// both domains with same schema and name
@@ -149,39 +146,42 @@ func makeDomainsComparator(
 }
 
 func makeUnusedTablesComparator(
-	db *ActualSchemas,
+	current *Root,
 	schemaName string,
 	newTableName string,
 	newTable TableClass,
 ) (
 	comparator *TableComparator,
 ) {
-	tables := make(map[string]TableStruct, 50)
+	tables := make(map[string]TableClass, 50)
 	matches := make(map[string]int, 50)
-	for _, actualTable := range db.getUnusedTables() {
-		key := fmt.Sprintf("%s.%s", schemaName, newTableName)
-		matches[key] = 0
-		tables[key] = actualTable
-		for _, newColumn := range newTable.Columns {
-			for _, actualColumn := range actualTable.Columns {
-				if strings.EqualFold(newColumn.Value.Name, actualColumn.Value.Name) {
-					matches[key] += 1
+	for tableSchemaName, actualTables := range current.getUnusedTables() {
+		for tableName, actualTable := range actualTables {
+			key := fmt.Sprintf("%s.%s", tableSchemaName, tableName)
+			matches[key] = 0
+			tables[key] = actualTable
+			for _, newColumn := range newTable.Columns {
+				for _, actualColumn := range actualTable.Columns {
+					if strings.EqualFold(newColumn.Value.Name, actualColumn.Value.Name) {
+						matches[key] += 1
+					}
 				}
 			}
+			matches[key] -= len(newTable.Columns) - matches[key]
 		}
-		matches[key] -= len(newTable.Columns) - matches[key]
 	}
 	keys, vals := sortMap(matches).getSortedKeysValues()
 	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
+		actualSchemaName, actualTableName := strings.Split(keys[0], ".")[0], strings.Split(keys[0], ".")[1]
 		actualTable := tables[keys[0]]
-		db.setTableAsUsed(actualTable.Schema, actualTable.Name)
+		*actualTable.used = true
 		return &TableComparator{
 			Name: NameComparator{
-				Actual: actualTable.Name,
+				Actual: actualTableName,
 				New:    newTableName,
 			},
 			Schema: NameComparator{
-				Actual: actualTable.Schema,
+				Actual: actualSchemaName,
 				New:    schemaName,
 			},
 			TableStruct: TableStructComparator{
@@ -209,7 +209,7 @@ func makeUnusedTablesComparator(
 }
 
 func makeTypesComparator(
-	db *ActualSchemas,
+	current *Root,
 	schema string,
 	newTypes map[string]DomainSchema,
 ) (
@@ -220,7 +220,7 @@ func makeTypesComparator(
 }
 
 func makeTablesComparator(
-	db *ActualSchemas,
+	current *Root,
 	schema string,
 	tables map[string]TableClass,
 ) (
@@ -232,23 +232,24 @@ func makeTablesComparator(
 	for tableName, tableStruct := range tables {
 		var (
 			newStruct = tables[tableName]
-			oldStruct = db.getUnusedTableAndSetItAsUsed(schema, tableName)
+			oldStruct = current.getUnusedTableAndSetItAsUsed(schema, tableName)
 		)
 		if oldStruct != nil {
+			// both tables has same name
 			tablesComparator = append(tablesComparator, TableComparator{
 				Name: NameComparator{
-					Actual: oldStruct.Name,
+					Actual: tableName,
 					New:    tableName,
 				},
 				Schema: NameComparator{
-					Actual: oldStruct.Schema,
+					Actual: schema,
 					New:    schema,
 				},
 				TableStruct: TableStructComparator{
 					OldStructure: oldStruct,
 					NewStructure: &newStruct,
 				},
-				ColumnsComparator: makeColumnsComparator(db, schema, tableName, tableStruct, *oldStruct),
+				ColumnsComparator: makeColumnsComparator(current, schema, tableName, tableStruct, *oldStruct),
 			})
 		} else {
 			// new tables
@@ -272,10 +273,10 @@ func (c *TableClass) getAllColumnConstraints(columnName string) []Constraint {
 }
 
 func makeColumnsComparator(
-	db *ActualSchemas,
+	current *Root,
 	schemaName, tableName string,
 	table TableClass,
-	currTable TableStruct,
+	currTable TableClass,
 ) (
 	columns ColumnsComparator,
 ) {
@@ -283,7 +284,7 @@ func makeColumnsComparator(
 	for ci, column := range table.Columns {
 		var (
 			comparator ColumnComparator
-			oldColumn  = db.getUnusedColumnAndSetItAsUsed(schemaName, tableName, column.Value.Name)
+			oldColumn  = current.getUnusedColumnAndSetItAsUsed(schemaName, tableName, column.Value.Name)
 		)
 		comparator.TableName = tableName
 		comparator.SchemaName = schemaName
@@ -297,7 +298,7 @@ func makeColumnsComparator(
 		columns = append(columns, comparator)
 	}
 	// not matched
-	unusedColumns := db.getUnusedColumns(schemaName, tableName)
+	unusedColumns := current.getUnusedColumns(schemaName, tableName)
 	for i, actualColumn := range unusedColumns {
 		var matches = make(map[string]int, 0)
 		for _, column := range columns {
@@ -326,7 +327,7 @@ func makeColumnsComparator(
 				continue
 			}
 			// comparing constraints if exists
-			actualConstraints := db.getColumnConstraints(schemaName, tableName, actualColumn.Value.Name)
+			actualConstraints := current.getColumnConstraints(schemaName, tableName, actualColumn.Value.Name)
 			newConstraints := table.getAllColumnConstraints(column.Name.New)
 			if itHaveSameConstraints(actualConstraints, newConstraints) {
 				matches[column.Name.New] = 1
@@ -361,18 +362,20 @@ func makeColumnsComparator(
 	return columns
 }
 
-func itHaveSameConstraints(constraints []TableConstraint, constraints2 []Constraint) bool {
+func itHaveSameConstraints(constraints, constraints2 []Constraint) bool {
 	for _, constraint1 := range constraints {
 		for _, constraint2 := range constraints2 {
-			if strings.EqualFold(constraint1.ConstraintName, constraint2.Name) {
+			if strings.EqualFold(constraint1.Name, constraint2.Name) {
 				return true
 			}
-			if strings.EqualFold(constraint1.ConstraintType, "primary key") && constraint2.Type == ConstraintPrimaryKey {
+			if constraint1.Type == ConstraintPrimaryKey && constraint2.Type == ConstraintPrimaryKey {
 				return true
 			}
-			if constraint1.ForeignKey != nil && constraint2.Type == ConstraintForeignKey {
-				if fk, ok := constraint2.Parameters.Parameter.(ForeignKey); ok {
-					if strings.EqualFold(fk.ToTable, constraint1.ForeignKey.ForeignTable.TableName) && strings.EqualFold(fk.ToColumn, constraint1.ForeignKey.ForeignTable.ColumnName) {
+			if constraint1.Type == ConstraintForeignKey && constraint2.Type == ConstraintForeignKey {
+				fk1, ok1 := constraint1.Parameters.Parameter.(ForeignKey)
+				fk2, ok2 := constraint2.Parameters.Parameter.(ForeignKey)
+				if ok1 && ok2 {
+					if strings.EqualFold(fk1.ToTable, fk2.ToTable) && strings.EqualFold(fk1.ToColumn, fk2.ToColumn) {
 						return true
 					}
 				}
@@ -390,10 +393,9 @@ type (
 )
 
 func (c *SchemaRef) diffKnown(
-	db *ActualSchemas,
+	current *Root,
 	schema string,
-	root *Root,
-	w io.Writer,
+	new *Root,
 ) (
 	preInstall []SqlStmt,
 	install []SqlStmt,
@@ -402,24 +404,24 @@ func (c *SchemaRef) diffKnown(
 ) {
 	preInstall = make([]SqlStmt, 0, 0)
 	install = make([]SqlStmt, 0, 0)
-	domains, domainsPostponed := makeDomainsComparator(db, schema, c.Value.Domains)
+	domains, domainsPostponed := makeDomainsComparator(current, schema, c.Value.Domains)
 	postponed.domains = domainsPostponed
 	for _, domain := range domains {
 		first, second := domain.makeSolution()
 		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
-	customTypes, _ := makeTypesComparator(db, schema, c.Value.Types) // TODO postponed
+	customTypes, _ := makeTypesComparator(current, schema, c.Value.Types) // TODO postponed
 	for _, domain := range customTypes {
 		first, second := domain.makeSolution()
 		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
 
-	tables, tablesPostponed := makeTablesComparator(db, schema, c.Value.Tables)
+	tables, tablesPostponed := makeTablesComparator(current, schema, c.Value.Tables)
 	postponed.tables = tablesPostponed
 	for _, table := range tables {
-		first, second := table.makeSolution(db)
+		first, second := table.makeSolution(current)
 		preInstall = append(preInstall, first...)
 		install = append(install, second...)
 	}
@@ -428,10 +430,9 @@ func (c *SchemaRef) diffKnown(
 
 func (c *SchemaRef) diffPostponed(
 	postponed postponedObjects,
-	db *ActualSchemas,
+	current *Root,
 	schema string,
-	root *Root,
-	w io.Writer,
+	new *Root,
 ) (
 	preInstall []SqlStmt,
 	install []SqlStmt,
@@ -445,7 +446,7 @@ func (c *SchemaRef) diffPostponed(
 		if !ok {
 			panic("something went wrong. check the domain name character case mistakes")
 		}
-		if comparator := makeUnusedDomainsComparator(db, schema, domainName, domain, root); comparator != nil {
+		if comparator := makeUnusedDomainsComparator(current, schema, domainName, domain, new); comparator != nil {
 			first, second := comparator.makeSolution()
 			preInstall = append(preInstall, first...)
 			afterInstall = append(afterInstall, second...)
@@ -456,8 +457,8 @@ func (c *SchemaRef) diffPostponed(
 		if !ok {
 			panic("something went wrong. check the table name character case mistakes")
 		}
-		if comparator := makeUnusedTablesComparator(db, schema, tableName, table); comparator != nil {
-			first, second := comparator.makeSolution(db)
+		if comparator := makeUnusedTablesComparator(current, schema, tableName, table); comparator != nil {
+			first, second := comparator.makeSolution(current)
 			install = append(install, first...)
 			afterInstall = append(afterInstall, second...)
 		}
@@ -467,10 +468,9 @@ func (c *SchemaRef) diffPostponed(
 }
 
 func (c *SchemaRef) prepareDeleting(
-	db *ActualSchemas,
+	current *Root,
 	schema string,
-	root *Root,
-	w io.Writer,
+	new *Root,
 ) (
 	preInstall []SqlStmt,
 	install []SqlStmt,
@@ -480,7 +480,7 @@ func (c *SchemaRef) prepareDeleting(
 	install = make([]SqlStmt, 0, 0)
 	afterInstall = make([]SqlStmt, 0, 0)
 	// TODO drop tables
-	for domainSchemaName, unusedDomains := range db.getUnusedDomains() {
+	for domainSchemaName, unusedDomains := range current.getUnusedDomains() {
 		for domainName, unusedDomain := range unusedDomains {
 			if strings.EqualFold(domainSchemaName, schema) {
 				comparator := DomainComparator{
@@ -520,7 +520,7 @@ type (
 	ColumnsComparator []ColumnComparator
 
 	TableStructComparator struct {
-		OldStructure *TableStruct
+		OldStructure *TableClass
 		NewStructure *TableClass
 	}
 	TableComparator struct {
@@ -579,7 +579,7 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 }
 
 func (c TableComparator) makeSolution(
-	db *ActualSchemas,
+	current *Root,
 ) (
 	install []SqlStmt,
 	afterInstall []SqlStmt,
@@ -603,7 +603,7 @@ func (c TableComparator) makeSolution(
 	}
 	if c.ColumnsComparator != nil {
 		for _, columnComparator := range c.ColumnsComparator {
-			first, second := columnComparator.makeSolution(db)
+			first, second := columnComparator.makeSolution(current)
 			install = append(install, first...)
 			afterInstall = append(afterInstall, second...)
 		}
@@ -612,7 +612,7 @@ func (c TableComparator) makeSolution(
 	return
 }
 
-func (c ColumnComparator) makeSolution(db *ActualSchemas) (install []SqlStmt, afterInstall []SqlStmt) {
+func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterInstall []SqlStmt) {
 	/*
 		TODO make two modes: soft and hard
 		  in soft mode we can alter table:
@@ -641,7 +641,7 @@ func (c ColumnComparator) makeSolution(db *ActualSchemas) (install []SqlStmt, af
 		}
 		install = append(install, makeColumnAdd(c.SchemaName, c.TableName, *c.NewStruct))
 		if makeValidateNotNull {
-			install = append(install, fixEmptyColumn(db, c.SchemaName, c.TableName, *c.NewStruct)...)
+			install = append(install, fixEmptyColumn(current, c.SchemaName, c.TableName, *c.NewStruct)...)
 			if isCustom {
 				install = append(install, makeDomainSetNotNull(customSchema, customType, true))
 			} else {
@@ -663,7 +663,7 @@ func (c ColumnComparator) makeSolution(db *ActualSchemas) (install []SqlStmt, af
 	return
 }
 
-func fixEmptyColumn(db *ActualSchemas, schema, table string, column ColumnRef) []SqlStmt {
+func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []SqlStmt {
 	// this is the case when we change the data type of the relationship between the dependent and dependent table
 	// simply put, the foreign key is changing
 	for _, constraint := range column.Value.Constraints {
@@ -675,7 +675,11 @@ func fixEmptyColumn(db *ActualSchemas, schema, table string, column ColumnRef) [
 					foreignTable = tab[1]
 					foreignSchema = tab[0]
 				}
-				if existingFK := db.getForeignKey(schema, foreignSchema, table, foreignTable); existingFK != nil {
+				if existingFK := current.getForeignKey(schema, foreignSchema, table, foreignTable); existingFK != nil {
+					fkSchema, fkTable := schema, existingFK.ToTable
+					if tableSep := strings.Split(existingFK.ToTable, "."); len(tableSep) > 1 {
+						fkSchema, fkTable = tableSep[0], tableSep[1]
+					}
 					return []SqlStmt{
 						&UpdateStmt{
 							Table: TableDesc{
@@ -695,16 +699,16 @@ func fixEmptyColumn(db *ActualSchemas, schema, table string, column ColumnRef) [
 											},
 											From: TableDesc{
 												Table: &Selector{
-													Name:      existingFK.ForeignTable.TableName,
-													Container: existingFK.ForeignTable.SchemaName,
+													Name:      fkSchema,
+													Container: fkTable,
 												},
 												Alias: "",
 											},
 											Where: &BinaryExpr{
-												Left: &Literal{Text: existingFK.ForeignTable.ColumnName},
+												Left: &Literal{Text: existingFK.ToColumn},
 												Right: &UnaryExpr{
 													Ident: &Selector{
-														Name:      existingFK.MainTable.ColumnName,
+														Name:      existingFK.ToColumn,
 														Container: "dest",
 													},
 												},
@@ -734,79 +738,6 @@ type (
 		Database string
 	}
 )
-
-func DatabaseDiff(root *Root, optionSchemaName string, options ConnectionOptions, w io.Writer) {
-	dbConnectionString := fmt.Sprintf(
-		"%s://%s:%s@%s/%s",
-		options.Driver,
-		url.QueryEscape(options.UserName),
-		url.QueryEscape(options.Password),
-		options.Host,
-		options.Database,
-	)
-	var (
-		db, err = sql.Open(options.Driver, dbConnectionString)
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	var (
-		actualStructure        = GetAllDatabaseInformation(db, options.Database)
-		preInstall             = make([]SqlStmt, 0, 0)
-		install                = make([]SqlStmt, 0, 0)
-		afterInstall           = make([]SqlStmt, 0, 0)
-		postponedSchemaObjects = make(map[string]postponedObjects, 0)
-	)
-	for _, schema := range root.Schemas {
-		// process all
-		pre, ins, after, postponed := schema.diffKnown(&actualStructure, schema.Value.Name, root, w)
-		postponedSchemaObjects[schema.Value.Name] = postponed
-		// save needed
-		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
-			preInstall = append(preInstall, pre...)
-			install = append(install, ins...)
-			afterInstall = append(afterInstall, after...)
-		}
-	}
-	for _, schema := range root.Schemas {
-		postponedSchema, ok := postponedSchemaObjects[schema.Value.Name]
-		if !ok {
-			continue
-		}
-		pre, ins, after := schema.diffPostponed(postponedSchema, &actualStructure, schema.Value.Name, root, w)
-		// save needed
-		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
-			preInstall = append(preInstall, pre...)
-			install = append(install, ins...)
-			afterInstall = append(afterInstall, after...)
-		}
-	}
-	for _, schema := range root.Schemas {
-		pre, ins, after := schema.prepareDeleting(&actualStructure, schema.Value.Name, root, w)
-		// save needed
-		if optionSchemaName == "" || strings.EqualFold(optionSchemaName, schema.Value.Name) {
-			preInstall = append(preInstall, pre...)
-			install = append(install, ins...)
-			afterInstall = append(afterInstall, after...)
-		}
-	}
-
-	writer(w, "/*\n    BEGIN OF UPDATE SCRIPT\n    SCHEMA FILTER: %s\n*/", optionSchemaName)
-	writer(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
-	for _, stmt := range preInstall {
-		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
-	}
-	writer(w, "\n/* SECTION INSTALL %s */", strings.Repeat("=", 58))
-	for _, stmt := range install {
-		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
-	}
-	writer(w, "\n/* SECTION AFTER INSTALL %s */", strings.Repeat("=", 52))
-	for _, stmt := range afterInstall {
-		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
-	}
-	writer(w, "\n/* END OF UPDATE SCRIPT %s */", strings.Repeat("=", 53))
-}
 
 func init() {
 	// TODO move from here

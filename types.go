@@ -52,7 +52,7 @@ type (
 		Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	}
 	ColumnSchemaRef struct {
-		Value DomainSchema `yaml:"-,inline" json:"-,inline"`
+		Value DomainSchema `yaml:"value,inline" json:"value,inline"`
 		Ref   *string      `yaml:"$ref,omitempty" json:"$ref,omitempty"`
 	}
 	Column struct {
@@ -63,10 +63,12 @@ type (
 		Description string          `yaml:"description,omitempty" json:"description,omitempty"`
 	}
 	ColumnRef struct {
-		Value Column  `yaml:"-,inline" json:"-,inline"`
+		Value Column  `yaml:"value,inline" json:"value,inline"`
 		Ref   *string `yaml:"$ref,omitempty" json:"$ref,omitempty"`
 		used  *bool
 	}
+	// constraint parameters
+	// TODO interface IConstraintParameter
 	ForeignKey struct {
 		ToTable  string  `yaml:"table" json:"table"`
 		ToColumn string  `yaml:"column" json:"column"`
@@ -79,9 +81,9 @@ type (
 	Where struct {
 		Where string `yaml:"where" json:"where"`
 	}
-	// ForeignKey, Check
+	// ForeignKey, Check, Where
 	ConstraintParameters struct {
-		Parameter interface{} `yaml:"-,inline" json:"-,inline"`
+		Parameter interface{} `yaml:"value,inline" json:"value,inline"`
 	}
 	ConstraintType int
 	Constraint     struct {
@@ -115,24 +117,27 @@ type (
 		Constraints TableConstraints `yaml:"constraints,omitempty" json:"constraints,omitempty"`
 		Description string           `yaml:"description,omitempty" json:"description,omitempty"`
 		Api         ApiContainer     `yaml:"api,omitempty" json:"api,omitempty"`
+		used        *bool
 	}
-	SchemaDomains map[string]DomainSchema
-	Schema        struct {
-		Name    string                  `yaml:"name" json:"name"`
-		Types   map[string]DomainSchema `yaml:"types,omitempty" json:"types,omitempty"`
-		Domains SchemaDomains           `yaml:"domains,omitempty" json:"domains,omitempty"`
-		Tables  map[string]TableClass   `yaml:"tables,omitempty" json:"tables,omitempty"`
+	DomainsContainer map[string]DomainSchema
+	TablesContainer  map[string]TableClass
+	Schema           struct {
+		Name    string           `yaml:"name" json:"name"`
+		Types   DomainsContainer `yaml:"types,omitempty" json:"types,omitempty"`
+		Domains DomainsContainer `yaml:"domains,omitempty" json:"domains,omitempty"`
+		Tables  TablesContainer  `yaml:"tables,omitempty" json:"tables,omitempty"`
 	}
 	SchemaRef struct {
-		Value Schema  `yaml:"-,inline" json:"-,inline"`
+		Value Schema  `yaml:"value,inline" json:"value,inline"`
 		Ref   *string `yaml:"$ref,omitempty" json:"$ref,omitempty"`
 	}
 	Components struct {
 		Columns map[string]Column     `yaml:"columns" json:"columns"`
 		Classes map[string]TableClass `yaml:"classes" json:"classes"`
 	}
-	Root struct {
-		Schemas []SchemaRef `yaml:"schemas" json:"schemas"`
+	Schemas []SchemaRef
+	Root    struct {
+		Schemas Schemas `yaml:"schemas" json:"schemas"`
 		// important: avoid getting any components directly, they are not normalized
 		Components Components `yaml:"components" json:"components"`
 	}
@@ -191,6 +196,15 @@ func (c ColumnSchemaRef) makeCustomType() (string, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+func (c Schemas) tryToFind(name string) (*SchemaRef, bool) {
+	for i, schema := range c {
+		if strings.EqualFold(schema.Value.Name, name) {
+			return &c[i], true
+		}
+	}
+	return nil, false
 }
 
 func (c *Root) getComponentColumn(name string) (*Column, bool) {
@@ -337,6 +351,7 @@ func (c *Column) follow(db *Root, path []string, i interface{}) bool {
 }
 
 func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
+	c.used = refBool(false)
 	if c.Ref != nil {
 		processRef(db, *c.Ref, &c.Value)
 	}
@@ -371,6 +386,7 @@ func (c *ConstraintSchema) normalize(schema *SchemaRef, tableName string, constr
 }
 
 func (c *ColumnSchemaRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
+	c.Value.used = refBool(false)
 	if c.Ref != nil {
 		processRef(db, *c.Ref, &c.Value)
 	}
@@ -395,6 +411,15 @@ func (c TableConstraints) exists(name string) bool {
 		}
 	}
 	return false
+}
+
+func (c TablesContainer) tryToFind(name string) (*TableClass, bool) {
+	for tableName, table := range c {
+		if strings.EqualFold(name, tableName) {
+			return &table, true
+		}
+	}
+	return nil, false
 }
 
 func (c ColumnsContainer) exists(name string) bool {
@@ -462,6 +487,7 @@ func (c *TableClass) follow(db *Root, path []string, i interface{}) bool {
 }
 
 func (c *TableClass) normalize(schema *SchemaRef, tableName string, db *Root) {
+	c.used = refBool(false)
 	for i, column := range c.Columns {
 		column.normalize(schema, tableName, i, db)
 		c.Columns[i] = column
@@ -504,6 +530,14 @@ func (c *SchemaRef) normalize(db *Root) {
 	for tableName, table := range c.Value.Tables {
 		table.normalize(c, tableName, db)
 		c.Value.Tables[tableName] = table
+	}
+	for i, domain := range c.Value.Domains {
+		domain.used = refBool(false)
+		c.Value.Domains[i] = domain
+	}
+	for i, userType := range c.Value.Types {
+		userType.used = refBool(false)
+		c.Value.Types[i] = userType
 	}
 }
 

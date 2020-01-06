@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/ghodss/yaml"
 	"github.com/iv-menshenin/dragonfly"
 	"io"
 	"os"
@@ -28,6 +29,7 @@ const (
 	ToDoValidate ToDo = "validate"
 	ToDoGenerate ToDo = "generate"
 	ToDoDiff     ToDo = "diff"
+	ToDoReverse  ToDo = "reverse"
 	ToDoHelp     ToDo = "help"
 )
 
@@ -99,6 +101,13 @@ func initFlags() ProgramParams {
 	}
 	flagSets[ToDoDiff] = fsDiff
 
+	fsReverse := flag.NewFlagSet(string(ToDoReverse), flag.PanicOnError)
+	parameters[ToDoReverse] = ProgramParams{
+		ToDo:       ToDoReverse,
+		OutputFile: fsReverse.String("output", os.Stdout.Name(), "file to output"),
+	}
+	flagSets[ToDoReverse] = fsReverse
+
 	fsHelp := flag.NewFlagSet(string(ToDoHelp), flag.PanicOnError)
 	parameters[ToDoHelp] = ProgramParams{
 		ToDo: ToDoHelp,
@@ -161,16 +170,50 @@ func main() {
 	case ToDoDiff:
 		err := openFileForWrite(*state.OutputFile, func(w io.Writer) error {
 			readAndParse()
-			dragonfly.DatabaseDiff(root, *state.Schema, dragonfly.ConnectionOptions{
+			var (
+				dump dragonfly.Root
+				e    error
+			)
+			if dump, e = dragonfly.MakeDatabaseDump(dragonfly.ConnectionOptions{
 				Driver:   "postgres",
 				UserName: "postgres",
 				Password: os.Getenv("DB_PASSWORD"),
 				Host:     os.Getenv("DB_HOST"),
 				Database: os.Getenv("DB_NAME"),
-			}, w)
+			}); e != nil {
+				return e
+			}
+			diff := dragonfly.MakeDiff(&dump, root)
+			diff.Print(w)
 			return nil
 		})
 		if err != nil {
+			raise(err)
+		}
+	case ToDoReverse:
+		if err := openFileForWrite(*state.OutputFile, func(w io.Writer) error {
+			var (
+				dump dragonfly.Root
+				data []byte
+				e    error
+			)
+			if dump, e = dragonfly.MakeDatabaseDump(dragonfly.ConnectionOptions{
+				Driver:   "postgres",
+				UserName: "postgres",
+				Password: os.Getenv("DB_PASSWORD"),
+				Host:     os.Getenv("DB_HOST"),
+				Database: os.Getenv("DB_NAME"),
+			}); e != nil {
+				return e
+			}
+			if data, e = yaml.Marshal(&dump); e != nil {
+				return e
+			}
+			if _, e = w.Write(data); e != nil {
+				return e
+			}
+			return nil
+		}); err != nil {
 			raise(err)
 		}
 	case ToDoHelp:
