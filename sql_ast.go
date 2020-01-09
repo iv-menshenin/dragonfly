@@ -693,7 +693,7 @@ func (c *UnaryExpr) Expression() string {
 /* CONSTRAINTS */
 
 func (c *NamedConstraintExpr) ConstraintString() string {
-	return fmt.Sprintf("%s %s", c.Name.GetName(), c.Constraint.ConstraintString())
+	return fmt.Sprintf("constraint %s %s", c.Name.GetName(), c.Constraint.ConstraintString())
 }
 
 func (c *NamedConstraintExpr) ConstraintParams() string {
