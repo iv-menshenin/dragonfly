@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -357,6 +358,21 @@ func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex i
 	}
 	if c.Value.Name == "" {
 		panic(fmt.Sprintf("undefined name for table '%s' column #%d", tableName, columnIndex+1))
+	}
+	constraints := make([]Constraint, len(c.Value.Constraints))
+	reflect.Copy(reflect.ValueOf(constraints), reflect.ValueOf(c.Value.Constraints))
+	for i, constraint := range constraints {
+		constraint.Name = evalTemplateParameters(constraint.Name, map[string]string{
+			"Table":       tableName,
+			"Column":      c.Value.Name,
+			"Schema":      schema.Value.Name,
+			"ColumnIndex": strconv.Itoa(columnIndex),
+			"Index":       strconv.Itoa(i),
+		})
+		constraints[i] = constraint
+	}
+	if !reflect.DeepEqual(constraints, c.Value.Constraints) {
+		c.Value.Constraints = constraints
 	}
 	c.Value.Schema.normalize(schema, tableName, columnIndex, db)
 }
