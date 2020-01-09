@@ -183,7 +183,7 @@ func TestColumnRef_normalize(t *testing.T) {
 					},
 					Constraints: []Constraint{
 						{
-							Name: "Test2_{%Schema}_{%Table}_{%ColumnIndex}",
+							Name: "Test1_{%Schema}_{%Table}_{%ColumnIndex}",
 							Type: ConstraintPrimaryKey,
 						},
 					},
@@ -234,11 +234,39 @@ func TestColumnRef_normalize(t *testing.T) {
 				if col.Value.Name != "column_1" || col.Value.Schema.Value.Type != "varchar" {
 					return errors.New("Column.Value: the object did not receive its contents by reference")
 				}
-				if col.Value.Constraints[0].Name != "Test2_test_schema_1_test_table_1_0" {
+				if col.Value.Constraints[0].Name != "Test1_test_schema_1_test_table_1_0" {
 					return errors.New("Constraints[0].Name: did not complete the template conversion")
 				}
-				if testRoot.Components.Columns["test_column_1"].Constraints[0].Name != "Test2_{%Schema}_{%Table}_{%ColumnIndex}" {
+				if testRoot.Components.Columns["test_column_1"].Constraints[0].Name != "Test1_{%Schema}_{%Table}_{%ColumnIndex}" {
 					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
+				}
+				if col.used == nil || *col.used {
+					return errors.New("flag 'used' not initialized")
+				}
+				return nil
+			},
+		},
+		{
+			name:   "test another column",
+			column: &testRoot.Schemas[0].Value.Tables["test_table_1"].Columns[1],
+			args: args{
+				schema:      &testRoot.Schemas[0],
+				tableName:   "test_table_1",
+				columnIndex: 1,
+				db:          &testRoot,
+			},
+			test: func(col *ColumnRef) error {
+				if col.Value.Name != "column_2" || col.Value.Schema.Value.Type != "int8" {
+					return errors.New("Column.Value: the object did not receive its contents by reference")
+				}
+				if col.Value.Constraints[0].Name != "Test2_test_table_1_test_schema_1_1" {
+					return errors.New("Constraints[0].Name: did not complete the template conversion")
+				}
+				if testRoot.Components.Columns["test_column_2"].Constraints[0].Name != "Test2_{%Table}_{%Schema}_{%ColumnIndex}" {
+					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
+				}
+				if col.used == nil || *col.used {
+					return errors.New("flag 'used' not initialized")
 				}
 				return nil
 			},
