@@ -21,8 +21,9 @@ const (
 	tables  = "tables"
 
 	// components
-	columns = "columns"
-	classes = "classes"
+	columns     = "columns"
+	classes     = "classes"
+	constraints = "constraints"
 
 	pathToDomainTemplate = "#/schemas/%s/domains/%s"
 )
@@ -426,11 +427,20 @@ func (c ApiContainer) exists(name string) bool {
 
 func (c TableConstraints) exists(name string) bool {
 	for _, constraint := range c {
-		if constraint.Constraint.Name == name {
+		if strings.EqualFold(constraint.Constraint.Name, name) {
 			return true
 		}
 	}
 	return false
+}
+
+func (c TableConstraints) tryToFind(name string) (*ConstraintSchema, bool) {
+	for i, constraint := range c {
+		if strings.EqualFold(constraint.Constraint.Name, name) {
+			return &c[i], true
+		}
+	}
+	return nil, false
 }
 
 func (c TablesContainer) tryToFind(name string) (*TableClass, bool) {
@@ -501,7 +511,14 @@ func (c *TableClass) follow(db *Root, path []string, i interface{}) bool {
 			copyFromTo(column.Value, i)
 			return true
 		}
-		// TODO ??
+		if path[0] == constraints {
+			constraint, ok := c.Constraints.tryToFind(path[1])
+			if ok {
+				copyFromTo(constraint, i)
+				return true
+			}
+			return false
+		}
 	}
 	return false
 }
