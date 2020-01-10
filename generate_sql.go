@@ -86,33 +86,7 @@ func (c *ConstraintParameters) describeSQL(columns []string) string {
 }
 
 func (r *Constraint) describeSQL(schemaName, tableName string, columns []string, constraintIndex int) string {
-	constrType := r.Type
-	var (
-		foreignTable  string
-		foreignColumn string
-	)
-	if fk, ok := r.Parameters.Parameter.(ForeignKey); ok {
-		foreignTable = fk.ToTable
-		foreignColumn = fk.ToColumn
-	}
-	constrName := evalTemplateParameters(
-		r.Name,
-		map[string]string{
-			cNN:            strconv.Itoa(constraintIndex),
-			cTable:         tableName,
-			cSchema:        schemaName,
-			cForeignTable:  foreignTable,
-			cForeignColumn: foreignColumn,
-		},
-	)
-	if strings.Count(constrName, "%s") == 1 {
-		constrName = fmt.Sprintf(constrName, tableName)
-	}
-	if strings.Count(constrName, "%s") > 1 {
-		constrName = fmt.Sprintf(constrName, schemaName, tableName)
-	}
-	var parameters = r.Parameters.describeSQL(columns)
-	return fmt.Sprintf("constraint %s %s%s", constrName, constrType, parameters)
+	return fmt.Sprintf("constraint %s %s%s", r.Name, r.Type, r.Parameters.describeSQL(columns))
 }
 
 func (c *DomainSchema) describeSQL() interface{} {
@@ -154,6 +128,7 @@ func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Wri
 	}
 }
 
+// TODO deprecated, should be removed soon
 func GenerateSql(db *Root, schemaName string, w io.Writer) {
 	for _, schema := range db.Schemas {
 		if schemaName == "" || schemaName == schema.Value.Name {
