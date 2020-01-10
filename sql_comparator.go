@@ -149,11 +149,11 @@ func makeUnusedTablesComparator(
 	current *Root,
 	schemaName string,
 	newTableName string,
-	newTable TableClass,
+	newTable Table,
 ) (
 	comparator *TableComparator,
 ) {
-	tables := make(map[string]TableClass, 50)
+	tables := make(map[string]Table, 50)
 	matches := make(map[string]int, 50)
 	for tableSchemaName, actualTables := range current.getUnusedTables() {
 		for tableName, actualTable := range actualTables {
@@ -222,7 +222,7 @@ func makeTypesComparator(
 func makeTablesComparator(
 	current *Root,
 	schema string,
-	tables map[string]TableClass,
+	tables map[string]Table,
 ) (
 	tablesComparator TablesComparator,
 	postpone []string,
@@ -259,7 +259,7 @@ func makeTablesComparator(
 	return
 }
 
-func (c *TableClass) getAllColumnConstraints(columnName string) []Constraint {
+func (c *Table) getAllColumnConstraints(columnName string) []Constraint {
 	var constraints = make([]Constraint, 0, 0)
 	for i, constraint := range c.Constraints {
 		if iArrayContains(constraint.Columns, columnName) {
@@ -275,8 +275,8 @@ func (c *TableClass) getAllColumnConstraints(columnName string) []Constraint {
 func makeColumnsComparator(
 	current *Root,
 	schemaName, tableName string,
-	table TableClass,
-	currTable TableClass,
+	table Table,
+	currTable Table,
 ) (
 	columns ColumnsComparator,
 ) {
@@ -520,8 +520,8 @@ type (
 	ColumnsComparator []ColumnComparator
 
 	TableStructComparator struct {
-		OldStructure *TableClass
-		NewStructure *TableClass
+		OldStructure *Table
+		NewStructure *Table
 	}
 	TableComparator struct {
 		Name              NameComparator

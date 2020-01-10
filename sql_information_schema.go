@@ -239,7 +239,7 @@ func (c *Root) getUnusedDomainAndSetItAsUsed(schemaName, domainName string) *Dom
 	return nil
 }
 
-func (c *Root) getUnusedTableAndSetItAsUsed(schemaName, tableName string) *TableClass {
+func (c *Root) getUnusedTableAndSetItAsUsed(schemaName, tableName string) *Table {
 	if schema, ok := c.Schemas.tryToFind(schemaName); ok {
 		for name, table := range schema.Value.Tables {
 			if strings.EqualFold(name, tableName) && !*table.used {
@@ -303,18 +303,18 @@ func (c *Root) getUnusedDomains() (domains map[string]map[string]DomainSchema) {
 	return domains
 }
 
-func (c *Root) getUnusedTables() (tables map[string]map[string]TableClass) {
-	tables = make(map[string]map[string]TableClass)
+func (c *Root) getUnusedTables() (tables map[string]map[string]Table) {
+	tables = make(map[string]map[string]Table)
 	for _, schema := range c.Schemas {
 		schemaName := schema.Value.Name
 		for name, table := range schema.Value.Tables {
 			if !*table.used {
 				var (
 					ok bool
-					t  map[string]TableClass
+					t  map[string]Table
 				)
 				if t, ok = tables[schemaName]; !ok {
-					t = make(map[string]TableClass)
+					t = make(map[string]Table)
 				}
 				t[name] = table
 				tables[schemaName] = t
@@ -684,7 +684,7 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 		}
 		schemaTables := make(TablesContainer)
 		for tableName, tableStruct := range schemaColumns {
-			table := TableClass{
+			table := Table{
 				Columns:     tableStruct,
 				Constraints: allConstraints.filterConstraints(actualSchemaName, tableName).toTableConstraints(),
 				used:        refBool(false),

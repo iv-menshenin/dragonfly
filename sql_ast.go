@@ -585,7 +585,7 @@ func makeConstraintsExpr(inColumn bool, constraintSet []Constraint) []Constraint
 	return constraints
 }
 
-func makeTableCreate(schemaName, tableName string, tableStruct TableClass) SqlStmt {
+func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 	/*
 		https://postgrespro.ru/docs/postgresql/9.6/sql-createtable
 	*/

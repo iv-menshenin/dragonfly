@@ -48,7 +48,7 @@ func (c *ConstraintSchema) generateSQL(schemaName, tableName string, constraintI
 	writer(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns, constraintIndex))
 }
 
-func (c *TableClass) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
+func (c *Table) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
 	writer(w, "create table %s.%s(\n", schemaName, tableName)
 	for i, column := range c.Columns {
 		column.generateSQL(schemaName, tableName, db, w)

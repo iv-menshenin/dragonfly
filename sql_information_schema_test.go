@@ -15,7 +15,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 		name string
 		root Root
 		args args
-		want *TableClass
+		want *Table
 		test func(*Root) error
 	}{
 		{
@@ -48,7 +48,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 				schemaName: "schema-a",
 				tableName:  "test2",
 			},
-			want: &TableClass{
+			want: &Table{
 				Inherits:    nil,
 				Columns:     nil,
 				Constraints: nil,
