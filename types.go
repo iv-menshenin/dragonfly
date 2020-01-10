@@ -351,6 +351,18 @@ func (c *Column) follow(db *Root, path []string, i interface{}) bool {
 	return false
 }
 
+const (
+	cNN            = "Num"
+	cIndex         = "Index"
+	cColumnIndex   = "ColumnIndex"
+	cColumn        = "Column"
+	cTable         = "Table"
+	cSchema        = "Schema"
+	cForeignTable  = "ForeignTable"
+	cForeignColumn = "ForeignColumn"
+	cApiType       = "ApiType"
+)
+
 func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
 	c.used = refBool(false)
 	if c.Ref != nil {
@@ -363,11 +375,12 @@ func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex i
 	reflect.Copy(reflect.ValueOf(constraints), reflect.ValueOf(c.Value.Constraints))
 	for i, constraint := range constraints {
 		constraint.Name = evalTemplateParameters(constraint.Name, map[string]string{
-			"Table":       tableName,
-			"Column":      c.Value.Name,
-			"Schema":      schema.Value.Name,
-			"ColumnIndex": strconv.Itoa(columnIndex),
-			"Index":       strconv.Itoa(i),
+			cTable:       tableName,
+			cColumn:      c.Value.Name,
+			cSchema:      schema.Value.Name,
+			cColumnIndex: strconv.Itoa(columnIndex),
+			cIndex:       strconv.Itoa(i),
+			cNN:          strconv.Itoa(i),
 		})
 		constraints[i] = constraint
 	}
@@ -377,21 +390,12 @@ func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex i
 	c.Value.Schema.normalize(schema, tableName, columnIndex, db)
 }
 
-const (
-	cNN            = "Num"
-	cTable         = "Table"
-	cSchema        = "Schema"
-	cForeignTable  = "ForeignTable"
-	cForeignColumn = "ForeignColumn"
-	cApiType       = "ApiType"
-)
-
 func (c *ConstraintSchema) normalize(schema *SchemaRef, tableName string, constraintIndex int, db *Root) {
 	constraintNameDefault := map[ConstraintType]string{
-		ConstraintPrimaryKey: "pk_{%Schema}_{%Table}",
-		ConstraintForeignKey: "fk_{%Schema}_{%Table}_{%ForeignTable}",
-		ConstraintUniqueKey:  "ux_{%Schema}_{%Table}_{%Num}",
-		ConstraintCheck:      "ch_{%Schema}_{%Table}_{%Num}",
+		ConstraintPrimaryKey: fmt.Sprintf("pk_{%%%s}_{%%%s}", cSchema, cTable),
+		ConstraintForeignKey: fmt.Sprintf("fk_{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cForeignTable),
+		ConstraintUniqueKey:  fmt.Sprintf("ux_{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cNN),
+		ConstraintCheck:      fmt.Sprintf("ch_{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cNN),
 	}
 	if c.Constraint.Name == "" {
 		var ok bool
@@ -538,7 +542,7 @@ func (c *TableClass) normalize(schema *SchemaRef, tableName string, db *Root) {
 
 func (c *TableApi) normalize(schema *SchemaRef, tableName string, apiIndex int, db *Root) {
 	if c.Name == "" {
-		c.Name = "{%Schema}_{%Table}_{%ApiType}"
+		c.Name = fmt.Sprintf("{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cApiType)
 	}
 }
 
