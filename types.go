@@ -404,6 +404,17 @@ func (c *ConstraintSchema) normalize(schema *SchemaRef, tableName string, constr
 			panic(fmt.Sprintf("cannot resolve constraint #%d type for table %s", constraintIndex, tableName))
 		}
 	}
+	foreignTable := ""
+	if fk, ok := c.Constraint.Parameters.Parameter.(ForeignKey); ok {
+		foreignTable = fk.ToTable
+	}
+	c.Constraint.Name = evalTemplateParameters(c.Constraint.Name, map[string]string{
+		cTable:        tableName,
+		cSchema:       schema.Value.Name,
+		cForeignTable: strings.Replace(foreignTable, ".", "_", -1),
+		cIndex:        strconv.Itoa(constraintIndex),
+		cNN:           strconv.Itoa(constraintIndex),
+	})
 }
 
 func (c *ColumnSchemaRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
@@ -561,6 +572,14 @@ func (c *TableApi) normalize(schema *SchemaRef, tableName string, apiIndex int, 
 	if c.Name == "" {
 		c.Name = fmt.Sprintf("{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cApiType)
 	}
+	// TODO test
+	c.Name = evalTemplateParameters(c.Name, map[string]string{
+		cApiType: c.Type.String(),
+		cTable:   tableName,
+		cSchema:  schema.Value.Name,
+		cIndex:   strconv.Itoa(apiIndex),
+		cNN:      strconv.Itoa(apiIndex),
+	})
 }
 
 func (c *SchemaRef) normalize(db *Root) {
@@ -654,4 +673,6 @@ func (c *Root) normalize() {
 		schemaRef.normalize(c)
 		c.Schemas[i] = schemaRef
 	}
+	// do not normalize components: it contains supporting data for the project file itself,
+	// but not for the database schema
 }

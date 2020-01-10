@@ -231,6 +231,9 @@ func TestColumnRef_normalize(t *testing.T) {
 				db:          &testRoot,
 			},
 			test: func(col *ColumnRef) error {
+				if testRoot.Components.Columns["test_column_1"].Schema.Value.used == nil || *testRoot.Components.Columns["test_column_1"].Schema.Value.used {
+					return errors.New("TEST DATA INITIALIZATION ERROR")
+				}
 				if col.Value.Name != "column_1" || col.Value.Schema.Value.Type != "varchar" {
 					return errors.New("Column.Value: the object did not receive its contents by reference")
 				}
@@ -241,7 +244,15 @@ func TestColumnRef_normalize(t *testing.T) {
 					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
 				}
 				if col.used == nil || *col.used {
-					return errors.New("flag 'used' not initialized")
+					return errors.New("flag 'used' for column not initialized")
+				}
+				*col.used = true
+				if col.Value.Schema.Value.used == nil || *col.Value.Schema.Value.used {
+					return errors.New("flag 'used' for column schema not initialized")
+				}
+				*col.Value.Schema.Value.used = true
+				if *testRoot.Components.Columns["test_column_1"].Schema.Value.used {
+					return errors.New("REF instead of COPY: flag 'used' for column schema referenced to shared component 'column'")
 				}
 				return nil
 			},
@@ -256,6 +267,9 @@ func TestColumnRef_normalize(t *testing.T) {
 				db:          &testRoot,
 			},
 			test: func(col *ColumnRef) error {
+				if testRoot.Components.Columns["test_column_2"].Schema.Value.used == nil || *testRoot.Components.Columns["test_column_1"].Schema.Value.used {
+					return errors.New("TEST DATA INITIALIZATION ERROR")
+				}
 				if col.Value.Name != "column_2" || col.Value.Schema.Value.Type != "int8" {
 					return errors.New("Column.Value: the object did not receive its contents by reference")
 				}
@@ -266,7 +280,15 @@ func TestColumnRef_normalize(t *testing.T) {
 					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
 				}
 				if col.used == nil || *col.used {
-					return errors.New("flag 'used' not initialized")
+					return errors.New("flag 'used' for column not initialized")
+				}
+				*col.used = true
+				if col.Value.Schema.Value.used == nil || *col.Value.Schema.Value.used {
+					return errors.New("flag 'used' for column schema not initialized")
+				}
+				*col.Value.Schema.Value.used = true
+				if *testRoot.Components.Columns["test_column_2"].Schema.Value.used {
+					return errors.New("REF instead of COPY: flag 'used' for column schema referenced to shared component 'column'")
 				}
 				return nil
 			},
@@ -298,6 +320,112 @@ func TestColumnRef_normalize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.column.normalize(tt.args.schema, tt.args.tableName, tt.args.columnIndex, tt.args.db)
 			err := tt.test(tt.column)
+			if err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
+
+func TestConstraintSchema_normalize(t *testing.T) {
+	testRoot := Root{
+		Schemas: []SchemaRef{
+			{
+				Value: Schema{
+					Name: "test_schema_1",
+					Tables: map[string]TableClass{
+						"test_table_1": {
+							Columns: []ColumnRef{
+								{
+									Value: Column{
+										Name: "test_column",
+										Schema: ColumnSchemaRef{
+											Value: DomainSchema{
+												Type: "int8",
+												used: refBool(false),
+											},
+										},
+									},
+									used: refBool(false),
+								},
+							},
+							Constraints: TableConstraints{
+								{
+									Columns: []string{"test_column_1"},
+									Constraint: Constraint{
+										Name:       "",
+										Type:       ConstraintUniqueKey,
+										Parameters: ConstraintParameters{Parameter: Where{Where: "test_column is not null"}},
+									},
+								},
+								{
+									Columns: []string{"test_column_2"},
+									Constraint: Constraint{
+										Name: "",
+										Type: ConstraintForeignKey,
+										Parameters: ConstraintParameters{Parameter: ForeignKey{
+											ToTable:  "schema1.table1",
+											ToColumn: "fcolumn",
+										}},
+									},
+								},
+							},
+							used: refBool(false),
+						},
+					},
+				},
+			},
+		},
+	}
+	type args struct {
+		schema          *SchemaRef
+		tableName       string
+		constraintIndex int
+		db              *Root
+	}
+	tests := []struct {
+		name       string
+		constraint *ConstraintSchema
+		args       args
+		test       func(*ConstraintSchema) error
+	}{
+		{
+			name:       "simple test",
+			constraint: &testRoot.Schemas[0].Value.Tables["test_table_1"].Constraints[0],
+			args: args{
+				schema:          &testRoot.Schemas[0],
+				tableName:       "test_table_1",
+				constraintIndex: 0,
+				db:              &testRoot,
+			},
+			test: func(constraint *ConstraintSchema) error {
+				if constraint.Constraint.Name != "ux_test_schema_1_test_table_1_0" {
+					return errors.New("wrong generated constraint name")
+				}
+				return nil
+			},
+		},
+		{
+			name:       "test FK constraint",
+			constraint: &testRoot.Schemas[0].Value.Tables["test_table_1"].Constraints[1],
+			args: args{
+				schema:          &testRoot.Schemas[0],
+				tableName:       "test_table_1",
+				constraintIndex: 1,
+				db:              &testRoot,
+			},
+			test: func(constraint *ConstraintSchema) error {
+				if constraint.Constraint.Name != "fk_test_schema_1_test_table_1_schema1_table1" {
+					return errors.New("wrong generated constraint name")
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.constraint.normalize(tt.args.schema, tt.args.tableName, tt.args.constraintIndex, tt.args.db)
+			err := tt.test(tt.constraint)
 			if err != nil {
 				t.Error(err)
 			}
