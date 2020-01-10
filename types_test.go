@@ -247,7 +247,7 @@ func TestColumnRef_normalize(t *testing.T) {
 			},
 		},
 		{
-			name:   "test another column",
+			name:   "test another referred column",
 			column: &testRoot.Schemas[0].Value.Tables["test_table_1"].Columns[1],
 			args: args{
 				schema:      &testRoot.Schemas[0],
@@ -264,6 +264,28 @@ func TestColumnRef_normalize(t *testing.T) {
 				}
 				if testRoot.Components.Columns["test_column_2"].Constraints[0].Name != "Test2_{%Table}_{%Schema}_{%ColumnIndex}" {
 					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
+				}
+				if col.used == nil || *col.used {
+					return errors.New("flag 'used' not initialized")
+				}
+				return nil
+			},
+		},
+		{
+			name:   "test simple column",
+			column: &testRoot.Schemas[0].Value.Tables["test_table_1"].Columns[2],
+			args: args{
+				schema:      &testRoot.Schemas[0],
+				tableName:   "test_table_1",
+				columnIndex: 2,
+				db:          &testRoot,
+			},
+			test: func(col *ColumnRef) error {
+				if col.Value.Name != "simple" || col.Value.Schema.Value.Type != "int8" {
+					return errors.New("wrong column data")
+				}
+				if col.Value.Constraints[0].Name != "Test3_test_schema_1_test_table_1_2" {
+					return errors.New("Constraints[0].Name: did not complete the template conversion")
 				}
 				if col.used == nil || *col.used {
 					return errors.New("flag 'used' not initialized")
