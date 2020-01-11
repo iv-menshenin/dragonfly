@@ -79,32 +79,55 @@ type (
 	}
 
 	ConstraintExpr interface {
+		ConstraintInterface
+		SqlExpr
+	}
+	ConstraintInterface interface {
 		ConstraintString() string
 		ConstraintParams() string
 	}
 	NamedConstraintExpr struct {
 		Name       SqlIdent
-		Constraint ConstraintExpr
+		Constraint ConstraintInterface
+	}
+	UnnamedConstraintExpr struct {
+		Constraint ConstraintInterface
 	}
 	ConstraintWithColumns struct {
 		Columns    []string
 		Constraint ConstraintExpr
 	}
+	ConstraintCommon struct {
+		InColumn bool
+	}
+	// not null
 	ConstraintNullableExpr struct {
+		ConstraintCommon
 		Nullable Nullable
 	}
+	// check
 	ConstraintCheckExpr struct {
+		ConstraintCommon
 		Expression SqlExpr
 		Where      SqlExpr
 	}
+	// default
 	ConstraintDefaultExpr struct {
+		ConstraintCommon
 		Expression SqlExpr
 	}
-	ConstraintPrimaryKeyExpr struct{}
-	ConstraintUniqueExpr     struct {
+	// primary key
+	ConstraintPrimaryKeyExpr struct {
+		ConstraintCommon
+	}
+	// unique
+	ConstraintUniqueExpr struct {
+		ConstraintCommon
 		Where SqlExpr
 	}
+	// foreign key
 	ConstraintForeignKeyExpr struct {
+		ConstraintCommon
 		ToTable  SqlIdent
 		ToColumn string
 		OnDelete OnDeleteUpdateRule
@@ -500,18 +523,80 @@ func makeTableDrop(schema, tableName string) SqlStmt {
 	}
 }
 
-func makeTableCreate(schemaName, tableName string, tableStruct TableClass) SqlStmt {
+func makeConstraintInterface(inColumn bool, constraintDef Constraint) ConstraintInterface {
+	var newConstraint ConstraintInterface
+	switch constraintDef.Type {
+	case ConstraintPrimaryKey:
+		newConstraint = &ConstraintPrimaryKeyExpr{
+			ConstraintCommon: ConstraintCommon{InColumn: inColumn},
+		}
+	case ConstraintCheck:
+		if params, ok := constraintDef.Parameters.Parameter.(Check); ok {
+			newConstraint = &ConstraintCheckExpr{
+				ConstraintCommon: ConstraintCommon{InColumn: inColumn},
+				Expression:       &Literal{Text: params.Expression},
+				Where:            nil,
+			}
+		} else {
+			panic("the check constraint should contains the check expression")
+		}
+	case ConstraintUniqueKey:
+		if params, ok := constraintDef.Parameters.Parameter.(Where); ok {
+			newConstraint = &ConstraintUniqueExpr{
+				ConstraintCommon: ConstraintCommon{InColumn: inColumn},
+				Where:            &Literal{Text: params.Where},
+			}
+		} else {
+			newConstraint = &ConstraintUniqueExpr{
+				ConstraintCommon: ConstraintCommon{InColumn: inColumn},
+				Where:            nil,
+			}
+		}
+	case ConstraintForeignKey:
+		if params, ok := constraintDef.Parameters.Parameter.(ForeignKey); ok {
+			newConstraint = &ConstraintForeignKeyExpr{
+				ConstraintCommon: ConstraintCommon{InColumn: inColumn},
+				ToTable:          &Literal{Text: params.ToTable},
+				ToColumn:         params.ToColumn,
+				OnDelete:         stringToOnDeleteUpdateRule(params.OnDelete),
+				OnUpdate:         stringToOnDeleteUpdateRule(params.OnUpdate),
+			}
+		} else {
+			panic("the foreign key constraint should contains the parameters")
+		}
+	}
+	return newConstraint
+}
+
+func makeConstraintsExpr(inColumn bool, constraintSet []Constraint) []ConstraintExpr {
+	var constraints = make([]ConstraintExpr, 0, len(constraintSet))
+	for _, constraintDef := range constraintSet {
+		if constraintDef.Name != "" {
+			constraints = append(constraints, &NamedConstraintExpr{
+				Name:       &Literal{constraintDef.Name},
+				Constraint: makeConstraintInterface(inColumn, constraintDef),
+			})
+		} else {
+			constraints = append(constraints, &UnnamedConstraintExpr{
+				Constraint: makeConstraintInterface(inColumn, constraintDef),
+			})
+		}
+	}
+	return constraints
+}
+
+func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 	/*
 		https://postgrespro.ru/docs/postgresql/9.6/sql-createtable
 	*/
 	var columnsAndConstraintsDefinition = make([]SqlExpr, 0, len(tableStruct.Columns)+len(tableStruct.Constraints))
 	for _, column := range tableStruct.Columns {
 		columnType := ""
-		domainSchema, domainName, isDomain := column.Value.Schema.makeDomainName()
-		if isDomain {
-			columnType = fmt.Sprintf("%s.%s", domainSchema, domainName)
+		customSchema, customType, isCustom := column.Value.Schema.makeCustomType()
+		if isCustom {
+			columnType = fmt.Sprintf("%s.%s", customSchema, customType)
 		} else {
-			columnType := column.Value.Schema.Value.Type
+			columnType = column.Value.Schema.Value.Type
 			if column.Value.Schema.Value.Length != nil {
 				if column.Value.Schema.Value.Precision != nil {
 					columnType += "(" + strconv.Itoa(*column.Value.Schema.Value.Length) + "," + strconv.Itoa(*column.Value.Schema.Value.Precision) + ")"
@@ -520,53 +605,38 @@ func makeTableCreate(schemaName, tableName string, tableStruct TableClass) SqlSt
 				}
 			}
 		}
-		var constraints = make([]ConstraintExpr, 0, len(column.Value.Constraints))
-		if !isDomain && column.Value.Schema.Value.NotNull {
-			constraints = append(constraints, &ConstraintNullableExpr{Nullable: Nullable(!column.Value.Schema.Value.NotNull)})
-		}
-		for _, constraintDef := range column.Value.Constraints {
-			var newConstraint ConstraintExpr
-			switch constraintDef.Type {
-			case ConstraintPrimaryKey:
-				newConstraint = &ConstraintPrimaryKeyExpr{}
-			case ConstraintCheck:
-				if params, ok := constraintDef.Parameters.Parameter.(Check); ok {
-					newConstraint = &ConstraintCheckExpr{
-						Expression: &Literal{Text: params.Expression},
-						Where:      nil,
-					}
-				} else {
-					panic("the check constraint should contains the check expression")
-				}
-			case ConstraintUniqueKey:
-				if params, ok := constraintDef.Parameters.Parameter.(Where); ok {
-					newConstraint = &ConstraintUniqueExpr{
-						Where: &Literal{Text: params.Where},
-					}
-				} else {
-					newConstraint = &ConstraintUniqueExpr{
-						Where: nil,
-					}
-				}
-			case ConstraintForeignKey:
-				if params, ok := constraintDef.Parameters.Parameter.(ForeignKey); ok {
-					newConstraint = &ConstraintForeignKeyExpr{
-						ToTable:  &Literal{Text: params.ToTable},
-						ToColumn: params.ToColumn,
-						OnDelete: stringToOnDeleteUpdateRule(params.OnDelete),
-						OnUpdate: stringToOnDeleteUpdateRule(params.OnUpdate),
-					}
-				} else {
-					panic("the foreign key constraint should contains the parameters")
-				}
-			}
-			constraints = append(constraints, newConstraint)
+		var constraints = make([]ConstraintExpr, 0, len(column.Value.Constraints)+1)
+		if !isCustom && column.Value.Schema.Value.NotNull {
+			constraints = append(
+				constraints,
+				&UnnamedConstraintExpr{
+					Constraint: &ConstraintNullableExpr{Nullable: Nullable(!column.Value.Schema.Value.NotNull)},
+				},
+			)
 		}
 		columnsAndConstraintsDefinition = append(columnsAndConstraintsDefinition, &ColumnDefinitionExpr{
 			Name:        column.Value.Name,
 			DataType:    columnType,
 			Collation:   nil,
-			Constraints: constraints,
+			Constraints: append(constraints, makeConstraintsExpr(true, column.Value.Constraints)...),
+		})
+	}
+	for _, constraint := range tableStruct.Constraints {
+		constraintInterface := makeConstraintInterface(false, constraint.Constraint)
+		var constraintExpr ConstraintExpr
+		if constraint.Constraint.Name != "" {
+			constraintExpr = &NamedConstraintExpr{
+				Name:       &Literal{constraint.Constraint.Name},
+				Constraint: constraintInterface,
+			}
+		} else {
+			constraintExpr = &UnnamedConstraintExpr{
+				Constraint: constraintInterface,
+			}
+		}
+		columnsAndConstraintsDefinition = append(columnsAndConstraintsDefinition, &ConstraintWithColumns{
+			Columns:    constraint.Columns,
+			Constraint: constraintExpr,
 		})
 	}
 	return &CreateStmt{
@@ -621,12 +691,29 @@ func (c *UnaryExpr) Expression() string {
 }
 
 /* CONSTRAINTS */
+
 func (c *NamedConstraintExpr) ConstraintString() string {
-	return fmt.Sprintf("%s %s", c.Name.GetName(), c.Constraint.ConstraintString())
+	return fmt.Sprintf("constraint %s %s", c.Name.GetName(), c.Constraint.ConstraintString())
 }
 
 func (c *NamedConstraintExpr) ConstraintParams() string {
 	return c.Constraint.ConstraintParams()
+}
+
+func (c *NamedConstraintExpr) Expression() string {
+	return fmt.Sprintf("%s %s", c.ConstraintString(), c.ConstraintParams())
+}
+
+func (c *UnnamedConstraintExpr) ConstraintString() string {
+	return c.Constraint.ConstraintString()
+}
+
+func (c *UnnamedConstraintExpr) ConstraintParams() string {
+	return c.Constraint.ConstraintParams()
+}
+
+func (c *UnnamedConstraintExpr) Expression() string {
+	return fmt.Sprintf("%s %s", c.Constraint.ConstraintString(), c.Constraint.ConstraintParams())
 }
 
 func (c *ConstraintWithColumns) ConstraintString() string {
@@ -635,6 +722,10 @@ func (c *ConstraintWithColumns) ConstraintString() string {
 
 func (c *ConstraintWithColumns) ConstraintParams() string {
 	return c.Constraint.ConstraintParams()
+}
+
+func (c *ConstraintWithColumns) Expression() string {
+	return fmt.Sprintf("%s %s", c.ConstraintString(), c.ConstraintParams())
 }
 
 func (c *ConstraintNullableExpr) ConstraintString() string {
@@ -694,6 +785,9 @@ func (c *ConstraintUniqueExpr) ConstraintParams() string {
 }
 
 func (c *ConstraintForeignKeyExpr) ConstraintString() string {
+	if c.InColumn {
+		return ""
+	}
 	return "foreign key"
 }
 
@@ -705,7 +799,7 @@ func (c *ConstraintForeignKeyExpr) ConstraintParams() string {
 	if int(c.OnDelete) > -1 {
 		updateRules += fmt.Sprintf(" on delete %s", c.OnDelete)
 	}
-	return fmt.Sprintf("references on %s (%s)%s", c.ToTable.GetName(), c.ToColumn, updateRules)
+	return fmt.Sprintf("references %s (%s)%s", c.ToTable.GetName(), c.ToColumn, updateRules)
 }
 
 /* */
@@ -717,7 +811,7 @@ func (c *ColumnDefinitionExpr) Expression() string {
 		collation += " " + *c.Collation
 	}
 	for _, constraint := range c.Constraints {
-		constraints += fmt.Sprintf(" %s%s", constraint.ConstraintString(), constraint.ConstraintParams())
+		constraints += fmt.Sprintf(" %s %s", constraint.ConstraintString(), constraint.ConstraintParams())
 	}
 	return fmt.Sprintf("%s %s%s%s", c.Name, c.DataType, collation, constraints)
 }
@@ -731,7 +825,7 @@ func (c *BracketBlock) Expression() string {
 		for _, expr := range c.Expr {
 			exprs = append(exprs, expr.Expression())
 		}
-		return fmt.Sprintf("(%s)", strings.Join(exprs, ", "))
+		return fmt.Sprintf("(\n/* begin */\n\t%s\n/* end */\n)", strings.Join(exprs, ",\n\t"))
 	} else {
 		if c.Statement == nil {
 			panic("BracketBlock require Expr or Statement")

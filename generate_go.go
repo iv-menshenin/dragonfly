@@ -239,7 +239,7 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	}
 }
 
-func (c *TableClass) generateFields(w *AstData) (fields []*ast.Field) {
+func (c *Table) generateFields(w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(c.Columns))
 	for _, column := range c.Columns {
 		field := column.generateField(w, column.Value.Schema.Value.NotNull)
@@ -248,7 +248,7 @@ func (c *TableClass) generateFields(w *AstData) (fields []*ast.Field) {
 	return
 }
 
-func (c *TableApi) generateInsertable(table *TableClass, w *AstData) (fields []*ast.Field) {
+func (c *TableApi) generateInsertable(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoInsert) {
@@ -259,7 +259,7 @@ func (c *TableApi) generateInsertable(table *TableClass, w *AstData) (fields []*
 	return
 }
 
-func (c *TableApi) generateMutable(table *TableClass, w *AstData) (fields []*ast.Field) {
+func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if !arrayContains(column.Value.Tags, tagNoUpdate) {
@@ -270,7 +270,7 @@ func (c *TableApi) generateMutable(table *TableClass, w *AstData) (fields []*ast
 	return
 }
 
-func (c *TableApi) generateIdentifierOption(table *TableClass, w *AstData) (fields []*ast.Field) {
+func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if arrayContains(column.Value.Tags, tagIdentifier) {
@@ -281,7 +281,7 @@ func (c *TableApi) generateIdentifierOption(table *TableClass, w *AstData) (fiel
 	return
 }
 
-func (c *ApiFindOptions) generateFindFields(table *TableClass, w *AstData) (findBy []*ast.Field) {
+func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []*ast.Field) {
 	if c == nil {
 		return
 	}
@@ -360,7 +360,7 @@ func (c *ApiFindOptions) generateFindFields(table *TableClass, w *AstData) (find
 	return
 }
 
-func (c *TableApi) generateOptions(table *TableClass, w *AstData) (findBy, mutable []*ast.Field) {
+func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []*ast.Field) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
 			findBy = c.FindOptions.generateFindFields(table, w)

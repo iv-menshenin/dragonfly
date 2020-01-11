@@ -48,7 +48,7 @@ func (c *ConstraintSchema) generateSQL(schemaName, tableName string, constraintI
 	writer(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns, constraintIndex))
 }
 
-func (c *TableClass) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
+func (c *Table) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
 	writer(w, "create table %s.%s(\n", schemaName, tableName)
 	for i, column := range c.Columns {
 		column.generateSQL(schemaName, tableName, db, w)
@@ -86,33 +86,7 @@ func (c *ConstraintParameters) describeSQL(columns []string) string {
 }
 
 func (r *Constraint) describeSQL(schemaName, tableName string, columns []string, constraintIndex int) string {
-	constrType := r.Type
-	var (
-		foreignTable  string
-		foreignColumn string
-	)
-	if fk, ok := r.Parameters.Parameter.(ForeignKey); ok {
-		foreignTable = fk.ToTable
-		foreignColumn = fk.ToColumn
-	}
-	constrName := evalTemplateParameters(
-		r.Name,
-		map[string]string{
-			cNN:            strconv.Itoa(constraintIndex),
-			cTable:         tableName,
-			cSchema:        schemaName,
-			cForeignTable:  foreignTable,
-			cForeignColumn: foreignColumn,
-		},
-	)
-	if strings.Count(constrName, "%s") == 1 {
-		constrName = fmt.Sprintf(constrName, tableName)
-	}
-	if strings.Count(constrName, "%s") > 1 {
-		constrName = fmt.Sprintf(constrName, schemaName, tableName)
-	}
-	var parameters = r.Parameters.describeSQL(columns)
-	return fmt.Sprintf("constraint %s %s%s", constrName, constrType, parameters)
+	return fmt.Sprintf("constraint %s %s%s", r.Name, r.Type, r.Parameters.describeSQL(columns))
 }
 
 func (c *DomainSchema) describeSQL() interface{} {
@@ -140,8 +114,8 @@ func (c *DomainSchema) describeSQL() interface{} {
 }
 
 func (c *ColumnRef) describeSQL() string {
-	if schema, domain, ok := c.Value.Schema.makeDomainName(); ok {
-		return fmt.Sprintf("%s.%s", schema, domain)
+	if schema, customType, ok := c.Value.Schema.makeCustomType(); ok {
+		return fmt.Sprintf("%s.%s", schema, customType)
 	} else {
 		return fmt.Sprintf("%s", c.Value.Schema.Value.describeSQL())
 	}
@@ -154,6 +128,7 @@ func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Wri
 	}
 }
 
+// TODO deprecated, should be removed soon
 func GenerateSql(db *Root, schemaName string, w io.Writer) {
 	for _, schema := range db.Schemas {
 		if schemaName == "" || schemaName == schema.Value.Name {
