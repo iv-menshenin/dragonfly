@@ -234,19 +234,19 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
 	}
 	for _, f := range c.domain.Fields {
-		intDesc := f.describeGO()
+		intDesc := f.Value.describeGO()
 		objFields = append(objFields, &ast.Field{
-			Names: []*ast.Ident{makeName(f.Name)},
+			Names: []*ast.Ident{makeName(f.Value.Name)},
 			Type:  intDesc.fieldTypeExpr(),
 		})
-		if fmtLiter, ok := formatTypes[f.Schema.Value.Type]; ok {
+		if fmtLiter, ok := formatTypes[f.Value.Schema.Value.Type]; ok {
 			formatLiters = append(formatLiters, fmtLiter)
 		} else {
-			panic(fmt.Sprintf("we cannot Scan field '%s' in struct '%s' due to type '%s'", f.Name, c.typeName, f.Schema.Value.Type))
+			panic(fmt.Sprintf("we cannot Scan field '%s' in struct '%s' due to type '%s'", f.Value.Name, c.typeName, f.Value.Schema.Value.Type))
 		}
 		formatArgs = append(formatArgs, &ast.UnaryExpr{
 			Op: token.AND,
-			X:  makeTypeSelector("c", f.Name),
+			X:  makeTypeSelector("c", f.Value.Name),
 		})
 	}
 	formatArgs = append([]ast.Expr{
@@ -420,9 +420,9 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
 	}
 	for _, f := range c.domain.Fields {
-		intDesc := f.describeGO()
+		intDesc := f.Value.describeGO()
 		objFields = append(objFields, &ast.Field{
-			Names: []*ast.Ident{makeName(f.Name)},
+			Names: []*ast.Ident{makeName(f.Value.Name)},
 			Type:  intDesc.fieldTypeExpr(),
 		})
 	}

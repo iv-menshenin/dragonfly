@@ -630,6 +630,16 @@ func (c TypeComparator) makeSolution() (preInstall []SqlStmt, postInstall []SqlS
 	if !strings.EqualFold(c.Name.New, c.Name.Actual) {
 		preInstall = append(preInstall, makeTypeRename(c.Schema.New, c.Name))
 	}
+	for _, s := range c.TypeStruct.NewStructure.Fields {
+		if f, ok := c.TypeStruct.OldStructure.Fields.tryToFind(s.Value.Name); ok {
+			*f.used = true
+			*s.used = true
+			if !strings.EqualFold(f.Value.Schema.Value.Type, s.Value.Schema.Value.Type) {
+				preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, s.Value.Schema.Value))
+			}
+		}
+		// ALTER
+	}
 	// TODO
 	//  ADD ATTRIBUTE
 	//  ADD VALUE

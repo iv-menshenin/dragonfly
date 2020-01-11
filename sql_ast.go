@@ -54,6 +54,10 @@ type (
 		SetDrop SetDrop
 		Expr    SqlExpr
 	}
+	AlterDataTypeExpr struct {
+		AlterTo  string
+		DataType string
+	}
 	DropExpr struct {
 		Target            SqlTarget
 		Name              SqlIdent
@@ -393,6 +397,25 @@ func makeTypeRename(schema string, rename NameComparator) SqlStmt {
 	}
 }
 
+func makeTypeAlterAttributeDataType(schemaName, typeName, attrName string, typeSchema DomainSchema) SqlStmt {
+	return &AlterStmt{
+		Target: TargetType,
+		Name: &Selector{
+			Name:      typeName,
+			Container: schemaName,
+		},
+		Alter: makeAlterAttributeDataType(attrName, typeSchema),
+	}
+
+}
+
+func makeAlterAttributeDataType(attrName string, typeSchema DomainSchema) SqlExpr {
+	return &AlterDataTypeExpr{
+		AlterTo:  attrName,
+		DataType: typeSchema.Type,
+	}
+}
+
 func makeDomainSetNotNull(schema, domain string, notNull bool) SqlStmt {
 	return &AlterStmt{
 		Target: TargetDomain,
@@ -720,6 +743,10 @@ func (c *SetDropExpr) Expression() string {
 	} else {
 		return "drop " + c.Expr.Expression()
 	}
+}
+
+func (c *AlterDataTypeExpr) Expression() string {
+	return fmt.Sprintf("alter %s type %s", c.AlterTo, c.DataType)
 }
 
 func (c *DropExpr) Expression() string {

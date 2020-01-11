@@ -180,9 +180,13 @@ func (c typesStruct) extractSchema(schema string) map[string]typesStruct {
 }
 
 func (c typesStruct) toRecordSchema() TypeSchema {
-	var fields = make([]Column, len(c), len(c))
+	var fields = make([]ColumnRef, len(c), len(c))
 	for _, r := range c {
-		fields[r.AttrOrd-1] = r.toColumn()
+		fields[r.AttrOrd-1] = ColumnRef{
+			Value: r.toColumn(),
+			Ref:   nil,
+			used:  refBool(false),
+		}
 	}
 	return TypeSchema{
 		Type:   "record",

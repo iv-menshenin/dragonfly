@@ -41,7 +41,7 @@ type (
 		// for type `enum` only
 		Enum []EnumEntity `yaml:"enum,omitempty" json:"enum,omitempty"`
 		// for types `record` and `json`
-		Fields []Column `yaml:"fields,omitempty" json:"fields,omitempty"`
+		Fields ColumnsContainer `yaml:"fields,omitempty" json:"fields,omitempty"`
 		// for type `map`
 		KeyType   *ColumnSchemaRef `yaml:"key_type,omitempty" json:"key_type,omitempty"`
 		ValueType *ColumnSchemaRef `yaml:"value_type,omitempty" json:"value_type,omitempty"`
@@ -633,6 +633,10 @@ func (c *SchemaRef) normalize(db *Root) {
 		table.normalize(c, tableName, db)
 		c.Value.Tables[tableName] = table
 	}
+	for typeName, customType := range c.Value.Types {
+		customType.normalize(db)
+		c.Value.Types[typeName] = customType
+	}
 	for i, domain := range c.Value.Domains {
 		domain.used = refBool(false)
 		c.Value.Domains[i] = domain
@@ -640,6 +644,14 @@ func (c *SchemaRef) normalize(db *Root) {
 	for i, userType := range c.Value.Types {
 		userType.used = refBool(false)
 		c.Value.Types[i] = userType
+	}
+}
+
+func (c *TypeSchema) normalize(db *Root) {
+	c.used = refBool(false)
+	for i, f := range c.Fields {
+		f.used = refBool(false)
+		c.Fields[i] = f
 	}
 }
 
