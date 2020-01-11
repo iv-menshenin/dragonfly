@@ -42,7 +42,7 @@ where tc.table_schema not in ('information_schema','pg_catalog')
   and lower(tc.table_catalog) = $1;`
 
 	sqlGetRecordTypes = `
-select n.nspname, t.typname, a.attname, a.attnum, at.typname, at.typnotnull,
+select n.nspname, t.typname, a.attname, a.attnum, at.typname, at.typnotnull, a.attnotnull,
        information_schema._pg_char_max_length(a.atttypid, a.atttypmod),
        information_schema._pg_numeric_precision(a.atttypid, a.atttypmod),
        information_schema._pg_numeric_scale(a.atttypid, a.atttypmod)
@@ -59,22 +59,37 @@ where n.nspname not in ('information_schema','pg_catalog')
         and lower(dt.user_defined_type_catalog) = $1
   )
 order by n.nspname, t.typname, a.attnum;`
+
+	sqlGetEnumTypes = `
+select n.nspname, t.typname, e.enumlabel, e.enumsortorder, t.typnotnull
+from pg_enum e
+join pg_type t on e.enumtypid = t.oid
+inner join pg_catalog.pg_namespace n on n.oid = t.typnamespace;
+`
 )
 
 type (
+	rawEnumStruct struct {
+		Schema    string
+		Type      string
+		Enum      string
+		SortOrder int
+		NotNull   bool
+	}
+	rawEnums      []rawEnumStruct
 	rawTypeStruct struct {
 		Schema       string
 		TypeName     string
 		AttrName     string
 		AttrOrd      int
 		AttrType     string
+		TypeRequired bool
 		AttrRequired bool
 		MaxLength    *int
 		Precision    *int
 		Scale        *int
-		Used         *bool // WARNING: not allowed nil here
 	}
-	TypesStruct     []rawTypeStruct
+	typesStruct     []rawTypeStruct
 	rawDomainStruct struct {
 		DomainSchema string
 		Domain       string
@@ -87,8 +102,7 @@ type (
 		Scale        *int
 		UdtName      string
 		Used         *bool // WARNING: not allowed nil here
-	} // TODO hide type and make builder, for protection used field
-
+	}
 	rawColumnStruct struct {
 		TableSchema  string
 		TableName    string
@@ -105,8 +119,7 @@ type (
 		Domain       *string
 		UdtName      string
 	}
-
-	ActualConstraint struct {
+	actualConstraint struct {
 		TableSchema      string
 		TableName        string
 		ConstraintSchema string
@@ -115,36 +128,66 @@ type (
 		Columns          []string
 		ForeignKey       *ForeignKeyInformation
 	}
-	rawActualConstraints map[string]ActualConstraint
+	rawActualConstraints map[string]actualConstraint
 
-	ActualSchema struct {
+	actualSchema struct {
 		Name  string
 		Owner string
 	}
 	rawActualSchemaNames struct {
-		Schemas map[string]ActualSchema
+		Schemas map[string]actualSchema
 	}
 )
 
-func (c TypesStruct) extractSchema() map[string]TypesStruct {
-	result := make(map[string]TypesStruct, 0)
+func (c rawEnums) extractSchema(schema string) map[string]rawEnums {
+	result := make(map[string]rawEnums, 0)
 	for _, r := range c {
-		if _, ok := result[r.TypeName]; !ok {
-			result[r.TypeName] = make(TypesStruct, 0)
+		if strings.EqualFold(r.Schema, schema) {
+			if _, ok := result[r.Type]; !ok {
+				result[r.Type] = make(rawEnums, 0)
+			}
+			result[r.Type] = append(result[r.Type], r)
 		}
-		result[r.TypeName] = append(result[r.TypeName], r)
 	}
 	return result
 }
 
-func (c TypesStruct) toRecordSchema() DomainSchema {
+func (c rawEnums) toEnumSchema() DomainSchema {
+	var values = make([]EnumEntity, len(c), len(c))
+	for _, r := range c {
+		values[r.SortOrder-1] = EnumEntity{
+			Value: r.Enum,
+		}
+	}
+	return DomainSchema{
+		Type:    "enum",
+		NotNull: c[0].NotNull,
+		Enum:    values,
+		used:    refBool(false),
+	}
+}
+
+func (c typesStruct) extractSchema(schema string) map[string]typesStruct {
+	result := make(map[string]typesStruct, 0)
+	for _, r := range c {
+		if strings.EqualFold(r.Schema, schema) {
+			if _, ok := result[r.TypeName]; !ok {
+				result[r.TypeName] = make(typesStruct, 0)
+			}
+			result[r.TypeName] = append(result[r.TypeName], r)
+		}
+	}
+	return result
+}
+
+func (c typesStruct) toRecordSchema() DomainSchema {
 	var fields = make([]Column, len(c), len(c))
 	for _, r := range c {
 		fields[r.AttrOrd-1] = r.toColumn()
 	}
 	return DomainSchema{
-		Type: "record",
-		// TODO NotNull
+		Type:      "record",
+		NotNull:   c[0].TypeRequired,
 		Default:   nil, // TODO
 		Check:     nil,
 		Enum:      nil,
@@ -161,8 +204,8 @@ func (c *rawTypeStruct) toColumn() Column {
 		Schema: ColumnSchemaRef{
 			Value: DomainSchema{
 				Type:      c.AttrType,
-				Length:    c.MaxLength,
-				Precision: c.Precision,
+				Length:    c.Precision,
+				Precision: c.Scale,
 				NotNull:   c.AttrRequired,
 				Default:   nil, // TODO
 				Check:     nil,
@@ -444,8 +487,8 @@ func getAllSchemaNames(db *sql.DB, catalog string) (list rawActualSchemaNames, e
 	if q, err = db.Query(sqlGetSchemaList, strings.ToLower(catalog)); err != nil {
 		return
 	} else {
-		list.Schemas = make(map[string]ActualSchema, 10)
-		var schema ActualSchema
+		list.Schemas = make(map[string]actualSchema, 10)
+		var schema actualSchema
 		for q.Next() {
 			if err = q.Err(); err != nil {
 				return
@@ -549,6 +592,7 @@ func getAllRecords(db *sql.DB, catalog string) (attributes []rawTypeStruct, err 
 				&attr.AttrName,
 				&attr.AttrOrd,
 				&attr.AttrType,
+				&attr.TypeRequired,
 				&attr.AttrRequired,
 				&attr.MaxLength,
 				&attr.Precision,
@@ -556,8 +600,34 @@ func getAllRecords(db *sql.DB, catalog string) (attributes []rawTypeStruct, err 
 			); err != nil {
 				return
 			} else {
-				attr.Used = refBool(false)
 				attributes = append(attributes, attr)
+			}
+		}
+	}
+	return
+}
+
+func getAllEnums(db *sql.DB, _ string) (enums rawEnums, err error) {
+	var q *sql.Rows
+	if q, err = db.Query(sqlGetEnumTypes); err != nil {
+		return
+	} else {
+		enums = make(rawEnums, 0, 100)
+		var attr rawEnumStruct
+		for q.Next() {
+			if err = q.Err(); err != nil {
+				return
+			}
+			if err = q.Scan(
+				&attr.Schema,
+				&attr.Type,
+				&attr.Enum,
+				&attr.SortOrder,
+				&attr.NotNull,
+			); err != nil {
+				return
+			} else {
+				enums = append(enums, attr)
 			}
 		}
 	}
@@ -600,9 +670,9 @@ func getAllConstraints(db *sql.DB, catalog string) (constraints rawActualConstra
 			); err != nil {
 				return
 			} else {
-				var c ActualConstraint
+				var c actualConstraint
 				if _, ok := constraints[strings.ToLower(constraint.ConstraintName)]; !ok {
-					c = ActualConstraint{
+					c = actualConstraint{
 						TableSchema:      constraint.TableSchema,
 						TableName:        constraint.TableName,
 						ConstraintSchema: constraint.ConstraintSchema,
@@ -641,7 +711,8 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 	var (
 		allSchemas     rawActualSchemaNames
 		allDomains     []rawDomainStruct
-		allRecordTypes TypesStruct
+		allRecordTypes typesStruct
+		allEnumTypes   rawEnums
 		allTables      []rawColumnStruct
 		allConstraints rawActualConstraints
 	)
@@ -652,6 +723,9 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 		return
 	}
 	if allRecordTypes, err = getAllRecords(db, dbName); err != nil {
+		return
+	}
+	if allEnumTypes, err = getAllEnums(db, dbName); err != nil {
 		return
 	}
 	if allTables, err = getAllTables(db, dbName); err != nil {
@@ -669,8 +743,11 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 			}
 		}
 		schemaTypes := make(DomainsContainer, 0)
-		for typeName, recordType := range allRecordTypes.extractSchema() {
+		for typeName, recordType := range allRecordTypes.extractSchema(actualSchemaName) {
 			schemaTypes[typeName] = recordType.toRecordSchema()
+		}
+		for typeName, enumType := range allEnumTypes.extractSchema(actualSchemaName) {
+			schemaTypes[typeName] = enumType.toEnumSchema()
 		}
 		schemaColumns := make(map[string]ColumnsContainer)
 		for i, columnStruct := range allTables {
