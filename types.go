@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -33,13 +34,10 @@ var (
 )
 
 type (
-	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
-		Type      string  `yaml:"type" json:"type"`
-		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
-		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`
-		NotNull   bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
-		Default   *string `yaml:"default,omitempty" json:"default,omitempty"`
-		Check     *string `yaml:"check,omitempty" json:"check,omitempty"`
+	TypeSchema struct {
+		Type      string `yaml:"type" json:"type"`
+		Length    *int   `yaml:"length,omitempty" json:"length,omitempty"`
+		Precision *int   `yaml:"precision,omitempty" json:"precision,omitempty"`
 		// for type `enum` only
 		Enum []EnumEntity `yaml:"enum,omitempty" json:"enum,omitempty"`
 		// for types `record` and `json`
@@ -47,7 +45,18 @@ type (
 		// for type `map`
 		KeyType   *ColumnSchemaRef `yaml:"key_type,omitempty" json:"key_type,omitempty"`
 		ValueType *ColumnSchemaRef `yaml:"value_type,omitempty" json:"value_type,omitempty"`
-		used      *bool
+
+		used *bool
+	}
+	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
+		Type      string  `yaml:"type" json:"type"`
+		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
+		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`
+		NotNull   bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
+		Default   *string `yaml:"default,omitempty" json:"default,omitempty"`
+		Check     *string `yaml:"check,omitempty" json:"check,omitempty"`
+
+		used *bool
 	}
 	EnumEntity struct {
 		Value       string `yaml:"value" json:"value"`
@@ -128,10 +137,11 @@ type (
 		Api         ApiContainer     `yaml:"api,omitempty" json:"api,omitempty"`
 	}
 	DomainsContainer map[string]DomainSchema
+	TypesContainer   map[string]TypeSchema
 	TablesContainer  map[string]Table
 	Schema           struct {
 		Name    string           `yaml:"name" json:"name"`
-		Types   DomainsContainer `yaml:"types,omitempty" json:"types,omitempty"`
+		Types   TypesContainer   `yaml:"types,omitempty" json:"types,omitempty"`
 		Domains DomainsContainer `yaml:"domains,omitempty" json:"domains,omitempty"`
 		Tables  TablesContainer  `yaml:"tables,omitempty" json:"tables,omitempty"`
 	}
@@ -633,7 +643,16 @@ func (c *SchemaRef) normalize(db *Root) {
 	}
 }
 
-func (c *SchemaRef) follow(db *Root, path []string, i interface{}) bool {
+func (c *SchemaRef) follow(db *Root, path []string, i interface{}) (ok bool) {
+	defer func() {
+		err := recover()
+		if err != nil {
+			ok = false
+			if _, e := fmt.Fprintf(os.Stderr, "<%T>: %s", err, err); e != nil {
+				panic(e)
+			}
+		}
+	}()
 	if len(path) == 0 {
 		// can panic
 		copyFromTo(c, i)
@@ -659,7 +678,16 @@ func (c *SchemaRef) follow(db *Root, path []string, i interface{}) bool {
 	return false
 }
 
-func (c *DomainSchema) follow(db *Root, path []string, i interface{}) bool {
+func (c *DomainSchema) follow(db *Root, path []string, i interface{}) (ok bool) {
+	defer func() {
+		err := recover()
+		if err != nil {
+			ok = false
+			if _, e := fmt.Fprintf(os.Stderr, "<%T>: %s", err, err); e != nil {
+				panic(e)
+			}
+		}
+	}()
 	if len(path) == 0 {
 		// can panic
 		copyFromTo(c, i)
@@ -668,7 +696,34 @@ func (c *DomainSchema) follow(db *Root, path []string, i interface{}) bool {
 	return false
 }
 
-func (c *Root) follow(db *Root, path []string, i interface{}) bool {
+func (c *TypeSchema) follow(db *Root, path []string, i interface{}) (ok bool) {
+	defer func() {
+		err := recover()
+		if err != nil {
+			ok = false
+			if _, e := fmt.Fprintf(os.Stderr, "<%T>: %s", err, err); e != nil {
+				panic(e)
+			}
+		}
+	}()
+	if len(path) == 0 {
+		// can panic
+		copyFromTo(c, i)
+		return true
+	}
+	return false
+}
+
+func (c *Root) follow(db *Root, path []string, i interface{}) (ok bool) {
+	defer func() {
+		err := recover()
+		if err != nil {
+			ok = false
+			if _, e := fmt.Fprintf(os.Stderr, "<%T>: %s", err, err); e != nil {
+				panic(e)
+			}
+		}
+	}()
 	if len(path) < 2 {
 		return false
 	}

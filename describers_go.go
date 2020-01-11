@@ -30,12 +30,12 @@ type (
 	enumTypeDescriber struct {
 		simpleTypeDescriber
 		typeName string
-		domain   *DomainSchema
+		domain   *TypeSchema
 	}
 	recordTypeDescriber struct {
 		simpleTypeDescriber
 		typeName string
-		domain   *DomainSchema
+		domain   *TypeSchema
 	}
 	jsonTypeDescriber struct {
 		recordTypeDescriber
@@ -89,7 +89,7 @@ func (c sliceTypeDescriber) fieldTypeExpr() ast.Expr {
   enumTypeDescriber
 */
 
-func makeEnumDescriberDirectly(typeName string, domain *DomainSchema) fieldDescriber {
+func makeEnumDescriberDirectly(typeName string, domain *TypeSchema) fieldDescriber {
 	return enumTypeDescriber{
 		simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
 		domain:              domain,
@@ -215,7 +215,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 	makeRecordDescriberDirectly
 */
 
-func makeRecordDescriberDirectly(typeName string, domain *DomainSchema) fieldDescriber {
+func makeRecordDescriberDirectly(typeName string, domain *TypeSchema) fieldDescriber {
 	return recordTypeDescriber{
 		simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
 		domain:              domain,
@@ -401,7 +401,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 	makeJsonDescriberDirectly
 */
 
-func makeJsonDescriberDirectly(typeName string, domain *DomainSchema) fieldDescriber {
+func makeJsonDescriberDirectly(typeName string, domain *TypeSchema) fieldDescriber {
 	return jsonTypeDescriber{
 		recordTypeDescriber: recordTypeDescriber{
 			simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
@@ -583,11 +583,6 @@ var (
 		"real":     makeSimpleDescriber("float32", "", ""),
 		"numeric":  makeSimpleDescriber("float32", "", ""),
 		"decimal":  makeSimpleDescriber("float32", "", ""),
-		// ------------------ TODO
-		"json":   makeJsonDescriberDirectly,
-		"enum":   makeEnumDescriberDirectly,
-		"map":    makeSimpleDescriber("map[string]string", "", ""),
-		"record": makeRecordDescriberDirectly,
 	}
 	formatTypes = map[string]string{
 		"smallserial": "%d",

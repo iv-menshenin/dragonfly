@@ -152,18 +152,17 @@ func (c rawEnums) extractSchema(schema string) map[string]rawEnums {
 	return result
 }
 
-func (c rawEnums) toEnumSchema() DomainSchema {
+func (c rawEnums) toEnumSchema() TypeSchema {
 	var values = make([]EnumEntity, len(c), len(c))
 	for _, r := range c {
 		values[r.SortOrder-1] = EnumEntity{
 			Value: r.Enum,
 		}
 	}
-	return DomainSchema{
-		Type:    "enum",
-		NotNull: c[0].NotNull,
-		Enum:    values,
-		used:    refBool(false),
+	return TypeSchema{
+		Type: "enum",
+		Enum: values,
+		used: refBool(false),
 	}
 }
 
@@ -180,21 +179,15 @@ func (c typesStruct) extractSchema(schema string) map[string]typesStruct {
 	return result
 }
 
-func (c typesStruct) toRecordSchema() DomainSchema {
+func (c typesStruct) toRecordSchema() TypeSchema {
 	var fields = make([]Column, len(c), len(c))
 	for _, r := range c {
 		fields[r.AttrOrd-1] = r.toColumn()
 	}
-	return DomainSchema{
-		Type:      "record",
-		NotNull:   c[0].TypeRequired,
-		Default:   nil, // TODO
-		Check:     nil,
-		Enum:      nil,
-		Fields:    fields,
-		KeyType:   nil,
-		ValueType: nil,
-		used:      refBool(false),
+	return TypeSchema{
+		Type:   "record",
+		Fields: fields,
+		used:   refBool(false),
 	}
 }
 
@@ -209,7 +202,6 @@ func (c *rawTypeStruct) toColumn() Column {
 				NotNull:   c.AttrRequired,
 				Default:   nil, // TODO
 				Check:     nil,
-				Enum:      nil,
 				used:      refBool(false),
 			},
 			Ref: nil,
@@ -228,10 +220,6 @@ func (c *rawDomainStruct) toDomainSchema() DomainSchema {
 		NotNull:   !c.Nullable,
 		Default:   c.Default,
 		Check:     nil, // TODO
-		Enum:      nil, // TODO
-		Fields:    nil, // TODO
-		KeyType:   nil, // TODO
-		ValueType: nil, // TODO
 		used:      refBool(false),
 	}
 }
@@ -252,10 +240,6 @@ func (c *rawColumnStruct) toColumnRef() ColumnRef {
 					NotNull:   !c.Nullable,
 					Default:   c.Default,
 					Check:     nil, // TODO
-					Enum:      nil, // TODO
-					Fields:    nil, // TODO
-					KeyType:   nil, // TODO
-					ValueType: nil, // TODO
 					used:      refBool(false),
 				},
 				Ref: columnSchemaRef,
@@ -277,6 +261,20 @@ func (c *Root) getUnusedDomainAndSetItAsUsed(schemaName, domainName string) *Dom
 				*domainSchema.used = true
 				return &domainSchema
 			}
+		}
+	}
+	return nil
+}
+
+func (c *Root) getUnusedTypeAndSetItAsUsed(schemaName, typeName string) *TypeSchema {
+	schema, ok := c.Schemas.tryToFind(schemaName)
+	if !ok {
+		return nil
+	}
+	for name, userType := range schema.Value.Types {
+		if strings.EqualFold(name, typeName) {
+			*userType.used = true
+			return &userType
 		}
 	}
 	return nil
@@ -742,7 +740,7 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 				schemaDomains[domain.Domain] = allDomains[i].toDomainSchema()
 			}
 		}
-		schemaTypes := make(DomainsContainer, 0)
+		schemaTypes := make(TypesContainer, 0)
 		for typeName, recordType := range allRecordTypes.extractSchema(actualSchemaName) {
 			schemaTypes[typeName] = recordType.toRecordSchema()
 		}

@@ -211,11 +211,36 @@ func makeUnusedTablesComparator(
 func makeTypesComparator(
 	current *Root,
 	schema string,
-	newTypes map[string]DomainSchema,
+	newTypes map[string]TypeSchema,
 ) (
-	typesComparator []DomainComparator,
+	typesComparator []TypeComparator,
 	postpone []string,
 ) {
+	for userTypeName := range newTypes {
+		var (
+			newType = newTypes[userTypeName]
+			oldType = current.getUnusedTypeAndSetItAsUsed(schema, userTypeName)
+		)
+		if oldType != nil {
+			// both domains with same schema and name
+			typesComparator = append(typesComparator, TypeComparator{
+				Name: NameComparator{
+					Actual: userTypeName,
+					New:    userTypeName,
+				},
+				Schema: NameComparator{
+					Actual: schema,
+					New:    schema,
+				},
+				TypeStruct: TypeStructComparator{
+					OldStructure: oldType,
+					NewStructure: &newType,
+				},
+			})
+		} else {
+			postpone = append(postpone, userTypeName)
+		}
+	}
 	return
 }
 
@@ -412,8 +437,8 @@ func (c *SchemaRef) diffKnown(
 		afterInstall = append(afterInstall, second...)
 	}
 	customTypes, _ := makeTypesComparator(current, schema, c.Value.Types) // TODO postponed
-	for _, domain := range customTypes {
-		first, second := domain.makeSolution()
+	for _, customType := range customTypes {
+		first, second := customType.makeSolution()
 		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
@@ -535,12 +560,22 @@ type (
 		OldStructure *DomainSchema
 		NewStructure *DomainSchema
 	}
+	TypeStructComparator struct {
+		OldStructure *TypeSchema
+		NewStructure *TypeSchema
+	}
 	DomainComparator struct {
 		Name         NameComparator
 		Schema       NameComparator
 		DomainStruct DomainStructComparator
 	}
 	DomainsComparator []DomainComparator
+	TypeComparator    struct {
+		Name       NameComparator
+		Schema     NameComparator
+		TypeStruct TypeStructComparator
+	}
+	TypesComparator []TypeComparator
 )
 
 /*
@@ -575,6 +610,29 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 			(*c.DomainStruct.NewStructure.Default != *c.DomainStruct.OldStructure.Default)) {
 		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.Default))
 	}
+	return
+}
+func (c TypeComparator) makeSolution() (preInstall []SqlStmt, postInstall []SqlStmt) {
+	preInstall = make([]SqlStmt, 0, 0)
+	postInstall = make([]SqlStmt, 0, 0)
+	// https://www.postgresql.org/docs/9.1/sql-altertype.html
+	if c.TypeStruct.OldStructure == nil {
+		preInstall = append(preInstall, makeType(c.Schema.New, c.Name.New, *c.TypeStruct.NewStructure))
+		return
+	}
+	if c.TypeStruct.NewStructure == nil {
+		postInstall = append(postInstall, makeTypeDrop(c.Schema.Actual, c.Name.Actual))
+		return
+	}
+	if !strings.EqualFold(c.Schema.New, c.Schema.Actual) {
+		preInstall = append(preInstall, makeTypeSetSchema(c.Name.Actual, c.Schema))
+	}
+	if !strings.EqualFold(c.Name.New, c.Name.Actual) {
+		preInstall = append(preInstall, makeTypeRename(c.Schema.New, c.Name))
+	}
+	// TODO
+	//  ADD ATTRIBUTE
+	//  ADD VALUE
 	return
 }
 

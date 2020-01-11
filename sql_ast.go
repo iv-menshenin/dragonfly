@@ -189,6 +189,7 @@ const (
 	TargetTable
 	TargetColumn
 	TargetDomain
+	TargetType
 
 	RuleNoAction OnDeleteUpdateRule = iota
 	RuleCascade
@@ -242,6 +243,7 @@ var (
 		TargetTable:  "table",
 		TargetColumn: "column",
 		TargetDomain: "domain",
+		TargetType:   "type",
 	}
 )
 
@@ -350,9 +352,37 @@ func makeDomainSetSchema(domain string, rename NameComparator) SqlStmt {
 	}
 }
 
+func makeTypeSetSchema(domain string, rename NameComparator) SqlStmt {
+	return &AlterStmt{
+		Target: TargetType,
+		Name: &Selector{
+			Name:      domain,
+			Container: rename.Actual,
+		},
+		Alter: &SetMetadataExpr{
+			Set: &SchemaExpr{
+				SchemaName: rename.New,
+			},
+		},
+	}
+}
+
 func makeDomainRename(schema string, rename NameComparator) SqlStmt {
 	return &AlterStmt{
 		Target: TargetDomain,
+		Name: &Selector{
+			Name:      rename.Actual,
+			Container: schema,
+		},
+		Alter: &SqlRename{
+			NewName: &Literal{Text: rename.New},
+		},
+	}
+}
+
+func makeTypeRename(schema string, rename NameComparator) SqlStmt {
+	return &AlterStmt{
+		Target: TargetType,
 		Name: &Selector{
 			Name:      rename.Actual,
 			Container: schema,
@@ -414,11 +444,36 @@ func makeDomain(schema, domain string, domainSchema DomainSchema) SqlStmt {
 	}
 }
 
+func makeType(schema, typeName string, typeSchema TypeSchema) SqlStmt {
+	return &CreateStmt{
+		Target: TargetType,
+		Name: &Selector{
+			Name:      typeName,
+			Container: schema,
+		},
+		Create: &TypeDescription{
+			Type:      typeSchema.Type,
+			Length:    typeSchema.Length,
+			Precision: typeSchema.Precision,
+		},
+	}
+}
+
 func makeDomainDrop(schema, domain string) SqlStmt {
 	return &DropStmt{
 		Target: TargetDomain,
 		Name: &Selector{
 			Name:      domain,
+			Container: schema,
+		},
+	}
+}
+
+func makeTypeDrop(schema, typeName string) SqlStmt {
+	return &DropStmt{
+		Target: TargetType,
+		Name: &Selector{
+			Name:      typeName,
 			Container: schema,
 		},
 	}
