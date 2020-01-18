@@ -143,7 +143,7 @@ func TestColumnRef_normalize(t *testing.T) {
 										},
 										Constraints: []Constraint{
 											{
-												Name: "Test3_{%Schema}_{%Table}_{%ColumnIndex}",
+												Name: "Test3_{%Schema}_{%Table}_{%Index}",
 												Type: ConstraintUniqueKey,
 											},
 										},
@@ -189,7 +189,7 @@ func TestColumnRef_normalize(t *testing.T) {
 					},
 					Constraints: []Constraint{
 						{
-							Name: "Test1_{%Schema}_{%Table}_{%ColumnIndex}",
+							Name: "Test1_{%Schema}_{%Table}_{%Index}",
 							Type: ConstraintPrimaryKey,
 						},
 					},
@@ -206,7 +206,7 @@ func TestColumnRef_normalize(t *testing.T) {
 					},
 					Constraints: []Constraint{
 						{
-							Name: "Test2_{%Table}_{%Schema}_{%ColumnIndex}",
+							Name: "Test2_{%Table}_{%Schema}_{%Index}",
 							Type: ConstraintPrimaryKey,
 						},
 					},
@@ -246,7 +246,7 @@ func TestColumnRef_normalize(t *testing.T) {
 				if col.Value.Constraints[0].Name != "Test1_test_schema_1_test_table_1_0" {
 					return errors.New("Constraints[0].Name: did not complete the template conversion")
 				}
-				if testRoot.Components.Columns["test_column_1"].Constraints[0].Name != "Test1_{%Schema}_{%Table}_{%ColumnIndex}" {
+				if testRoot.Components.Columns["test_column_1"].Constraints[0].Name != "Test1_{%Schema}_{%Table}_{%Index}" {
 					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
 				}
 				if col.used == nil || *col.used {
@@ -279,10 +279,10 @@ func TestColumnRef_normalize(t *testing.T) {
 				if col.Value.Name != "column_2" || col.Value.Schema.Value.Type != "int8" {
 					return errors.New("Column.Value: the object did not receive its contents by reference")
 				}
-				if col.Value.Constraints[0].Name != "Test2_test_table_1_test_schema_1_1" {
+				if col.Value.Constraints[0].Name != "Test2_test_table_1_test_schema_1_0" {
 					return errors.New("Constraints[0].Name: did not complete the template conversion")
 				}
-				if testRoot.Components.Columns["test_column_2"].Constraints[0].Name != "Test2_{%Table}_{%Schema}_{%ColumnIndex}" {
+				if testRoot.Components.Columns["test_column_2"].Constraints[0].Name != "Test2_{%Table}_{%Schema}_{%Index}" {
 					return errors.New("Column.Ref: the original data is distorted, the data must be copied but must not be changed")
 				}
 				if col.used == nil || *col.used {
@@ -312,7 +312,7 @@ func TestColumnRef_normalize(t *testing.T) {
 				if col.Value.Name != "simple" || col.Value.Schema.Value.Type != "int8" {
 					return errors.New("wrong column data")
 				}
-				if col.Value.Constraints[0].Name != "Test3_test_schema_1_test_table_1_2" {
+				if col.Value.Constraints[0].Name != "Test3_test_schema_1_test_table_1_0" {
 					return errors.New("Constraints[0].Name: did not complete the template conversion")
 				}
 				if col.used == nil || *col.used {

@@ -29,7 +29,7 @@ func readAndParseFile(fileName string, i interface{}) {
 	if file, err := os.Open(fileName); err != nil {
 		panic(err)
 	} else {
-		defer func(){
+		defer func() {
 			if err := file.Close(); err != nil {
 				panic(err)
 			}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
-	"go/token"
 	"io"
 	"reflect"
 	"strconv"
@@ -224,7 +223,9 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	}
 	fieldDescriber := c.Value.describeGO()
 	fieldType := fieldDescriber.fieldTypeExpr()
-	mergeCodeBase(w, fieldDescriber.getFile())
+	if err := mergeCodeBase(w, fieldDescriber.getFile()); err != nil {
+		panic(err)
+	}
 
 	return ast.Field{
 		Doc: nil,
@@ -496,39 +497,6 @@ func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
 	}
 }
 
-func insertTypeSpec(w *ast.File, newType ast.TypeSpec) {
-	var genDecls *ast.Decl
-	for i, dec := range w.Decls {
-		if t, ok := dec.(*ast.GenDecl); ok {
-			if t.Tok != token.TYPE {
-				continue
-			}
-			if genDecls == nil {
-				genDecls = &w.Decls[i]
-			}
-			for _, spec := range t.Specs {
-				if s, ok := spec.(*ast.TypeSpec); ok {
-					if s.Name.Name == newType.Name.Name {
-						if !reflect.DeepEqual(s.Type, newType.Type) {
-							panic(fmt.Sprintf("%s type is already declared", newType.Name.Name))
-						} else {
-							return
-						}
-					}
-				}
-			}
-		}
-	}
-	if genDecls == nil {
-		w.Decls = append(w.Decls, &ast.GenDecl{
-			Tok:   token.TYPE,
-			Specs: []ast.Spec{&newType},
-		})
-	} else {
-		(*genDecls).(*ast.GenDecl).Specs = append((*genDecls).(*ast.GenDecl).Specs, &newType)
-	}
-}
-
 func mergeCodeBase(main *AstData, chains []AstDataChain) error {
 	for _, next := range chains {
 		for name, spec := range next.Types {
@@ -567,7 +535,9 @@ func mergeCodeBase(main *AstData, chains []AstDataChain) error {
 				}
 			}
 		}
-		main.Chains = append(main.Chains, next)
+		if len(next.Types)+len(next.Implementations)+len(next.Constants) > 0 {
+			main.Chains = append(main.Chains, next)
+		}
 	}
 	return nil
 }
