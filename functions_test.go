@@ -86,6 +86,15 @@ func Test_sortMap_getSorted(t *testing.T) {
 			wantKeys:   []string{"yz0", "vwx", "stu", "pqr", "mno", "jkl", "ghi", "def", "abc"},
 			wantValues: []int{1, 1, 1, 1, 1, 1, 1, 1, 1},
 		},
+		{
+			name: "test simple negative",
+			c: map[string]int{
+				"test1": -2,
+				"test2": -2,
+			},
+			wantKeys:   []string{"test2", "test1"},
+			wantValues: []int{-2, -2},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

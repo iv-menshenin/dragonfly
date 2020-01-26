@@ -19,20 +19,22 @@ func somethingMatched(compaMap map[string]int, matched func(string)) {
 
 // sorting in decreasing order map[string]int by their values. upper values are greater, lower values are less
 func (c sortMap) getSortedKeysValues() (keys []string, values []int) {
-	keys = make([]string, len(c), len(c))
-	values = make([]int, len(c), len(c))
+	keys = make([]string, 0, len(c))
+	values = make([]int, 0, len(c))
 	for key, value := range c {
-		var found = 0
+		var found = len(values)
 		for i, val := range values {
-			found = i
 			if val > value {
 				continue
 			}
 			if val == value && keys[i] > key {
 				continue
 			}
+			found = i
 			break
 		}
+		keys = append(keys, "")
+		values = append(values, 0)
 		copy(keys[found+1:], keys[found:])
 		copy(values[found+1:], values[found:])
 		keys[found] = key
