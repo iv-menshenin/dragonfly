@@ -443,17 +443,21 @@ func (c *Root) getDomainUsages(domainSchema, domainName string) []ColumnFullName
 	return usages
 }
 
-func (c *Root) getForeignKey(schemaName, foreignSchema, tableName, foreignTable string) *ForeignKey {
+func (c *Root) getForeignKey(schemaName, foreignSchema, tableName, foreignTable string) (string, *ForeignKey) {
 	if schema, ok := c.Schemas.tryToFind(schemaName); ok {
 		for name, table := range schema.Value.Tables {
 			if strings.EqualFold(name, tableName) {
 				for _, constraint := range table.Constraints {
+					var columnName string
+					if len(constraint.Columns) == 1 {
+						columnName = constraint.Columns[0]
+					}
 					if constraint.Constraint.Type == ConstraintForeignKey {
 						fk, ok := constraint.Constraint.Parameters.Parameter.(ForeignKey)
 						if ok {
 							if tableName := strings.Split(fk.ToTable, "."); len(tableName) == 2 {
 								if strings.EqualFold(tableName[0], foreignSchema) && strings.EqualFold(tableName[1], foreignTable) {
-									return &fk
+									return columnName, &fk
 								}
 							}
 						}
@@ -462,7 +466,7 @@ func (c *Root) getForeignKey(schemaName, foreignSchema, tableName, foreignTable 
 			}
 		}
 	}
-	return nil
+	return "", nil
 }
 
 func (c rawActualConstraints) toTableConstraints() TableConstraints {

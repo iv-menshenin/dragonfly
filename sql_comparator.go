@@ -795,7 +795,7 @@ func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []Sql
 					foreignTable = tab[1]
 					foreignSchema = tab[0]
 				}
-				if existingFK := current.getForeignKey(schema, foreignSchema, table, foreignTable); existingFK != nil {
+				if fromColumn, existingFK := current.getForeignKey(schema, foreignSchema, table, foreignTable); existingFK != nil {
 					fkSchema, fkTable := schema, existingFK.ToTable
 					if tableSep := strings.Split(existingFK.ToTable, "."); len(tableSep) > 1 {
 						fkSchema, fkTable = tableSep[0], tableSep[1]
@@ -819,8 +819,8 @@ func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []Sql
 											},
 											From: TableDesc{
 												Table: &Selector{
-													Name:      fkSchema,
-													Container: fkTable,
+													Name:      fkTable,
+													Container: fkSchema,
 												},
 												Alias: "",
 											},
@@ -828,7 +828,7 @@ func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []Sql
 												Left: &Literal{Text: existingFK.ToColumn},
 												Right: &UnaryExpr{
 													Ident: &Selector{
-														Name:      existingFK.ToColumn,
+														Name:      fromColumn,
 														Container: "dest",
 													},
 												},
