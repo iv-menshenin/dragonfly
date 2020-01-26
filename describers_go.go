@@ -32,6 +32,12 @@ type (
 		typeName string
 		domain   *TypeSchema
 	}
+	mapTypeDescriber struct {
+		simpleTypeDescriber
+		typeName  string
+		keyType   *ColumnSchemaRef
+		valueType *ColumnSchemaRef
+	}
 	recordTypeDescriber struct {
 		simpleTypeDescriber
 		typeName string
@@ -209,6 +215,35 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 		),
 	}
 	return append(c.simpleTypeDescriber.getFile(), main)
+}
+
+/*
+	makeMapDescriberDirectly
+*/
+
+func makeMapDescriberDirectly(typeName string, domain *TypeSchema) fieldDescriber {
+	return mapTypeDescriber{
+		simpleTypeDescriber: simpleTypeDescriber{typeLit: typeName},
+		keyType:             domain.KeyType,
+		valueType:           domain.ValueType,
+		typeName:            typeName,
+	}
+}
+
+func (c mapTypeDescriber) getFile() []AstDataChain {
+	return []AstDataChain{
+		{
+			Types: map[string]*ast.TypeSpec{
+				makeName(c.typeName).Name: {
+					Name: makeName(c.typeName),
+					Type: &ast.MapType{
+						Key:   c.keyType.Value.describeGO(c.keyType.Value.Type).fieldTypeExpr(),
+						Value: c.valueType.Value.describeGO(c.keyType.Value.Type).fieldTypeExpr(),
+					},
+				},
+			},
+		},
+	}
 }
 
 /*
@@ -620,6 +655,13 @@ var (
 func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber {
 	if makeFn, ok := knownTypes[strings.ToLower(c.Type)]; ok {
 		return makeFn(typeName, c)
+	}
+	if t := strings.Split(c.Type, "."); len(t) == 2 {
+		return simpleTypeDescriber{
+			typeLit:     makeExportedName(c.Type),
+			typePrefix:  "",
+			packagePath: "",
+		}
 	}
 	panic(fmt.Sprintf("unknown field type '%s'", c.Type))
 }

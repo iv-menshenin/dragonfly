@@ -426,58 +426,62 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 }
 
 func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
-	if len(c.Value.Tables) > 0 {
-		for tableName, table := range c.Value.Tables {
-			var (
-				structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
-				resultFields = table.generateFields(w)
-			)
-			if err := mergeCodeBase(w, []AstDataChain{
-				{
-					Types: map[string]*ast.TypeSpec{
-						structName: {
-							Name: makeName(structName),
-							Type: &ast.StructType{
-								Fields: &ast.FieldList{List: resultFields},
-							},
-							Comment: makeComment(stringToSlice(table.Description)),
+	for typeName, typeSchema := range c.Value.Types {
+		typeName = c.Value.Name + "." + typeName
+		if err := mergeCodeBase(w, typeSchema.generateType(schemaName, typeName)); err != nil {
+			panic(err)
+		}
+	}
+	for tableName, table := range c.Value.Tables {
+		var (
+			structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
+			resultFields = table.generateFields(w)
+		)
+		if err := mergeCodeBase(w, []AstDataChain{
+			{
+				Types: map[string]*ast.TypeSpec{
+					structName: {
+						Name: makeName(structName),
+						Type: &ast.StructType{
+							Fields: &ast.FieldList{List: resultFields},
 						},
+						Comment: makeComment(stringToSlice(table.Description)),
 					},
-					Constants:       nil,
-					Implementations: nil,
 				},
-			}); err != nil {
-				panic(err)
-			}
-			if len(table.Api) > 0 {
-				for i, api := range table.Api {
-					apiName := evalTemplateParameters(
-						api.Name,
-						map[string]string{
-							cNN:      strconv.Itoa(i),
-							cSchema:  schemaName,
-							cTable:   tableName,
-							cApiType: api.Type.String(),
-						},
-					)
-					if apiName == "" {
-						panic(fmt.Sprintf("you must specify name for api #%d in '%s' schema '%s' table", i, schemaName, tableName))
-					} else {
-						apiName = makeExportedName(apiName)
-					}
-					if apiName == "AuthAccountsUpdateOne" {
-						// TODO debug
-						apiName = "AuthAccountsUpdateOne"
-					}
-					var (
-						optionFields, mutableFields = api.generateOptions(&table, w)
-						builder                     = api.getApiBuilder(apiName)
-					)
-					if err := mergeCodeBase(w, []AstDataChain{
-						builder(c, tableName, structName, optionFields, mutableFields, resultFields),
-					}); err != nil {
-						panic(err)
-					}
+				Constants:       nil,
+				Implementations: nil,
+			},
+		}); err != nil {
+			panic(err)
+		}
+		if len(table.Api) > 0 {
+			for i, api := range table.Api {
+				apiName := evalTemplateParameters(
+					api.Name,
+					map[string]string{
+						cNN:      strconv.Itoa(i),
+						cSchema:  schemaName,
+						cTable:   tableName,
+						cApiType: api.Type.String(),
+					},
+				)
+				if apiName == "" {
+					panic(fmt.Sprintf("you must specify name for api #%d in '%s' schema '%s' table", i, schemaName, tableName))
+				} else {
+					apiName = makeExportedName(apiName)
+				}
+				if apiName == "AuthAccountsUpdateOne" {
+					// TODO debug
+					apiName = "AuthAccountsUpdateOne"
+				}
+				var (
+					optionFields, mutableFields = api.generateOptions(&table, w)
+					builder                     = api.getApiBuilder(apiName)
+				)
+				if err := mergeCodeBase(w, []AstDataChain{
+					builder(c, tableName, structName, optionFields, mutableFields, resultFields),
+				}); err != nil {
+					panic(err)
 				}
 			}
 		}

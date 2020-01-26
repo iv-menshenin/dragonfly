@@ -161,6 +161,24 @@ type (
 	}
 )
 
+func (c *TypeSchema) generateType(schema, typeName string) []AstDataChain {
+	typeName = makeExportedName(typeName)
+	var describer fieldDescriber
+	switch c.Type {
+	case "record":
+		describer = makeRecordDescriberDirectly(typeName, c)
+	case "json":
+		describer = makeJsonDescriberDirectly(typeName, c)
+	case "map":
+		describer = makeMapDescriberDirectly(typeName, c)
+	case "enum":
+		describer = makeEnumDescriberDirectly(typeName, c)
+	default:
+		panic(fmt.Sprintf("unknown type '%s' for '%s'", c.Type, typeName))
+	}
+	return describer.getFile()
+}
+
 const (
 	ConstraintPrimaryKey ConstraintType = iota + 1
 	ConstraintForeignKey
