@@ -69,42 +69,30 @@ func makeUnusedDomainsComparator(
 			}
 		}
 	}
-	keys, vals := sortMap(matches).getSortedKeysValues()
-	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
-		actualDomainSchemaName, actualDomainName := strings.Split(keys[0], ".")[0], strings.Split(keys[0], ".")[1]
-		actualDomain := domains[keys[0]]
-		*actualDomain.used = true
-		return &DomainComparator{
-			Name: NameComparator{
-				Actual: actualDomainName,
-				New:    newDomainName,
-			},
-			Schema: NameComparator{
-				Actual: actualDomainSchemaName,
-				New:    schemaName,
-			},
-			DomainStruct: DomainStructComparator{
-				OldStructure: &actualDomain,
-				NewStructure: &newDomain,
-			},
-		}
-	} else {
-		// new domain
-		return &DomainComparator{
-			Name: NameComparator{
-				Actual: "",
-				New:    newDomainName,
-			},
-			Schema: NameComparator{
-				Actual: "",
-				New:    schemaName,
-			},
-			DomainStruct: DomainStructComparator{
-				OldStructure: nil,
-				NewStructure: &newDomain,
-			},
-		}
+	var result = DomainComparator{
+		Name: NameComparator{
+			Actual: "",
+			New:    newDomainName,
+		},
+		Schema: NameComparator{
+			Actual: "",
+			New:    schemaName,
+		},
+		DomainStruct: DomainStructComparator{
+			OldStructure: nil,
+			NewStructure: &newDomain,
+		},
 	}
+	somethingMatched(
+		matches,
+		func(matchedName string) {
+			result.Schema.Actual, result.Name.Actual = strings.Split(matchedName, ".")[0], strings.Split(matchedName, ".")[1]
+			actualDomain := domains[matchedName]
+			*actualDomain.used = true
+			result.DomainStruct.OldStructure = &actualDomain
+		},
+	)
+	return &result
 }
 
 func makeDomainsComparator(
@@ -170,42 +158,30 @@ func makeUnusedTablesComparator(
 			matches[key] -= len(newTable.Columns) - matches[key]
 		}
 	}
-	keys, vals := sortMap(matches).getSortedKeysValues()
-	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
-		actualSchemaName, actualTableName := strings.Split(keys[0], ".")[0], strings.Split(keys[0], ".")[1]
-		actualTable := tables[keys[0]]
-		*actualTable.used = true
-		return &TableComparator{
-			Name: NameComparator{
-				Actual: actualTableName,
-				New:    newTableName,
-			},
-			Schema: NameComparator{
-				Actual: actualSchemaName,
-				New:    schemaName,
-			},
-			TableStruct: TableStructComparator{
-				OldStructure: &actualTable,
-				NewStructure: &newTable,
-			},
-		}
-	} else {
-		// new table
-		return &TableComparator{
-			Name: NameComparator{
-				Actual: "",
-				New:    newTableName,
-			},
-			Schema: NameComparator{
-				Actual: "",
-				New:    schemaName,
-			},
-			TableStruct: TableStructComparator{
-				OldStructure: nil,
-				NewStructure: &newTable,
-			},
-		}
+	var result = TableComparator{
+		Name: NameComparator{
+			Actual: "",
+			New:    newTableName,
+		},
+		Schema: NameComparator{
+			Actual: "",
+			New:    schemaName,
+		},
+		TableStruct: TableStructComparator{
+			OldStructure: nil,
+			NewStructure: &newTable,
+		},
 	}
+	somethingMatched(
+		matches,
+		func(matchedName string) {
+			result.Schema.Actual, result.Name.Actual = strings.Split(matchedName, ".")[0], strings.Split(matchedName, ".")[1]
+			actualTable := tables[matchedName]
+			*actualTable.used = true
+			result.TableStruct.OldStructure = &actualTable
+		},
+	)
+	return &result
 }
 
 func makeTypesComparator(
@@ -242,6 +218,57 @@ func makeTypesComparator(
 		}
 	}
 	return
+}
+
+func makeUnusedTypesComparator(
+	current *Root,
+	schemaName string,
+	newTypeName string,
+	newType TypeSchema,
+) (
+	comparator *TypeComparator,
+) {
+	types := make(map[string]TypeSchema, 50)
+	matches := make(map[string]int, 50)
+	for tableSchemaName, actualTypes := range current.getUnusedTypes() {
+		for typeName, actualType := range actualTypes {
+			key := fmt.Sprintf("%s.%s", tableSchemaName, typeName)
+			matches[key] = 0
+			types[key] = actualType
+			for _, newColumn := range newType.Fields {
+				for _, actualColumn := range actualType.Fields {
+					if strings.EqualFold(newColumn.Value.Name, actualColumn.Value.Name) {
+						matches[key] += 1
+					}
+				}
+			}
+			matches[key] -= len(newType.Fields) - matches[key]
+		}
+	}
+	var result = TypeComparator{
+		Name: NameComparator{
+			Actual: "",
+			New:    newTypeName,
+		},
+		Schema: NameComparator{
+			Actual: "",
+			New:    schemaName,
+		},
+		TypeStruct: TypeStructComparator{
+			OldStructure: nil,
+			NewStructure: &newType,
+		},
+	}
+	somethingMatched(
+		matches,
+		func(matchedName string) {
+			result.Schema.Actual, result.Name.Actual = strings.Split(matchedName, ".")[0], strings.Split(matchedName, ".")[1]
+			actualType := types[matchedName]
+			*actualType.used = true
+			result.TypeStruct.OldStructure = &actualType
+		},
+	)
+	return &result
 }
 
 func makeTablesComparator(
@@ -414,6 +441,7 @@ type (
 	postponedObjects struct {
 		domains []string
 		tables  []string
+		types   []string
 	}
 )
 
@@ -436,9 +464,10 @@ func (c *SchemaRef) diffKnown(
 		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
-	customTypes, _ := makeTypesComparator(current, schema, c.Value.Types) // TODO postponed
+	customTypes, typesPostponed := makeTypesComparator(current, schema, c.Value.Types)
+	postponed.types = typesPostponed
 	for _, customType := range customTypes {
-		first, second := customType.makeSolution()
+		first, second := customType.makeSolution(current)
 		preInstall = append(preInstall, first...)
 		afterInstall = append(afterInstall, second...)
 	}
@@ -469,7 +498,7 @@ func (c *SchemaRef) diffPostponed(
 	for _, domainName := range postponed.domains {
 		domain, ok := c.Value.Domains[domainName]
 		if !ok {
-			panic("something went wrong. check the domain name character case mistakes")
+			panic("something went wrong")
 		}
 		if comparator := makeUnusedDomainsComparator(current, schema, domainName, domain, new); comparator != nil {
 			first, second := comparator.makeSolution()
@@ -480,7 +509,7 @@ func (c *SchemaRef) diffPostponed(
 	for _, tableName := range postponed.tables {
 		table, ok := c.Value.Tables[tableName]
 		if !ok {
-			panic("something went wrong. check the table name character case mistakes")
+			panic("something went wrong")
 		}
 		if comparator := makeUnusedTablesComparator(current, schema, tableName, table); comparator != nil {
 			first, second := comparator.makeSolution(current)
@@ -488,7 +517,17 @@ func (c *SchemaRef) diffPostponed(
 			afterInstall = append(afterInstall, second...)
 		}
 	}
-	// TODO table postponed comparator
+	for _, customTypeName := range postponed.types {
+		customType, ok := c.Value.Types[customTypeName]
+		if !ok {
+			panic("something went wrong")
+		}
+		if comparator := makeUnusedTypesComparator(current, schema, customTypeName, customType); comparator != nil {
+			first, second := comparator.makeSolution(current)
+			install = append(install, first...)
+			afterInstall = append(afterInstall, second...)
+		}
+	}
 	return
 }
 
@@ -612,7 +651,7 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 	}
 	return
 }
-func (c TypeComparator) makeSolution() (preInstall []SqlStmt, postInstall []SqlStmt) {
+func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postInstall []SqlStmt) {
 	preInstall = make([]SqlStmt, 0, 0)
 	postInstall = make([]SqlStmt, 0, 0)
 	// https://www.postgresql.org/docs/9.1/sql-altertype.html

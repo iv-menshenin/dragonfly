@@ -10,6 +10,13 @@ type (
 	sortMap map[string]int
 )
 
+func somethingMatched(compaMap map[string]int, matched func(string)) {
+	keys, vals := sortMap(compaMap).getSortedKeysValues()
+	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
+		matched(keys[0])
+	}
+}
+
 // sorting in decreasing order map[string]int by their values. upper values are greater, lower values are less
 func (c sortMap) getSortedKeysValues() (keys []string, values []int) {
 	keys = make([]string, len(c), len(c))

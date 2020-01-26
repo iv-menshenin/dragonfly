@@ -369,6 +369,27 @@ func (c *Root) getUnusedTables() (tables map[string]map[string]Table) {
 	return tables
 }
 
+func (c *Root) getUnusedTypes() (types map[string]map[string]TypeSchema) {
+	types = make(map[string]map[string]TypeSchema)
+	for _, schema := range c.Schemas {
+		schemaName := schema.Value.Name
+		for name, customType := range schema.Value.Types {
+			if !*customType.used {
+				var (
+					ok bool
+					t  map[string]TypeSchema
+				)
+				if t, ok = types[schemaName]; !ok {
+					t = make(map[string]TypeSchema)
+				}
+				t[name] = customType
+				types[schemaName] = t
+			}
+		}
+	}
+	return types
+}
+
 func (c *Root) getColumnConstraints(schemaName, tableName, columnName string) []Constraint {
 	if schema, ok := c.Schemas.tryToFind(schemaName); ok {
 		for name, table := range schema.Value.Tables {
