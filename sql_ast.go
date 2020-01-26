@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+var sqlReservedWords = []string{"all", "analyse", "analyze", "and", "any", "array", "as", "asc", "asymmetric", "authorization", "binary", "both", "case", "cast", "check", "collate", "column", "concurrently", "constraint", "create", "cross", "current_catalog", "current_date", "current_role", "current_schema", "current_time", "current_timestamp", "current_user", "default", "deferrable", "desc", "distinct", "do", "else", "end", "except", "false", "fetch", "for", "foreign", "freeze", "from", "full", "grant", "group", "having", "ilike", "in", "initially", "inner", "intersect", "into", "is", "isnull", "join", "leading", "left", "like", "limit", "localtime", "localtimestamp", "natural", "not", "notnull", "null", "offset", "on", "only", "or", "order", "outer", "over", "overlaps", "placing", "primary", "references", "returning", "right", "select", "session_user", "similar", "some", "symmetric", "table", "then", "to", "trailing", "true", "union", "unique", "user", "using", "variadic", "verbose", "when", "where", "window", "with"}
+
 type (
 	SqlTarget          int
 	Nullable           bool
@@ -144,7 +146,7 @@ type (
 	}
 
 	ColumnDefinitionExpr struct {
-		Name        string
+		Name        SqlIdent
 		DataType    string
 		Collation   *string
 		Constraints []ConstraintExpr
@@ -182,6 +184,13 @@ type (
 	TableDesc struct {
 		Table SqlIdent
 		Alias string
+	}
+
+	RecordDescription struct {
+		Fields []SqlExpr
+	}
+	EnumDescription struct {
+		Values []string
 	}
 
 	TypeDescription struct {
@@ -279,7 +288,7 @@ func makeAddColumnExpr(column ColumnRef) SqlExpr {
 }
 
 func (c *Literal) GetName() string {
-	return c.Text
+	return c.Expression()
 }
 
 func (c *Selector) GetName() string {
@@ -299,7 +308,11 @@ func (c *CreateStmt) GetComment() string {
 }
 
 func (c *CreateStmt) MakeStmt() string {
-	return fmt.Sprintf("create %s %s %s", c.Target, c.Name.GetName(), c.Create.Expression())
+	if c.Create != nil {
+		return fmt.Sprintf("create %s %s %s", c.Target, c.Name.GetName(), c.Create.Expression())
+	} else {
+		return fmt.Sprintf("create %s %s", c.Target, c.Name.GetName())
+	}
 }
 
 func (c *DropStmt) GetComment() string {
@@ -477,17 +490,42 @@ func makeDomain(schema, domain string, domainSchema DomainSchema) SqlStmt {
 }
 
 func makeType(schema, typeName string, typeSchema TypeSchema) SqlStmt {
+	var create SqlExpr
+	if strings.EqualFold(typeSchema.Type, "record") {
+		fields := make([]SqlExpr, len(typeSchema.Fields))
+		for i, f := range typeSchema.Fields {
+			fieldTypeName := f.Value.Schema.Value.Type
+			if typeSchema, typeName, ok := f.Value.Schema.makeCustomType(); ok {
+				fieldTypeName = fmt.Sprintf("%s.%s", typeSchema, typeName)
+			}
+			fields[i] = &ColumnDefinitionExpr{
+				Name:        &Literal{Text: f.Value.Name},
+				DataType:    fieldTypeName,
+				Collation:   nil, // TODO COLLATION
+				Constraints: nil,
+			}
+		}
+		create = &RecordDescription{
+			Fields: fields,
+		}
+	} else if strings.EqualFold(typeSchema.Type, "enum") {
+		values := make([]string, len(typeSchema.Enum))
+		for i, f := range typeSchema.Enum {
+			values[i] = f.Value
+		}
+		create = &EnumDescription{
+			Values: values,
+		}
+	} else {
+		println("df")
+	}
 	return &CreateStmt{
 		Target: TargetType,
 		Name: &Selector{
 			Name:      typeName,
 			Container: schema,
 		},
-		Create: &TypeDescription{
-			Type:      typeSchema.Type,
-			Length:    typeSchema.Length,
-			Precision: typeSchema.Precision,
-		},
+		Create: create,
 	}
 }
 
@@ -702,7 +740,7 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 			)
 		}
 		columnsAndConstraintsDefinition = append(columnsAndConstraintsDefinition, &ColumnDefinitionExpr{
-			Name:        column.Value.Name,
+			Name:        &Literal{Text: column.Value.Name},
 			DataType:    columnType,
 			Collation:   nil,
 			Constraints: append(constraints, makeConstraintsExpr(true, column.Value.Constraints)...),
@@ -920,7 +958,7 @@ func (c *ColumnDefinitionExpr) Expression() string {
 	for _, constraint := range c.Constraints {
 		constraints += fmt.Sprintf(" %s %s", constraint.ConstraintString(), constraint.ConstraintParams())
 	}
-	return fmt.Sprintf("%s %s%s%s", c.Name, c.DataType, collation, constraints)
+	return fmt.Sprintf("%s %s%s%s", c.Name.GetName(), c.DataType, collation, constraints)
 }
 
 func (c *BracketBlock) Expression() string {
@@ -965,7 +1003,23 @@ func (c *SqlRename) Expression() string {
 }
 
 func (c *Literal) Expression() string {
+	if iArrayContains(sqlReservedWords, c.Text) {
+		return "\"" + c.Text + "\""
+	}
 	return c.Text
+}
+
+func (c *RecordDescription) Expression() string {
+	var s = make([]string, len(c.Fields))
+	for i, f := range c.Fields {
+		s[i] = f.Expression()
+	}
+	return fmt.Sprintf(" as (%s)", strings.Join(s, ", "))
+}
+
+func (c *EnumDescription) Expression() string {
+	// TODO caution. may sql inject by '
+	return fmt.Sprintf(" as enum ('%s')", strings.Join(c.Values, "', '"))
 }
 
 func (c *TypeDescription) Expression() string {

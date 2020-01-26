@@ -654,14 +654,16 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 	}
 	return
 }
+
 func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postInstall []SqlStmt) {
 	preInstall = make([]SqlStmt, 0, 0)
 	postInstall = make([]SqlStmt, 0, 0)
-	// https://www.postgresql.org/docs/9.1/sql-altertype.html
+	// https://www.postgresql.org/docs/9.1/sql-createtype.html
 	if c.TypeStruct.OldStructure == nil {
 		preInstall = append(preInstall, makeType(c.Schema.New, c.Name.New, *c.TypeStruct.NewStructure))
 		return
 	}
+	// https://www.postgresql.org/docs/9.1/sql-altertype.html
 	if c.TypeStruct.NewStructure == nil {
 		postInstall = append(postInstall, makeTypeDrop(c.Schema.Actual, c.Name.Actual))
 		return

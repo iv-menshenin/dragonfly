@@ -667,6 +667,7 @@ var (
 		{"boolean", "bool"},
 		{"bit varying", "varbit"},
 	}
+	lengthLimited = []string{"numeric", "decimal", "character varying", "varchar", "character", "char", "bit varying", "varbit"}
 )
 
 func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber {
@@ -700,19 +701,21 @@ func isMatchedTypes(a, b TypeBase) bool {
 			return false
 		}
 	}
-	if a.Length != nil {
-		if b.Length == nil || *b.Length != *a.Length {
+	if iArrayContains(lengthLimited, a.Type) {
+		if a.Length != nil {
+			if b.Length == nil || *b.Length != *a.Length {
+				return false
+			}
+		} else if b.Length != nil {
 			return false
 		}
-	} else if b.Length != nil {
-		return false
-	}
-	if a.Precision != nil {
-		if b.Precision == nil || *b.Precision != *a.Precision {
+		if a.Precision != nil {
+			if b.Precision == nil || *b.Precision != *a.Precision {
+				return false
+			}
+		} else if b.Precision != nil {
 			return false
 		}
-	} else if b.Precision != nil {
-		return false
 	}
 	return true
 }
