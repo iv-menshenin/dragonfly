@@ -45,6 +45,15 @@ type (
 		Name      string
 		Container string
 	}
+	Integer struct {
+		X int
+	}
+	FncCall struct {
+		Name SqlIdent
+		Args []SqlExpr
+	}
+
+	NotNullClause struct{}
 
 	SchemaExpr struct {
 		SchemaName string
@@ -201,6 +210,94 @@ type (
 	}
 )
 
+/* <FIELDS AND TYPES> =============================================================================================== */
+
+type (
+	TableBodyDescriber struct {
+		Fields      []FieldDescriber
+		Constraints []ConstraintExpr
+	}
+)
+
+func (c *TableBodyDescriber) Expression() string {
+	var columns = make([]string, 0, len(c.Fields)+len(c.Constraints))
+	for _, fld := range c.Fields {
+		columns = append(columns, fmt.Sprintf("\n\t%s", fld))
+	}
+	for _, cts := range c.Constraints {
+		columns = append(columns, fmt.Sprintf("\n\t%s", cts.Expression()))
+	}
+	return "(" + strings.Join(columns, ",") + "\n)"
+}
+
+type (
+	FieldDescriber interface {
+		fmt.Stringer
+		fieldDescriber() string
+	}
+	TypeDescriber interface {
+		fmt.Stringer
+		typeDescriber() string
+	}
+	SqlField struct {
+		Name        SqlIdent
+		Describer   TypeDescriber
+		Constraints []ConstraintExpr
+	} // FieldDescriber
+	FullTypeDesc struct {
+		ShortTypeDesc
+		Nullable *SqlNullable
+		Default  SqlExpr
+	} // TypeDescriber
+	ShortTypeDesc struct {
+		TypeName  SqlExpr
+		Collation *string
+	} // TypeDescriber
+)
+
+func (c *SqlField) fieldDescriber() string {
+	return c.String()
+}
+func (c *SqlField) String() string {
+	if len(c.Constraints) > 0 {
+		var constraintsClause = make([]string, 0, len(c.Constraints))
+		for _, constraint := range c.Constraints {
+			constraintsClause = append(constraintsClause, constraint.Expression())
+		}
+		return fmt.Sprintf("%s %s %s", c.Name.GetName(), c.Describer, strings.Join(constraintsClause, " "))
+	}
+	return fmt.Sprintf("%s %s", c.Name.GetName(), c.Describer)
+}
+
+func (c *ShortTypeDesc) typeDescriber() string {
+	return c.String()
+}
+func (c *ShortTypeDesc) String() string {
+	if c.Collation != nil {
+		return c.TypeName.Expression() + " " + *c.Collation
+	}
+	return c.TypeName.Expression()
+}
+
+func (c *FullTypeDesc) typeDescriber() string {
+	return c.String()
+}
+func (c *FullTypeDesc) String() string {
+	var (
+		nullableClause string
+		defaultClause  string
+	)
+	if c.Nullable != nil {
+		nullableClause = c.Nullable.Expression()
+	}
+	if c.Default != nil {
+		defaultClause = c.Default.Expression()
+	}
+	return fmt.Sprintf("%s %s %s", c.ShortTypeDesc.typeDescriber(), nullableClause, defaultClause)
+}
+
+/* </FIELDS AND TYPES> ============================================================================================== */
+
 const (
 	TargetNone SqlTarget = iota
 	TargetSchema
@@ -293,6 +390,10 @@ func (c *Literal) GetName() string {
 
 func (c *Selector) GetName() string {
 	return fmt.Sprintf("%s.%s", c.Container, c.Name)
+}
+
+func (c *Selector) Expression() string {
+	return c.GetName()
 }
 
 func (c *AlterStmt) GetComment() string {
@@ -445,7 +546,7 @@ func makeDomainSetNotNull(schema, domain string, notNull bool) SqlStmt {
 			Name:      domain,
 			Container: schema,
 		},
-		Alter: makeSetDropExpr(notNull, &Literal{Text: "not null"}),
+		Alter: makeSetDropExpr(notNull, &NotNullClause{}),
 	}
 }
 
@@ -616,7 +717,7 @@ func makeAlterColumnSetNotNull(schema, table, column string, notNull bool) SqlSt
 		Alter: &AlterExpr{
 			Target: TargetColumn,
 			Name:   &Literal{Text: column},
-			Alter:  makeSetDropExpr(notNull, &Literal{Text: "not null"}), // TODO make static structure
+			Alter:  makeSetDropExpr(notNull, &NotNullClause{}),
 		},
 	}
 }
@@ -763,36 +864,63 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 	/*
 		https://postgrespro.ru/docs/postgresql/9.6/sql-createtable
 	*/
-	var columnsAndConstraintsDefinition = make([]SqlExpr, 0, len(tableStruct.Columns)+len(tableStruct.Constraints))
+	var (
+		fields      = make([]FieldDescriber, 0, len(tableStruct.Columns))
+		constraints = make([]ConstraintExpr, 0, len(tableStruct.Constraints))
+	)
 	for _, column := range tableStruct.Columns {
-		columnType := ""
+		var (
+			columnType SqlExpr
+		)
 		customSchema, customType, isCustom := column.Value.Schema.makeCustomType()
 		if isCustom {
-			columnType = fmt.Sprintf("%s.%s", customSchema, customType)
+			columnType = &Selector{Name: customType, Container: customSchema}
 		} else {
-			columnType = column.Value.Schema.Value.Type
 			if column.Value.Schema.Value.Length != nil {
 				if column.Value.Schema.Value.Precision != nil {
-					columnType += "(" + strconv.Itoa(*column.Value.Schema.Value.Length) + "," + strconv.Itoa(*column.Value.Schema.Value.Precision) + ")"
+					columnType = &FncCall{
+						Name: &Literal{Text: column.Value.Schema.Value.Type},
+						Args: []SqlExpr{
+							&Integer{X: *column.Value.Schema.Value.Length},
+							&Integer{X: *column.Value.Schema.Value.Precision},
+						},
+					}
 				} else {
-					columnType += "(" + strconv.Itoa(*column.Value.Schema.Value.Length) + ")"
+					columnType = &FncCall{
+						Name: &Literal{Text: column.Value.Schema.Value.Type},
+						Args: []SqlExpr{
+							&Integer{X: *column.Value.Schema.Value.Length},
+						},
+					}
 				}
+			} else {
+				columnType = &Literal{Text: column.Value.Schema.Value.Type}
 			}
 		}
-		var constraints = make([]ConstraintExpr, 0, len(column.Value.Constraints)+1)
+		var columnConstraints = make([]ConstraintExpr, 0, len(column.Value.Constraints)+2)
 		if !isCustom && column.Value.Schema.Value.NotNull {
-			constraints = append(
-				constraints,
+			columnConstraints = append(
+				columnConstraints,
 				&UnnamedConstraintExpr{
 					Constraint: &ConstraintNullableExpr{Nullable: Nullable(!column.Value.Schema.Value.NotNull)},
 				},
 			)
 		}
-		columnsAndConstraintsDefinition = append(columnsAndConstraintsDefinition, &ColumnDefinitionExpr{
-			Name:        &Literal{Text: column.Value.Name},
-			DataType:    columnType,
-			Collation:   nil,
-			Constraints: append(constraints, makeConstraintsExpr(true, column.Value.Constraints)...),
+		if !isCustom && column.Value.Schema.Value.Default != nil {
+			columnConstraints = append(
+				columnConstraints,
+				&UnnamedConstraintExpr{
+					Constraint: &ConstraintDefaultExpr{Expression: &Literal{Text: *column.Value.Schema.Value.Default}},
+				},
+			)
+		}
+		fields = append(fields, &SqlField{
+			Name: &Literal{Text: column.Value.Name},
+			Describer: &ShortTypeDesc{
+				TypeName:  columnType,
+				Collation: nil, // TODO COLLATION
+			},
+			Constraints: append(columnConstraints, makeConstraintsExpr(true, column.Value.Constraints)...),
 		})
 	}
 	for _, constraint := range tableStruct.Constraints {
@@ -808,7 +936,7 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 				Constraint: constraintInterface,
 			}
 		}
-		columnsAndConstraintsDefinition = append(columnsAndConstraintsDefinition, &ConstraintWithColumns{
+		constraints = append(constraints, &ConstraintWithColumns{
 			Columns:    constraint.Columns,
 			Constraint: constraintExpr,
 		})
@@ -819,17 +947,21 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 			Name:      tableName,
 			Container: schemaName,
 		},
-		Create: &BracketBlock{
-			Expr: columnsAndConstraintsDefinition,
+		Create: &TableBodyDescriber{
+			Fields:      fields,
+			Constraints: constraints,
 		},
 	}
 }
 
 func (c *SqlNullable) Expression() string {
-	if c.Nullable == NullableNotNull {
+	switch c.Nullable {
+	case NullableNotNull:
 		return "not null"
-	} else {
+	case NullableNull:
 		return "null"
+	default:
+		return ""
 	}
 }
 
@@ -1056,6 +1188,22 @@ func (c *Literal) Expression() string {
 		return "\"" + c.Text + "\""
 	}
 	return c.Text
+}
+
+func (c *FncCall) Expression() string {
+	var argmStr = make([]string, 0, len(c.Args))
+	for _, arg := range c.Args {
+		argmStr = append(argmStr, arg.Expression())
+	}
+	return fmt.Sprintf("%s(%s)", c.Name.GetName(), strings.Join(argmStr, ", "))
+}
+
+func (c *Integer) Expression() string {
+	return strconv.Itoa(c.X)
+}
+
+func (c *NotNullClause) Expression() string {
+	return "not null"
 }
 
 func (c *RecordDescription) Expression() string {

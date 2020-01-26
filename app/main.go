@@ -152,11 +152,14 @@ func main() {
 	}
 	switch state.ToDo {
 	case ToDoGenerate:
+
 		err := openFileForWrite(*state.OutputFile, func(w io.Writer) error {
 			readAndParse()
 			switch strings.ToLower(*state.OutputFormat) {
 			case "sql":
-				dragonfly.GenerateSql(root, *state.Schema, w)
+				var dump dragonfly.Root
+				diff := dragonfly.MakeDiff(&dump, root)
+				diff.Print(w)
 			case "go":
 				dragonfly.GenerateGO(root, *state.Schema, *state.PackageName, w)
 			}
