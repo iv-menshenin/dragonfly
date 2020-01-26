@@ -234,6 +234,9 @@ func makeUnusedTypesComparator(
 		for typeName, actualType := range actualTypes {
 			key := fmt.Sprintf("%s.%s", tableSchemaName, typeName)
 			matches[key] = 0
+			if strings.EqualFold(typeName, newTypeName) {
+				matches[key] = 1 + len(newType.Fields)
+			}
 			types[key] = actualType
 			for _, newColumn := range newType.Fields {
 				for _, actualColumn := range actualType.Fields {
@@ -673,8 +676,16 @@ func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postI
 		if f, ok := c.TypeStruct.OldStructure.Fields.tryToFind(s.Value.Name); ok {
 			*f.used = true
 			*s.used = true
-			if !isMatchedTypes(f.Value.Schema.Value.TypeBase, s.Value.Schema.Value.TypeBase) {
-				preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, s.Value.Schema.Value.TypeBase))
+			if schemaType, nameType, ok := s.Value.Schema.makeCustomType(); ok {
+				// compare domain name
+				fieldDomain := fmt.Sprintf("%s.%s", schemaType, nameType)
+				if !strings.EqualFold(fieldDomain, f.Value.Schema.Value.TypeBase.Type) {
+					preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, TypeBase{Type: fieldDomain}))
+				}
+			} else {
+				if !isMatchedTypes(f.Value.Schema.Value.TypeBase, s.Value.Schema.Value.TypeBase) {
+					preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, s.Value.Schema.Value.TypeBase))
+				}
 			}
 		}
 		// ALTER

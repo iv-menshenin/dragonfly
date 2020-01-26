@@ -12,7 +12,7 @@ type (
 
 func somethingMatched(compaMap map[string]int, matched func(string)) {
 	keys, vals := sortMap(compaMap).getSortedKeysValues()
-	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > vals[1]*2) {
+	if (len(keys) == 1 && vals[0] > 0) || (len(keys) > 1 && vals[0] > 0 && vals[0] > vals[1]*2) {
 		matched(keys[0])
 	}
 }

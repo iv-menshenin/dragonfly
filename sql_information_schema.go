@@ -45,11 +45,12 @@ where tc.table_schema not in ('information_schema','pg_catalog')
 select n.nspname, t.typname, a.attname, a.attnum, at.typname, at.typnotnull, a.attnotnull,
        information_schema._pg_char_max_length(a.atttypid, a.atttypmod),
        information_schema._pg_numeric_precision(a.atttypid, a.atttypmod),
-       information_schema._pg_numeric_scale(a.atttypid, a.atttypmod)
+       information_schema._pg_numeric_scale(a.atttypid, a.atttypmod), n1.nspname
 from pg_catalog.pg_type t
 inner join pg_catalog.pg_namespace n on n.oid = t.typnamespace
 inner join pg_catalog.pg_attribute a on a.attrelid = t.typrelid
 inner join pg_catalog.pg_type at on at.oid = a.atttypid
+left join pg_catalog.pg_namespace n1 on n1.oid = at.typnamespace and at.typtype = 'd'
 where n.nspname not in ('information_schema','pg_catalog')
   and t.typtype = 'c'
   and not a.attisdropped
@@ -615,6 +616,7 @@ func getAllRecords(db *sql.DB, catalog string) (attributes []rawTypeStruct, err 
 			if err = q.Err(); err != nil {
 				return
 			}
+			var namespace *string
 			if err = q.Scan(
 				&attr.Schema,
 				&attr.TypeName,
@@ -626,9 +628,13 @@ func getAllRecords(db *sql.DB, catalog string) (attributes []rawTypeStruct, err 
 				&attr.MaxLength,
 				&attr.Precision,
 				&attr.Scale,
+				&namespace,
 			); err != nil {
 				return
 			} else {
+				if namespace != nil {
+					attr.AttrType = fmt.Sprintf("%s.%s", *namespace, attr.AttrType)
+				}
 				attributes = append(attributes, attr)
 			}
 		}
