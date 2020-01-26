@@ -389,24 +389,24 @@ const (
 	cApiType       = "ApiType"
 )
 
-func (c *ColumnRef) normalize(schema *SchemaRef, tableName string, columnIndex int, db *Root) {
+func (c *ColumnRef) normalize(schema *SchemaRef, relationName string, columnIndex int, db *Root) {
 	c.used = refBool(false)
 	if c.Ref != nil {
 		processRef(db, *c.Ref, &c.Value)
 	}
 	if c.Value.Name == "" {
-		panic(fmt.Sprintf("undefined name for table '%s' column #%d", tableName, columnIndex+1))
+		panic(fmt.Sprintf("undefined name for table '%s' column #%d", relationName, columnIndex+1))
 	}
 	constraints := make([]Constraint, len(c.Value.Constraints))
 	reflect.Copy(reflect.ValueOf(constraints), reflect.ValueOf(c.Value.Constraints))
 	for i, constraint := range constraints {
-		constraint.normalize(schema, tableName, i, db)
+		constraint.normalize(schema, relationName, i, db)
 		constraints[i] = constraint
 	}
 	if !reflect.DeepEqual(constraints, c.Value.Constraints) {
 		c.Value.Constraints = constraints
 	}
-	c.Value.Schema.normalize(tableName, columnIndex, db)
+	c.Value.Schema.normalize(relationName, columnIndex, db)
 }
 
 func (c *Constraint) normalize(schema *SchemaRef, tableName string, constraintIndex int, db *Root) {
@@ -647,27 +647,24 @@ func (c *TableApi) normalize(schema *SchemaRef, tableName string, apiIndex int, 
 }
 
 func (c *SchemaRef) normalize(db *Root) {
-	for tableName, table := range c.Value.Tables {
-		table.normalize(c, tableName, db)
-		c.Value.Tables[tableName] = table
-	}
 	for typeName, customType := range c.Value.Types {
-		customType.normalize(db)
+		customType.normalize(c, typeName, db)
 		c.Value.Types[typeName] = customType
 	}
 	for i, domain := range c.Value.Domains {
 		domain.used = refBool(false)
 		c.Value.Domains[i] = domain
 	}
-	for i, userType := range c.Value.Types {
-		userType.used = refBool(false)
-		c.Value.Types[i] = userType
+	for tableName, table := range c.Value.Tables {
+		table.normalize(c, tableName, db)
+		c.Value.Tables[tableName] = table
 	}
 }
 
-func (c *TypeSchema) normalize(db *Root) {
+func (c *TypeSchema) normalize(schema *SchemaRef, typeName string, db *Root) {
 	c.used = refBool(false)
 	for i, f := range c.Fields {
+		f.normalize(schema, typeName, i, db)
 		f.used = refBool(false)
 		c.Fields[i] = f
 	}
