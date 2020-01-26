@@ -656,6 +656,20 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 }
 
 func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postInstall []SqlStmt) {
+	/*
+		TODO: for types that already uses we must do something like this:
+			create type [schema].tmp_[name] as ([field1], [field2], ...);
+			alter table [related_table] add [column]_tmp1 [schema].tmp_[name];
+			update [related_table] set [column]_tmp1 = row(([column]).[field1], ([column]).[field2], ...) where [column] is not null;
+			alter table [related_table] drop [column];
+			*** ALTERING TYPE ***
+			alter table [related_table] add [column] [schema].[name];
+			update [related_table] set [column] = row(([column]_tmp1).lat, ([column]_tmp1).lng) where [column]_tmp1 is not null;
+			alter table [related_table] drop [column]_tmp1;
+			alter table [related_table] alter [column] set not null;
+			drop type [schema].tmp_[name]
+
+	*/
 	preInstall = make([]SqlStmt, 0, 0)
 	postInstall = make([]SqlStmt, 0, 0)
 	// https://www.postgresql.org/docs/9.1/sql-createtype.html
