@@ -650,6 +650,23 @@ var (
 		// "map":    not supported
 		// "record": not supported
 	}
+	typeAliases = [][]string{
+		{"bigint", "int8"},
+		{"bigserial", "serial8"},
+		{"double precision", "float8"},
+		{"integer", "int", "int4"},
+		{"numeric", "decimal"},
+		{"float4", "real"},
+		{"smallint", "int2"},
+		{"smallserial", "serial2"},
+		{"serial", "serial4"},
+		{"time", "timetz"},
+		{"timestamp", "timestamptz"},
+		{"character varying", "varchar"},
+		{"character", "char"},
+		{"boolean", "bool"},
+		{"bit varying", "varbit"},
+	}
 )
 
 func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber {
@@ -664,4 +681,38 @@ func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber 
 		}
 	}
 	panic(fmt.Sprintf("unknown field type '%s'", c.Type))
+}
+
+func isMatchedTypes(a, b DomainSchema) bool {
+	if !strings.EqualFold(a.Type, b.Type) {
+		var typeMatched = false
+		for _, aliases := range typeAliases {
+			if iArrayContains(aliases, a.Type) {
+				if iArrayContains(aliases, b.Type) {
+					typeMatched = true
+					break
+				} else {
+					return false
+				}
+			}
+		}
+		if !typeMatched {
+			return false
+		}
+	}
+	if a.Length != nil {
+		if b.Length == nil || *b.Length != *a.Length {
+			return false
+		}
+	} else if b.Length != nil {
+		return false
+	}
+	if a.Precision != nil {
+		if b.Precision == nil || *b.Precision != *a.Precision {
+			return false
+		}
+	} else if b.Precision != nil {
+		return false
+	}
+	return true
 }
