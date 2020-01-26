@@ -677,11 +677,11 @@ func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postI
 		preInstall = append(preInstall, makeType(c.Schema.New, c.Name.New, *c.TypeStruct.NewStructure))
 		return
 	}
-	// https://www.postgresql.org/docs/9.1/sql-altertype.html
 	if c.TypeStruct.NewStructure == nil {
 		postInstall = append(postInstall, makeTypeDrop(c.Schema.Actual, c.Name.Actual))
 		return
 	}
+	// https://www.postgresql.org/docs/9.1/sql-altertype.html
 	if !strings.EqualFold(c.Schema.New, c.Schema.Actual) {
 		preInstall = append(preInstall, makeTypeSetSchema(c.Name.Actual, c.Schema))
 	}
@@ -780,7 +780,7 @@ func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterI
 				install = append(install, makeDomainSetNotNull(customSchema, customType, true))
 			} else {
 				c.NewStruct.Value.Schema.Value.NotNull = false
-				install = append(install, makeColumnAlterSetNotNull(customSchema, customType, c.NewStruct.Value.Name, true))
+				install = append(install, makeAlterColumnSetNotNull(customSchema, customType, c.NewStruct.Value.Name, true))
 			}
 		}
 		return
@@ -791,6 +791,13 @@ func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterI
 	}
 	if !strings.EqualFold(c.Name.Actual, c.Name.New) {
 		install = append(install, makeColumnRename(c.SchemaName, c.TableName, c.Name))
+	}
+	if typeSchema, typeName, ok := c.NewStruct.Value.Schema.makeCustomType(); ok {
+		install = append(install, makeAlterColumnSetDomain(c.SchemaName, c.TableName, c.Name.New, fmt.Sprintf("%s.%s", typeSchema, typeName)))
+	} else {
+		if !isMatchedTypes(c.NewStruct.Value.Schema.Value.TypeBase, c.ActualStruct.Value.Schema.Value.TypeBase) {
+			install = append(install, makeAlterColumnSetType(c.SchemaName, c.TableName, c.Name.New, c.NewStruct.Value.Schema.Value))
+		}
 	}
 	// TODO
 	//  ALTER COLUMN

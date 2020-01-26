@@ -606,7 +606,7 @@ func makeColumnDrop(schema, table, column string, ifExists, cascade bool) SqlStm
 	}
 }
 
-func makeColumnAlterSetNotNull(schema, table, column string, notNull bool) SqlStmt {
+func makeAlterColumnSetNotNull(schema, table, column string, notNull bool) SqlStmt {
 	return &AlterStmt{
 		Target: TargetTable,
 		Name: &Selector{
@@ -616,7 +616,43 @@ func makeColumnAlterSetNotNull(schema, table, column string, notNull bool) SqlSt
 		Alter: &AlterExpr{
 			Target: TargetColumn,
 			Name:   &Literal{Text: column},
-			Alter:  makeSetDropExpr(notNull, &Literal{Text: "not null"}), // TODO not literal
+			Alter:  makeSetDropExpr(notNull, &Literal{Text: "not null"}), // TODO make static structure
+		},
+	}
+}
+
+func makeAlterColumnSetType(schema, table, column string, domainSchema DomainSchema) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &AlterExpr{
+			Target: TargetColumn,
+			Name:   &Literal{Text: column},
+			Alter: &TypeDescription{
+				Type:      domainSchema.Type,
+				Length:    domainSchema.Length,
+				Precision: domainSchema.Precision,
+			},
+		},
+	}
+}
+
+func makeAlterColumnSetDomain(schema, table, column, domainName string) SqlStmt {
+	return &AlterStmt{
+		Target: TargetTable,
+		Name: &Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &AlterExpr{
+			Target: TargetColumn,
+			Name:   &Literal{Text: column},
+			Alter: &TypeDescription{
+				Type: domainName,
+			},
 		},
 	}
 }
