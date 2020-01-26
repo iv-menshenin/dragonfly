@@ -59,7 +59,9 @@ type (
 		AlterExpr     SqlExpr
 	}
 	AlterDataTypeExpr struct {
-		DataType string
+		DataType  string
+		Length    *int
+		Precision *int
 	}
 	DropExpr struct {
 		Target            SqlTarget
@@ -400,7 +402,7 @@ func makeTypeRename(schema string, rename NameComparator) SqlStmt {
 	}
 }
 
-func makeTypeAlterAttributeDataType(schemaName, typeName, attrName string, typeSchema DomainSchema) SqlStmt {
+func makeTypeAlterAttributeDataType(schemaName, typeName, attrName string, typeSchema TypeBase) SqlStmt {
 	return &AlterStmt{
 		Target: TargetType,
 		Name: &Selector{
@@ -412,11 +414,13 @@ func makeTypeAlterAttributeDataType(schemaName, typeName, attrName string, typeS
 
 }
 
-func makeAlterAttributeDataType(attrName string, typeSchema DomainSchema) SqlExpr {
+func makeAlterAttributeDataType(attrName string, typeSchema TypeBase) SqlExpr {
 	return &AlterAttributeExpr{
 		AttributeName: attrName,
 		AlterExpr: &AlterDataTypeExpr{
-			DataType: typeSchema.Type,
+			DataType:  typeSchema.Type,
+			Length:    typeSchema.Length,
+			Precision: typeSchema.Precision,
 		},
 	}
 }
@@ -755,7 +759,19 @@ func (c *AlterAttributeExpr) Expression() string {
 }
 
 func (c *AlterDataTypeExpr) Expression() string {
-	return fmt.Sprintf("type %s", c.DataType)
+	if c.Length == nil && c.Precision == nil {
+		return fmt.Sprintf("type %s", c.DataType)
+	}
+	if c.Length != nil {
+		if c.Precision == nil {
+			return fmt.Sprintf("type %s(%d)", c.DataType, *c.Length)
+		} else {
+			return fmt.Sprintf("type %s(%d, %d)", c.DataType, *c.Length, *c.Precision)
+		}
+	} else {
+		// Length == nil && Precision != nil
+		return fmt.Sprintf("type %s(%d)", c.DataType, *c.Precision)
+	}
 }
 
 func (c *DropExpr) Expression() string {

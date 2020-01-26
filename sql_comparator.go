@@ -674,7 +674,7 @@ func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postI
 			*f.used = true
 			*s.used = true
 			if !isMatchedTypes(f.Value.Schema.Value.TypeBase, s.Value.Schema.Value.TypeBase) {
-				preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, s.Value.Schema.Value))
+				preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, s.Value.Schema.Value.TypeBase))
 			}
 		}
 		// ALTER
