@@ -135,9 +135,9 @@ func TestColumnRef_normalize(t *testing.T) {
 										Name: "simple",
 										Schema: ColumnSchemaRef{
 											Value: DomainSchema{
-												Type:    "int8",
-												NotNull: false,
-												used:    nil, // test it
+												TypeBase: TypeBase{Type: "int8"},
+												NotNull:  false,
+												used:     nil, // test it
 											},
 											Ref: nil,
 										},
@@ -181,9 +181,9 @@ func TestColumnRef_normalize(t *testing.T) {
 					Name: "column_1",
 					Schema: ColumnSchemaRef{
 						Value: DomainSchema{
-							Type:    "varchar",
-							NotNull: true,
-							used:    refBool(false),
+							TypeBase: TypeBase{Type: "varchar"},
+							NotNull:  true,
+							used:     refBool(false),
 						},
 						Ref: nil,
 					},
@@ -198,9 +198,9 @@ func TestColumnRef_normalize(t *testing.T) {
 					Name: "column_2",
 					Schema: ColumnSchemaRef{
 						Value: DomainSchema{
-							Type:    "int8",
-							NotNull: true,
-							used:    refBool(false),
+							TypeBase: TypeBase{Type: "int8"},
+							NotNull:  true,
+							used:     refBool(false),
 						},
 						Ref: nil,
 					},
@@ -347,8 +347,8 @@ func TestConstraintSchema_normalize(t *testing.T) {
 										Name: "test_column",
 										Schema: ColumnSchemaRef{
 											Value: DomainSchema{
-												Type: "int8",
-												used: refBool(false),
+												TypeBase: TypeBase{Type: "int8"},
+												used:     refBool(false),
 											},
 										},
 									},
@@ -465,8 +465,8 @@ func TestTableClass_normalize(t *testing.T) {
 										Name: "static_column",
 										Schema: ColumnSchemaRef{
 											Value: DomainSchema{
-												Type: "int8",
-												used: nil, // test it
+												TypeBase: TypeBase{Type: "int8"},
+												used:     nil, // test it
 											},
 										},
 									},
@@ -528,9 +528,9 @@ func TestTableClass_normalize(t *testing.T) {
 								Name: "inherited_column_1",
 								Schema: ColumnSchemaRef{
 									Value: DomainSchema{
-										Type:    "int4",
-										NotNull: false,
-										used:    refBool(false),
+										TypeBase: TypeBase{Type: "int4"},
+										NotNull:  false,
+										used:     refBool(false),
 									},
 								},
 								Constraints: []Constraint{
@@ -549,9 +549,9 @@ func TestTableClass_normalize(t *testing.T) {
 								Name: "inherited_column_2",
 								Schema: ColumnSchemaRef{
 									Value: DomainSchema{
-										Type:    "int8",
-										NotNull: true,
-										used:    refBool(false),
+										TypeBase: TypeBase{Type: "int8"},
+										NotNull:  true,
+										used:     refBool(false),
 									},
 								},
 							},
@@ -568,9 +568,9 @@ func TestTableClass_normalize(t *testing.T) {
 								Name: "inherited_column_3",
 								Schema: ColumnSchemaRef{
 									Value: DomainSchema{
-										Type:    "int4",
-										NotNull: false,
-										used:    refBool(false),
+										TypeBase: TypeBase{Type: "int4"},
+										NotNull:  false,
+										used:     refBool(false),
 									},
 								},
 							},
