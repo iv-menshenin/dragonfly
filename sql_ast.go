@@ -516,8 +516,21 @@ func makeType(schema, typeName string, typeSchema TypeSchema) SqlStmt {
 		create = &EnumDescription{
 			Values: values,
 		}
+	} else if strings.EqualFold(typeSchema.Type, "map") {
+		values := make([]string, len(typeSchema.Enum))
+		for i, f := range typeSchema.Enum {
+			values[i] = f.Value
+		}
+		create = &RecordDescription{
+			Fields: []SqlExpr{
+				&ColumnDefinitionExpr{
+					Name:     &Literal{Text: "data"},
+					DataType: "json",
+				},
+			},
+		}
 	} else {
-		println("df")
+		panic(fmt.Sprintf("unknown type `%s`", typeSchema.Type))
 	}
 	return &CreateStmt{
 		Target: TargetType,
