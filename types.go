@@ -48,16 +48,14 @@ type (
 		// for type `map`
 		KeyType   *ColumnSchemaRef `yaml:"key_type,omitempty" json:"key_type,omitempty"`
 		ValueType *ColumnSchemaRef `yaml:"value_type,omitempty" json:"value_type,omitempty"`
-
-		used *bool
+		used      *bool
 	}
 	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
 		TypeBase `yaml:"-,inline" json:"-,inline"`
 		NotNull  bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
 		Default  *string `yaml:"default,omitempty" json:"default,omitempty"`
 		Check    *string `yaml:"check,omitempty" json:"check,omitempty"`
-
-		used *bool
+		used     *bool
 	}
 	EnumEntity struct {
 		Value       string `yaml:"value" json:"value"`
@@ -90,6 +88,7 @@ type (
 	Check struct {
 		Expression string `yaml:"expression" json:"expression"`
 	}
+	// deprecated
 	Where struct {
 		Where string `yaml:"where" json:"where"`
 	}
@@ -108,6 +107,18 @@ type (
 		Columns    []string   `yaml:"columns" json:"columns"`
 		Constraint Constraint `yaml:"constraint" json:"constraint"`
 	}
+	IndexType   int
+	IndexColumn struct {
+		Name     string `yaml:"name" json:"name"`
+		Type     string `yaml:"type,omitempty" json:"type,omitempty"`
+		Function string `yaml:"function,omitempty" function:"type,omitempty"`
+	}
+	Index struct {
+		Name      string        `yaml:"name" json:"name"`
+		IndexType IndexType     `yaml:"type" json:"type"`
+		Columns   []IndexColumn `yaml:"columns" json:"columns"`
+		Where     string        `yaml:"where" json:"where"`
+	}
 	ApiFindOption struct {
 		Column   string             `yaml:"column,omitempty" json:"column,omitempty"`
 		Required bool               `yaml:"required,omitempty" json:"required,omitempty"`
@@ -122,12 +133,14 @@ type (
 		ModifyColumns []string       `yaml:"modify,omitempty" json:"modify,omitempty"`
 	}
 	ColumnsContainer []ColumnRef
+	IndicesContainer []Index
 	ApiContainer     []TableApi
 	TableConstraints []ConstraintSchema
 	Table            struct {
 		Inherits    []string         `yaml:"inherits,omitempty" json:"inherits,omitempty"`
 		Columns     ColumnsContainer `yaml:"columns" json:"columns"`
 		Constraints TableConstraints `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+		Indices     IndicesContainer `yaml:"indices,omitempty" json:"indices,omitempty"`
 		Description string           `yaml:"description,omitempty" json:"description,omitempty"`
 		Api         ApiContainer     `yaml:"api,omitempty" json:"api,omitempty"`
 		used        *bool
@@ -161,6 +174,38 @@ type (
 		Components Components `yaml:"components" json:"components"`
 	}
 )
+
+const (
+	IndexTypeIndex IndexType = iota + 1
+	IndexTypeUnique
+)
+
+var (
+	indexTypes = map[string]IndexType{
+		"index":  IndexTypeIndex,
+		"unique": IndexTypeUnique,
+	}
+)
+
+func (c *IndexType) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	if t, ok := indexTypes[strings.ToLower(s)]; ok {
+		*c = t
+		return nil
+	}
+	return errors.New("cannot resolve index type '" + s + "'")
+}
+
+func (c *IndexType) UnmarshalJSON(data []byte) error {
+	var s = string(data)
+	if t, ok := indexTypes[strings.ToLower(s)]; ok {
+		*c = t
+	}
+	return errors.New("cannot resolve index type '" + s + "'")
+}
 
 func (c *TypeSchema) generateType(schema, typeName string) []AstDataChain {
 	typeName = makeExportedName(typeName)
