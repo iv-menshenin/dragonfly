@@ -54,8 +54,11 @@ type (
 		SetDrop SetDrop
 		Expr    SqlExpr
 	}
+	AlterAttributeExpr struct {
+		AttributeName string
+		AlterExpr     SqlExpr
+	}
 	AlterDataTypeExpr struct {
-		AlterTo  string
 		DataType string
 	}
 	DropExpr struct {
@@ -410,9 +413,11 @@ func makeTypeAlterAttributeDataType(schemaName, typeName, attrName string, typeS
 }
 
 func makeAlterAttributeDataType(attrName string, typeSchema DomainSchema) SqlExpr {
-	return &AlterDataTypeExpr{
-		AlterTo:  attrName,
-		DataType: typeSchema.Type,
+	return &AlterAttributeExpr{
+		AttributeName: attrName,
+		AlterExpr: &AlterDataTypeExpr{
+			DataType: typeSchema.Type,
+		},
 	}
 }
 
@@ -745,8 +750,12 @@ func (c *SetDropExpr) Expression() string {
 	}
 }
 
+func (c *AlterAttributeExpr) Expression() string {
+	return fmt.Sprintf("alter attribute %s %s", c.AttributeName, c.AlterExpr.Expression())
+}
+
 func (c *AlterDataTypeExpr) Expression() string {
-	return fmt.Sprintf("alter %s type %s", c.AlterTo, c.DataType)
+	return fmt.Sprintf("type %s", c.DataType)
 }
 
 func (c *DropExpr) Expression() string {
