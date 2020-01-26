@@ -160,9 +160,9 @@ func (c rawEnums) toEnumSchema() TypeSchema {
 		}
 	}
 	return TypeSchema{
-		Type: "enum",
-		Enum: values,
-		used: refBool(false),
+		TypeBase: TypeBase{Type: "enum"},
+		Enum:     values,
+		used:     refBool(false),
 	}
 }
 
@@ -189,9 +189,9 @@ func (c typesStruct) toRecordSchema() TypeSchema {
 		}
 	}
 	return TypeSchema{
-		Type:   "record",
-		Fields: fields,
-		used:   refBool(false),
+		TypeBase: TypeBase{Type: "record"},
+		Fields:   fields,
+		used:     refBool(false),
 	}
 }
 
@@ -200,13 +200,15 @@ func (c *rawTypeStruct) toColumn() Column {
 		Name: c.AttrName,
 		Schema: ColumnSchemaRef{
 			Value: DomainSchema{
-				Type:      c.AttrType,
-				Length:    c.Precision,
-				Precision: c.Scale,
-				NotNull:   c.AttrRequired,
-				Default:   nil, // TODO
-				Check:     nil,
-				used:      refBool(false),
+				TypeBase: TypeBase{
+					Type:      c.AttrType,
+					Length:    c.Precision,
+					Precision: c.Scale,
+				},
+				NotNull: c.AttrRequired,
+				Default: nil, // TODO
+				Check:   nil,
+				used:    refBool(false),
 			},
 			Ref: nil,
 		},
@@ -218,13 +220,15 @@ func (c *rawTypeStruct) toColumn() Column {
 
 func (c *rawDomainStruct) toDomainSchema() DomainSchema {
 	return DomainSchema{
-		Type:      c.Type,
-		Length:    c.Max,
-		Precision: c.Precision,
-		NotNull:   !c.Nullable,
-		Default:   c.Default,
-		Check:     nil, // TODO
-		used:      refBool(false),
+		TypeBase: TypeBase{
+			Type:      c.Type,
+			Length:    c.Max,
+			Precision: c.Precision,
+		},
+		NotNull: !c.Nullable,
+		Default: c.Default,
+		Check:   nil, // TODO
+		used:    refBool(false),
 	}
 }
 
@@ -238,13 +242,15 @@ func (c *rawColumnStruct) toColumnRef() ColumnRef {
 			Name: c.Column,
 			Schema: ColumnSchemaRef{
 				Value: DomainSchema{
-					Type:      c.Type,
-					Length:    c.Max,
-					Precision: c.Precision,
-					NotNull:   !c.Nullable,
-					Default:   c.Default,
-					Check:     nil, // TODO
-					used:      refBool(false),
+					TypeBase: TypeBase{
+						Type:      c.Type,
+						Length:    c.Max,
+						Precision: c.Precision,
+					},
+					NotNull: !c.Nullable,
+					Default: c.Default,
+					Check:   nil, // TODO
+					used:    refBool(false),
 				},
 				Ref: columnSchemaRef,
 			},

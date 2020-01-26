@@ -683,7 +683,7 @@ func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber 
 	panic(fmt.Sprintf("unknown field type '%s'", c.Type))
 }
 
-func isMatchedTypes(a, b DomainSchema) bool {
+func isMatchedTypes(a, b TypeBase) bool {
 	if !strings.EqualFold(a.Type, b.Type) {
 		var typeMatched = false
 		for _, aliases := range typeAliases {

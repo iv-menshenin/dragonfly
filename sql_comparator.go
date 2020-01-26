@@ -673,7 +673,7 @@ func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postI
 		if f, ok := c.TypeStruct.OldStructure.Fields.tryToFind(s.Value.Name); ok {
 			*f.used = true
 			*s.used = true
-			if !isMatchedTypes(f.Value.Schema.Value, s.Value.Schema.Value) {
+			if !isMatchedTypes(f.Value.Schema.Value.TypeBase, s.Value.Schema.Value.TypeBase) {
 				preInstall = append(preInstall, makeTypeAlterAttributeDataType(c.Schema.New, c.Name.New, s.Value.Name, s.Value.Schema.Value))
 			}
 		}

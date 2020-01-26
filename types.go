@@ -34,10 +34,13 @@ var (
 )
 
 type (
-	TypeSchema struct {
+	TypeBase struct {
 		Type      string `yaml:"type" json:"type"`
 		Length    *int   `yaml:"length,omitempty" json:"length,omitempty"`
 		Precision *int   `yaml:"precision,omitempty" json:"precision,omitempty"`
+	}
+	TypeSchema struct {
+		TypeBase `yaml:"-,inline" json:"-,inline"`
 		// for type `enum` only
 		Enum []EnumEntity `yaml:"enum,omitempty" json:"enum,omitempty"`
 		// for types `record` and `json`
@@ -49,12 +52,10 @@ type (
 		used *bool
 	}
 	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
-		Type      string  `yaml:"type" json:"type"`
-		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
-		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`
-		NotNull   bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
-		Default   *string `yaml:"default,omitempty" json:"default,omitempty"`
-		Check     *string `yaml:"check,omitempty" json:"check,omitempty"`
+		TypeBase `yaml:"-,inline" json:"-,inline"`
+		NotNull  bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
+		Default  *string `yaml:"default,omitempty" json:"default,omitempty"`
+		Check    *string `yaml:"check,omitempty" json:"check,omitempty"`
 
 		used *bool
 	}
@@ -551,11 +552,13 @@ func (c ColumnsContainer) CopyFlatColumns() ColumnsContainer {
 				Name: column.Value.Name,
 				Schema: ColumnSchemaRef{
 					Value: DomainSchema{
-						Type:      column.Value.Schema.Value.Type,
-						Length:    column.Value.Schema.Value.Length,
-						Precision: column.Value.Schema.Value.Precision,
-						NotNull:   column.Value.Schema.Value.NotNull,
-						Default:   column.Value.Schema.Value.Default,
+						TypeBase: TypeBase{
+							Type:      column.Value.Schema.Value.Type,
+							Length:    column.Value.Schema.Value.Length,
+							Precision: column.Value.Schema.Value.Precision,
+						},
+						NotNull: column.Value.Schema.Value.NotNull,
+						Default: column.Value.Schema.Value.Default,
 					},
 					Ref: column.Value.Schema.Ref,
 				},
