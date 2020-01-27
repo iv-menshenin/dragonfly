@@ -259,24 +259,20 @@ func (c *SqlField) fieldDescriber() string {
 	return c.String()
 }
 func (c *SqlField) String() string {
+	var constraintsClause = make([]string, 0, len(c.Constraints))
 	if len(c.Constraints) > 0 {
-		var constraintsClause = make([]string, 0, len(c.Constraints))
 		for _, constraint := range c.Constraints {
 			constraintsClause = append(constraintsClause, constraint.Expression())
 		}
-		return fmt.Sprintf("%s %s %s", c.Name.GetName(), c.Describer, strings.Join(constraintsClause, " "))
 	}
-	return fmt.Sprintf("%s %s", c.Name.GetName(), c.Describer)
+	return nonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.Describer, strings.Join(constraintsClause, " "))
 }
 
 func (c *ShortTypeDesc) typeDescriber() string {
 	return c.String()
 }
 func (c *ShortTypeDesc) String() string {
-	if c.Collation != nil {
-		return c.TypeName.Expression() + " " + *c.Collation
-	}
-	return c.TypeName.Expression()
+	return nonEmptyStringsConcatSpaceSeparated(c.TypeName.Expression(), c.Collation)
 }
 
 func (c *FullTypeDesc) typeDescriber() string {
@@ -293,7 +289,7 @@ func (c *FullTypeDesc) String() string {
 	if c.Default != nil {
 		defaultClause = c.Default.Expression()
 	}
-	return fmt.Sprintf("%s %s %s", c.ShortTypeDesc.typeDescriber(), nullableClause, defaultClause)
+	return nonEmptyStringsConcatSpaceSeparated(c.ShortTypeDesc.typeDescriber(), nullableClause, defaultClause)
 }
 
 /* </FIELDS AND TYPES> ============================================================================================== */
@@ -410,9 +406,9 @@ func (c *CreateStmt) GetComment() string {
 
 func (c *CreateStmt) MakeStmt() string {
 	if c.Create != nil {
-		return fmt.Sprintf("create %s %s %s", c.Target, c.Name.GetName(), c.Create.Expression())
+		return nonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName(), c.Create.Expression())
 	} else {
-		return fmt.Sprintf("create %s %s", c.Target, c.Name.GetName())
+		return nonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName())
 	}
 }
 
@@ -421,7 +417,7 @@ func (c *DropStmt) GetComment() string {
 }
 
 func (c *DropStmt) MakeStmt() string {
-	return fmt.Sprintf("drop %s %s", c.Target, c.Name.GetName())
+	return nonEmptyStringsConcatSpaceSeparated("drop", c.Target, c.Name.GetName())
 }
 
 func (c *UpdateStmt) GetComment() string {
@@ -966,20 +962,24 @@ func (c *SqlNullable) Expression() string {
 }
 
 func (c *SetDropExpr) Expression() string {
-	if c.SetDrop == SetDropSet {
-		return "set " + c.Expr.Expression()
-	} else {
-		return "drop " + c.Expr.Expression()
+	if sqlExpr := c.Expr.Expression(); sqlExpr != "" {
+		if c.SetDrop == SetDropSet {
+			return nonEmptyStringsConcatSpaceSeparated("set", c.Expr.Expression())
+		} else {
+			return nonEmptyStringsConcatSpaceSeparated("drop", c.Expr.Expression())
+		}
 	}
+	return ""
 }
 
 func (c *AlterAttributeExpr) Expression() string {
-	return fmt.Sprintf("alter attribute %s %s", c.AttributeName, c.AlterExpr.Expression())
+	return nonEmptyStringsConcatSpaceSeparated("alter attribute", c.AttributeName, c.AlterExpr.Expression())
 }
 
 func (c *AlterDataTypeExpr) Expression() string {
+	// TODO use datatypefillers
 	if c.Length == nil && c.Precision == nil {
-		return fmt.Sprintf("type %s", c.DataType)
+		return nonEmptyStringsConcatSpaceSeparated("type", c.DataType)
 	}
 	if c.Length != nil {
 		if c.Precision == nil {
@@ -996,30 +996,30 @@ func (c *AlterDataTypeExpr) Expression() string {
 func (c *DropExpr) Expression() string {
 	cascadeExpr, ifExistsExpr := "", ""
 	if c.IfExists {
-		ifExistsExpr = " if exists"
+		ifExistsExpr = "if exists"
 	}
 	if c.Cascade {
-		cascadeExpr = " cascade"
+		cascadeExpr = "cascade"
 	}
-	return fmt.Sprintf("drop %s %s %s%s", c.Target, ifExistsExpr, c.Name.GetName(), cascadeExpr)
+	return nonEmptyStringsConcatSpaceSeparated("drop", c.Target, ifExistsExpr, c.Name.GetName(), cascadeExpr)
 }
 
 func (c *AddExpr) Expression() string {
-	return fmt.Sprintf("add %s %s %s", c.Target, c.Name.GetName(), c.Definition.Expression())
+	return nonEmptyStringsConcatSpaceSeparated("add", c.Target, c.Name.GetName(), c.Definition.Expression())
 }
 
 func (c *BinaryExpr) Expression() string {
-	return fmt.Sprintf("%s%s%s", c.Left.Expression(), c.Op, c.Right.Expression())
+	return nonEmptyStringsConcatSpaceSeparated(c.Left.Expression(), c.Op, c.Right.Expression())
 }
 
 func (c *UnaryExpr) Expression() string {
-	return fmt.Sprintf("%s", c.Ident.GetName())
+	return c.Ident.GetName()
 }
 
 /* CONSTRAINTS */
 
 func (c *NamedConstraintExpr) ConstraintString() string {
-	return fmt.Sprintf("constraint %s %s", c.Name.GetName(), c.Constraint.ConstraintString())
+	return nonEmptyStringsConcatSpaceSeparated("constraint", c.Name.GetName(), c.Constraint.ConstraintString())
 }
 
 func (c *NamedConstraintExpr) ConstraintParams() string {
@@ -1027,7 +1027,7 @@ func (c *NamedConstraintExpr) ConstraintParams() string {
 }
 
 func (c *NamedConstraintExpr) Expression() string {
-	return fmt.Sprintf("%s %s", c.ConstraintString(), c.ConstraintParams())
+	return nonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
 }
 
 func (c *UnnamedConstraintExpr) ConstraintString() string {
@@ -1039,11 +1039,11 @@ func (c *UnnamedConstraintExpr) ConstraintParams() string {
 }
 
 func (c *UnnamedConstraintExpr) Expression() string {
-	return fmt.Sprintf("%s %s", c.Constraint.ConstraintString(), c.Constraint.ConstraintParams())
+	return nonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), c.Constraint.ConstraintParams())
 }
 
 func (c *ConstraintWithColumns) ConstraintString() string {
-	return fmt.Sprintf("%s (%s)", c.Constraint.ConstraintString(), strings.Join(c.Columns, ", "))
+	return nonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), "(", strings.Join(c.Columns, ", "), ")")
 }
 
 func (c *ConstraintWithColumns) ConstraintParams() string {
@@ -1051,7 +1051,7 @@ func (c *ConstraintWithColumns) ConstraintParams() string {
 }
 
 func (c *ConstraintWithColumns) Expression() string {
-	return fmt.Sprintf("%s %s", c.ConstraintString(), c.ConstraintParams())
+	return nonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
 }
 
 func (c *ConstraintNullableExpr) ConstraintString() string {
@@ -1084,7 +1084,7 @@ func (c *ConstraintCheckExpr) ConstraintParams() string {
 }
 
 func (c *ConstraintDefaultExpr) ConstraintString() string {
-	return fmt.Sprintf("default %s", c.Expression.Expression())
+	return nonEmptyStringsConcatSpaceSeparated("default", c.Expression.Expression())
 }
 
 func (c *ConstraintDefaultExpr) ConstraintParams() string {
@@ -1131,15 +1131,11 @@ func (c *ConstraintForeignKeyExpr) ConstraintParams() string {
 /* */
 
 func (c *ColumnDefinitionExpr) Expression() string {
-	collation := ""
-	constraints := ""
-	if c.Collation != nil {
-		collation += " " + *c.Collation
-	}
+	constraints := make([]interface{}, 0, len(c.Constraints))
 	for _, constraint := range c.Constraints {
-		constraints += fmt.Sprintf(" %s %s", constraint.ConstraintString(), constraint.ConstraintParams())
+		constraints = append(constraints, nonEmptyStringsConcatSpaceSeparated(constraint.ConstraintString(), constraint.ConstraintParams()))
 	}
-	return fmt.Sprintf("%s %s%s%s", c.Name.GetName(), c.DataType, collation, constraints)
+	return nonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.DataType, c.Collation, nonEmptyStringsConcatSpaceSeparated(constraints...))
 }
 
 func (c *BracketBlock) Expression() string {
@@ -1151,17 +1147,17 @@ func (c *BracketBlock) Expression() string {
 		for _, expr := range c.Expr {
 			exprs = append(exprs, expr.Expression())
 		}
-		return fmt.Sprintf("(\n/* begin */\n\t%s\n/* end */\n)", strings.Join(exprs, ",\n\t"))
+		return nonEmptyStringsConcatSpaceSeparated("(\n\t", strings.Join(exprs, ",\n\t"), "\n)")
 	} else {
 		if c.Statement == nil {
 			panic("BracketBlock require Expr or Statement")
 		}
-		return fmt.Sprintf("(\n/* %s */\n%s\n)", c.Statement.GetComment(), c.Statement.MakeStmt())
+		return nonEmptyStringsConcatSpaceSeparated("\n/*", c.Statement.GetComment(), "*/\n(", c.Statement.MakeStmt(), ")")
 	}
 }
 
 func (c *AlterExpr) Expression() string {
-	return fmt.Sprintf("alter %s %s %s", c.Target, c.Name.GetName(), c.Alter.Expression())
+	return nonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name.GetName(), c.Alter.Expression())
 }
 
 func (c *SchemaExpr) Expression() string {
@@ -1169,18 +1165,18 @@ func (c *SchemaExpr) Expression() string {
 }
 
 func (c *SetMetadataExpr) Expression() string {
-	return fmt.Sprintf("set %s", c.Set.Expression())
+	return nonEmptyStringsConcatSpaceSeparated("set", c.Set.Expression())
 }
 
 func (c *Default) Expression() string {
-	return fmt.Sprintf("default %s", c.Default.Expression())
+	return nonEmptyStringsConcatSpaceSeparated("default", c.Default.Expression())
 }
 
 func (c *SqlRename) Expression() string {
 	if c.Target == TargetNone {
-		return fmt.Sprintf("rename to %s", c.NewName.GetName())
+		return nonEmptyStringsConcatSpaceSeparated("rename", "to", c.NewName.GetName())
 	}
-	return fmt.Sprintf("rename %s %s to %s", c.Target, c.OldName.GetName(), c.NewName.GetName())
+	return nonEmptyStringsConcatSpaceSeparated("rename", c.Target, c.OldName.GetName(), "to", c.NewName.GetName())
 }
 
 func (c *Literal) Expression() string {
@@ -1222,11 +1218,7 @@ func (c *EnumDescription) Expression() string {
 func (c *TypeDescription) Expression() string {
 	colType := c.Type
 	if c.Length != nil {
-		if c.Precision != nil {
-			colType += "(" + strconv.Itoa(*c.Length) + "," + strconv.Itoa(*c.Precision) + ")"
-		} else {
-			colType += "(" + strconv.Itoa(*c.Length) + ")"
-		}
+		colType += "(" + nonEmptyStringsConcatCommaSeparated(c.Length, c.Precision) + ")"
 	}
 	nullable := " null"
 	if c.Null == NullableNotNull {
