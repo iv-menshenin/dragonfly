@@ -1,4 +1,4 @@
-package dragonfly
+package pg_tree_node
 
 import (
 	"errors"
@@ -62,6 +62,18 @@ type (
 	}
 
 	chainType int
+)
+
+const (
+	FUNCEXPR    = "FUNCEXPR"
+	RELABELTYPE = "RELABELTYPE"
+	VAR         = "VAR"
+	OPEXPR      = "OPEXPR"
+	CONST       = "CONST"
+
+	ctNone chainType = iota
+	ctArray
+	ctObject
 )
 
 // dummy
@@ -202,19 +214,6 @@ func setFieldValue(c interface{}, s string) bool {
 	return false
 }
 
-const (
-	FUNCEXPR    = "FUNCEXPR"
-	RELABELTYPE = "RELABELTYPE"
-	VAR         = "VAR"
-	OPEXPR      = "OPEXPR"
-	CONST       = "CONST"
-
-	ctNone chainType = iota
-	ctArray
-	ctObject
-	ctData // TODO ?
-)
-
 func parsePgNodeTrees(s string) []Node {
 	var result = make([]Node, 0, 10)
 	for s != "" {
@@ -326,9 +325,6 @@ func getNextChain(s string) (chain, left string, tp chainType) {
 	case '{':
 		terminator = '}'
 		tp = ctObject
-	case '[':
-		terminator = ']'
-		tp = ctData
 	}
 	var (
 		nn          = 1
@@ -353,9 +349,3 @@ func getNextChain(s string) (chain, left string, tp chainType) {
 		}
 	}
 }
-
-/*
-({FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 16410 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 6 :location 93} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 101}) :location 87} {FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({FUNCEXPR :funcid 3060 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 9 :vartype 1043 :vartypmod 68 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 9 :location 121} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 126} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 134 :constvalue 4 [ 5 0 0 0 0 0 0 0 ]}) :location 116}) :location 110})
-({FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({OPEXPR :opno 654 :opfuncid 1258 :opresulttype 25 :opretset false :opcollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 16410 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 6 :location 93} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 101} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 111 :constvalue 5 [ 20 0 0 0 95 ]}) :location 108}) :location 87} {FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({FUNCEXPR :funcid 3060 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 9 :vartype 1043 :vartypmod 68 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 9 :location 128} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 133} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 141 :constvalue 4 [ 5 0 0 0 0 0 0 0 ]}) :location 123}) :location 117})
-({FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({OPEXPR :opno 654 :opfuncid 1258 :opresulttype 25 :opretset false :opcollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 16410 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 6 :location 93} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 101} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 111 :constvalue 7 [ 28 0 0 0 95 125 41 ]}) :location 108}) :location 87} {FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({FUNCEXPR :funcid 3060 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 9 :vartype 1043 :vartypmod 68 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 9 :location 130} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 135} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 143 :constvalue 4 [ 5 0 0 0 0 0 0 0 ]}) :location 125}) :location 119})
-*/
