@@ -120,6 +120,13 @@ func (c *ConstNode) setFieldValue(s string) {
 
 func parseBytes(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
+	if s[0] != '[' && s[len(s)-1] == ']' {
+		firstSpace := strings.Index(s, " ")
+		if firstSpace > 0 {
+			// lenData = s[:firstSpace-1]
+			s = strings.TrimSpace(s[firstSpace+1:])
+		}
+	}
 	if s[0] != '[' || s[len(s)-1] != ']' {
 		return nil, errors.New("data must be enclosed in square brackets")
 	}
