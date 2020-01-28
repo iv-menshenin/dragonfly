@@ -90,6 +90,22 @@ func MakeDiff(current, new *Root) Diff {
 	return result
 }
 
+func MakeEmptyRoot() Root {
+	return Root{
+		Schemas: []SchemaRef{
+			{
+				Value: Schema{
+					Name:    "public",
+					Types:   nil,
+					Domains: nil,
+					Tables:  nil,
+				},
+				Ref: nil,
+			},
+		},
+	}
+}
+
 func (c *Diff) Print(w io.Writer) {
 	writer(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.preInstall {
