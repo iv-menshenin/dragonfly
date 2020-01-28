@@ -67,6 +67,30 @@ from pg_enum e
 join pg_type t on e.enumtypid = t.oid
 inner join pg_catalog.pg_namespace n on n.oid = t.typnamespace;
 `
+
+	sqlGetIndices = `
+select
+    n.nspname,
+    ix.indnatts,
+    ix.indkey,
+    t.relname as table_name,
+    i.relname as index_name,
+    a.attname as column_name,
+    t.relkind,
+    t.relname,
+    ix.indexprs
+from pg_index ix
+inner join pg_attribute a on a.attrelid = ix.indrelid and a.attnum = ANY(ix.indkey)
+inner join pg_class i on i.oid = ix.indexrelid
+inner join pg_namespace n on n.oid = i.relnamespace
+inner join pg_class t on t.oid = ix.indrelid
+where not ix.indisprimary
+  and not ix.indisclustered
+  and ix.indisvalid
+  and n.nspname not in('information_schema', 'pg_catalog')
+order by
+    i.relname,
+    t.relname;`
 )
 
 type (
