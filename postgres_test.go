@@ -45,6 +45,13 @@ func Test_getNextChain(t *testing.T) {
 			wantLeft:  "",
 			wantType:  ctObject,
 		},
+		{
+			name:      "array parsing nesting object",
+			args:      args{s: "{VAR:args ({VAR:test 3:value 3} {VAR:test 4:value 4}):test 2}"},
+			wantChain: "VAR:args ({VAR:test 3:value 3} {VAR:test 4:value 4}):test 2",
+			wantLeft:  "",
+			wantType:  ctObject,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -178,7 +185,46 @@ func Test_parseObject(t *testing.T) {
 		{
 			name: "hard type",
 			args: args{s: "FUNCEXPR :funcid 870 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({FUNCEXPR :funcid 3060 :funcresulttype 25 :funcretset false :funcvariadic false :funcformat 0 :funccollid 100 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 9 :vartype 1043 :vartypmod 68 :varcollid 100 :varlevelsup 0 :varnoold 1 :varoattno 9 :location 121} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 126} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 134 :constvalue 4 [ 5 0 0 0 0 0 0 0 ]}) :location 116}) :location 110"},
-			want: nil,
+			want: &FuncNode{
+				BaseNode: BaseNode{
+					Args: []Node{
+						&FuncNode{
+							BaseNode: BaseNode{
+								Args: []Node{
+									&ReLabelNode{
+										Arg: &VarNode{
+											VarNo:       1,
+											VarAttrNo:   9,
+											VarType:     1043,
+											VarTypeMod:  68,
+											VarLevelSup: 0,
+											VarNoOld:    1,
+											VarOAttNo:   9,
+										},
+										ResultType:    25,
+										ResultTypeMod: -1,
+										ReLabelFormat: 1,
+									},
+									&ConstNode{
+										ConstType:    23,
+										ConstTypeMod: -1,
+										ConstLen:     4,
+										ConstByVal:   true,
+										ConstIsNull:  false,
+										ConstValue:   []byte{5, 0, 0, 0, 0, 0, 0, 0},
+									},
+								},
+							},
+							FuncId:         3060,
+							FuncResultType: 25,
+							FuncRetSet:     false,
+						},
+					},
+				},
+				FuncId:         870,
+				FuncResultType: 25,
+				FuncRetSet:     false,
+			},
 		},
 	}
 	for _, tt := range tests {
