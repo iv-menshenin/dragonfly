@@ -308,7 +308,10 @@ func getNextChain(s string) (chain, left string, tp chainType) {
 	if len(s) < 2 {
 		return s, "", ctNone
 	}
-	var terminator uint8
+	var (
+		terminator uint8
+		levelChar  = s[0]
+	)
 	switch s[0] {
 	case '(':
 		terminator = ')'
@@ -320,13 +323,25 @@ func getNextChain(s string) (chain, left string, tp chainType) {
 		terminator = ']'
 		tp = ctData
 	}
-	var nn = 1
+	var (
+		nn          = 1
+		nestedLevel = 1
+	)
 	for {
+		if s[nn] == levelChar {
+			nestedLevel++
+		}
 		if s[nn] == terminator {
-			return strings.TrimSpace(s[1:nn]), strings.TrimSpace(s[nn+1:]), tp
+			nestedLevel--
+			if nestedLevel == 0 {
+				return strings.TrimSpace(s[1:nn]), strings.TrimSpace(s[nn+1:]), tp
+			}
 		}
 		nn++
 		if nn+1 > len(s) {
+			if nestedLevel > 0 {
+				panic("cannot find closing bracket '" + string(terminator) + "'")
+			}
 			return strings.TrimSpace(s), "", tp
 		}
 	}
