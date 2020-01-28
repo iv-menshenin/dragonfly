@@ -218,7 +218,7 @@ func parsePgNodeTrees(s string) []Node {
 		chain, s, t = getNextChain(s)
 		switch t {
 		case ctArray:
-			result = append(result, &ArrayNode{Nodes: parsePgNodeTrees(chain)})
+			result = append(result, parsePgNodeTrees(chain)...)
 		case ctObject:
 			result = append(result, parseObject(chain))
 		}
