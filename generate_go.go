@@ -279,6 +279,30 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 			fields = append(fields, &field)
 		}
 	}
+	if len(fields) > 0 {
+		return
+	}
+	for _, constraint := range table.Constraints {
+		if constraint.Constraint.Type == ConstraintPrimaryKey {
+			for _, columnName := range constraint.Columns {
+				column := table.Columns.getColumn(columnName)
+				field := column.generateField(w, column.Value.Schema.Value.NotNull)
+				fields = append(fields, &field)
+			}
+		}
+	}
+	if len(fields) > 0 {
+		return
+	}
+	for _, constraint := range table.Constraints {
+		if constraint.Constraint.Type == ConstraintUniqueKey {
+			for _, columnName := range constraint.Columns {
+				column := table.Columns.getColumn(columnName)
+				field := column.generateField(w, column.Value.Schema.Value.NotNull)
+				fields = append(fields, &field)
+			}
+		}
+	}
 	return
 }
 
@@ -469,10 +493,6 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 					panic(fmt.Sprintf("you must specify name for api #%d in '%s' schema '%s' table", i, schemaName, tableName))
 				} else {
 					apiName = makeExportedName(apiName)
-				}
-				if apiName == "AuthAccountsUpdateOne" {
-					// TODO debug
-					apiName = "AuthAccountsUpdateOne"
 				}
 				var (
 					optionFields, mutableFields = api.generateOptions(&table, w)
