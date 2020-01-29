@@ -595,9 +595,9 @@ var (
 		"serial":      makeSimpleDescriber("int32", "", ""),
 		"bigserial":   makeSimpleDescriber("int64", "", ""),
 		"bigint":      makeSimpleDescriber("int64", "", ""),
-		"int4":        makeSimpleDescriber("int16", "", ""),
-		"int8":        makeSimpleDescriber("int32", "", ""),
-		"int16":       makeSimpleDescriber("int64", "", ""),
+		"int2":        makeSimpleDescriber("int16", "", ""),
+		"int4":        makeSimpleDescriber("int32", "", ""),
+		"int8":        makeSimpleDescriber("int64", "", ""),
 		// "integer": not supported, use types with explicit size, e.g. int8 or int16
 		"varchar":     makeSimpleDescriber("string", "", ""),
 		"character":   makeSimpleDescriber("string", "", ""),
@@ -610,20 +610,21 @@ var (
 		"timestamptz": makeSimpleDescriber("Time", "time", "\"time\""),
 		"timetz":      makeSimpleDescriber("Time", "time", "\"time\""),
 		// "float": not supported, use types with explicit size, e.g. float8 or float16
-		"float4":  makeSimpleDescriber("float32", "", ""),
-		"float8":  makeSimpleDescriber("float32", "", ""),
-		"float16": makeSimpleDescriber("float64", "", ""),
+		"float4": makeSimpleDescriber("float32", "", ""),
+		"float8": makeSimpleDescriber("float64", "", ""),
 		// ?! "float32":  makeSimpleDescriber("float64", "", ""),
-		"smallint": makeSimpleDescriber("int16", "", ""),
-		"real":     makeSimpleDescriber("float32", "", ""),
-		"numeric":  makeSimpleDescriber("float32", "", ""),
-		"decimal":  makeSimpleDescriber("float32", "", ""),
+		"smallint":         makeSimpleDescriber("int16", "", ""),
+		"real":             makeSimpleDescriber("float32", "", ""),
+		"numeric":          makeSimpleDescriber("float32", "", ""),
+		"decimal":          makeSimpleDescriber("float32", "", ""),
+		"double precision": makeSimpleDescriber("float64", "", ""),
 	}
 	formatTypes = map[string]string{
 		"smallserial": "%d",
 		"serial":      "%d",
 		"bigserial":   "%d",
 		"bigint":      "%d",
+		"int2":        "%d",
 		"int4":        "%d",
 		"int8":        "%d",
 		"int16":       "%d",
@@ -637,14 +638,13 @@ var (
 		// "timestamp":   not supported
 		// "timestamptz": not supported
 		// "timetz":      not supported
-		"float4":   "%f",
-		"float8":   "%f",
-		"float16":  "%f",
-		"float32":  "%f",
-		"smallint": "%d",
-		"real":     "%f",
-		"numeric":  "%f",
-		"decimal":  "%f",
+		"float4":           "%f",
+		"float8":           "%f",
+		"double precision": "%f",
+		"smallint":         "%d",
+		"real":             "%f",
+		"numeric":          "%f",
+		"decimal":          "%f",
 		// "json":   not supported
 		// "enum":   not supported
 		// "map":    not supported
