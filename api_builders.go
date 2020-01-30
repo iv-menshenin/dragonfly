@@ -14,6 +14,8 @@ const (
 	varFindOptionsName  = "find"
 	varInputOptionsName = "values"
 	varArgPlaceholders  = "sqlArgs"
+	varArgSqlText       = "sqlText"
+	varColNames         = "colNames"
 )
 
 func exprToString(expr ast.Expr) string {
@@ -373,6 +375,7 @@ func addVariablesToFunctionBody(functionBody []ast.Stmt, optionsCount int, sqlQu
 func processValueWrapper(
 	colName string,
 	field ast.Expr,
+	options addInsertParametersOption,
 ) []ast.Stmt {
 	return []ast.Stmt{
 		makeAssignment(
@@ -380,18 +383,18 @@ func processValueWrapper(
 			makeCall(makeName("append"), makeName("colNames"), makeBasicLiteralString(colName)),
 		),
 		makeAssignment(
-			[]string{varArgValues},
-			makeCall(makeName("append"), makeName(varArgValues), field),
+			[]string{options.argValuesContainer},
+			makeCall(makeName("append"), makeName(options.argValuesContainer), field),
 		),
 		makeAssignment(
-			[]string{varArgPlaceholders},
+			[]string{options.sqlArgsVariable},
 			makeCall(
 				makeName("append"),
-				makeName(varArgPlaceholders),
+				makeName(options.sqlArgsVariable),
 				makeCall(
 					makeTypeSelector("fmt", "Sprintf"),
 					makeBasicLiteralString("$%d"),
-					makeCall(makeName("len"), makeName(varArgValues)),
+					makeCall(makeName("len"), makeName(options.argValuesContainer)),
 				),
 			),
 		),
@@ -429,10 +432,27 @@ func makeValuePicker(tags []string, def ast.Expr) (ast.Expr, bool) {
 	return def, false
 }
 
+type (
+	insertOrUpdateVariant     int
+	addInsertParametersOption struct {
+		variant            insertOrUpdateVariant
+		colNamesVariable   string
+		argValuesContainer string
+		sqlArgsVariable    string
+		sqlTextVariable    string
+	}
+)
+
+const (
+	variantInsert insertOrUpdateVariant = iota
+	variantUpdate
+)
+
 func addInsertParametersToFunctionBody(
 	functionName string,
 	functionBody []ast.Stmt,
 	optionFields []*ast.Field,
+	options addInsertParametersOption,
 ) (
 	[]ast.Stmt,
 	[]*ast.TypeSpec,
@@ -443,7 +463,7 @@ func addInsertParametersToFunctionBody(
 	functionBody = append(
 		functionBody,
 		makeDefinition(
-			[]string{"colNames"},
+			[]string{options.colNamesVariable},
 			makeCall(
 				makeName("make"),
 				makeTypeArray(makeName("string")),
@@ -477,14 +497,14 @@ func addInsertParametersToFunctionBody(
 		functionBody = append(
 			functionBody,
 			wrapFunc(processValueWrapper(
-				colName, valueExpr,
+				colName, valueExpr, options,
 			))...,
 		)
 	}
 	return append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: makeNotEmptyArrayExpression(varArgPlaceholders),
+				Cond: makeNotEmptyArrayExpression(options.sqlArgsVariable),
 				Body: makeBlock(
 					makeAddAssignment(
 						[]string{"sqlText"},
@@ -493,7 +513,7 @@ func addInsertParametersToFunctionBody(
 							makeName("sqlText"),
 							makeCall(
 								makeTypeSelector("strings", "Join"),
-								makeName(varArgPlaceholders),
+								makeName(options.sqlArgsVariable),
 								makeBasicLiteralString(", "),
 							),
 							makeCall(
@@ -731,7 +751,18 @@ func updateOneBuilder(
 	sqlQuery := fmt.Sprintf("update %s set %%s where %%s returning %s", fullTableName, strings.Join(outColumnList, ", "))
 	functionBody := make([]ast.Stmt, 0, len(optionFields)*3+6)
 	functionBody = addVariablesToFunctionBody(functionBody, len(optionFields), sqlQuery)
-	functionBody, inputTypes, inputAttrs = addInsertParametersToFunctionBody(functionName, functionBody, mutableFields)
+	functionBody, inputTypes, inputAttrs = addInsertParametersToFunctionBody(
+		functionName,
+		functionBody,
+		mutableFields,
+		addInsertParametersOption{
+			variant:            variantUpdate,
+			colNamesVariable:   varColNames,
+			argValuesContainer: varArgValues,
+			sqlArgsVariable:    varArgPlaceholders,
+			sqlTextVariable:    varArgSqlText,
+		},
+	)
 	functionBody, findTypes, findAttrs = addDynamicParametersToFunctionBody(functionName, functionBody, optionFields)
 	functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
 	return AstDataChain{
@@ -764,7 +795,18 @@ func insertOneBuilder(
 	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) returning %s", fullTableName, strings.Join(outColumnList, ", "))
 	functionBody := make([]ast.Stmt, 0, len(mutableFields)*3+6)
 	functionBody = addVariablesToFunctionBody(functionBody, len(mutableFields), sqlQuery)
-	functionBody, functionTypes, functionAttrs = addInsertParametersToFunctionBody(functionName, functionBody, mutableFields)
+	functionBody, functionTypes, functionAttrs = addInsertParametersToFunctionBody(
+		functionName,
+		functionBody,
+		mutableFields,
+		addInsertParametersOption{
+			variant:            variantInsert,
+			colNamesVariable:   varColNames,
+			argValuesContainer: varArgValues,
+			sqlArgsVariable:    varArgPlaceholders,
+			sqlTextVariable:    varArgSqlText,
+		},
+	)
 	functionBody = addExecutionBlockToFunctionBody(functionBody, rowStructName, scanBlockWrapper, fieldRefs, lastReturn)
 	return AstDataChain{
 		Types:     typeDeclsToMap(functionTypes),
