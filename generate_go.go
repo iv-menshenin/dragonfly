@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/format"
+	"go/printer"
 	"io"
 	"reflect"
 	"strconv"
@@ -516,7 +516,11 @@ func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
 		}
 	}
 	file, fset := astData.makeAstFile(packageName)
-	if err := format.Node(w, fset, file); err != nil {
+	filePrinter := printer.Config{
+		Mode:     printer.UseSpaces | printer.TabIndent,
+		Tabwidth: 8,
+	}
+	if err := filePrinter.Fprint(w, fset, file); err != nil {
 		panic(err)
 	}
 }
