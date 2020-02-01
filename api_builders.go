@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -437,8 +438,35 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 		if len(funcArgs) == 0 {
 			panic("tag contains 'generate' function without any argument")
 		}
-		if strings.EqualFold(funcArgs[0], generateFunction) {
+		if strings.EqualFold(funcArgs[0], generateFunctionNow) {
 			return makeCall(makeTypeSelector("time", "Now"))
+		}
+		// functions with 'len' argument
+		if arrayContains([]string{
+			generateFunctionHex,
+			generateFunctionAlpha,
+			generateFunctionDigits,
+		}, funcArgs[0]) {
+			var l = 16
+			if len(funcArgs) > 1 {
+				i, err := strconv.ParseInt(funcArgs[1], 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				l = int(i)
+			}
+			var goFncName string
+			switch funcArgs[0] {
+			case generateFunctionHex:
+				goFncName = "randomHex"
+			case generateFunctionAlpha:
+				goFncName = "randomAlpha"
+			case generateFunctionDigits:
+				goFncName = "randomDigits"
+			default:
+				panic(fmt.Sprintf("cannot resolve function name `%s`", funcArgs[0]))
+			}
+			return makeCall(makeName(goFncName), makeBasicLiteralInteger(l))
 		}
 	}
 	return nil

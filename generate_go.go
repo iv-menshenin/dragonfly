@@ -55,7 +55,10 @@ const (
 	tagEncrypt         = "encrypt"
 	tagIdentifier      = "identifier"
 
-	generateFunction = "now"
+	generateFunctionNow    = "now"
+	generateFunctionHex    = "H"
+	generateFunctionAlpha  = "A"
+	generateFunctionDigits = "0"
 
 	apiTypeInsertOne ApiType = "insertOne"
 	apiTypeUpdateOne ApiType = "updateOne"
