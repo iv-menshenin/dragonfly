@@ -482,7 +482,6 @@ func makeInputParametersProcessorBlock(
 		if !isOmittedField {
 			optionStructFields = append(optionStructFields, field)
 		}
-		// TODO encrypt := arrayFind(tags[TagTypeSQL], tagEncrypt) > 0
 		wrapFunc := func(stmts []ast.Stmt) []ast.Stmt { return stmts }
 		if _, ok := field.Type.(*ast.StarExpr); !isOmittedField && ok {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
@@ -492,6 +491,19 @@ func makeInputParametersProcessorBlock(
 						Body: makeBlock(stmts...),
 					},
 				}
+			}
+		}
+		if arrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
+			if _, star := field.Type.(*ast.StarExpr); star {
+				valueExpr = makeCall(
+					makeName("encryptPassword"),
+					makeTypeStar(valueExpr),
+				)
+			} else {
+				valueExpr = makeCall(
+					makeName("encryptPassword"),
+					valueExpr,
+				)
 			}
 		}
 		functionBody = append(
