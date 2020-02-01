@@ -271,7 +271,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 	for _, f := range c.domain.Fields {
 		intDesc := f.Value.describeGO()
 		objFields = append(objFields, &ast.Field{
-			Names: []*ast.Ident{makeName(f.Value.Name)},
+			Names: []*ast.Ident{makeName(makeExportedName(f.Value.Name))},
 			Type:  intDesc.fieldTypeExpr(),
 		})
 		if fmtLiter, ok := formatTypes[f.Value.Schema.Value.Type]; ok {
@@ -281,7 +281,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		}
 		formatArgs = append(formatArgs, &ast.UnaryExpr{
 			Op: token.AND,
-			X:  makeTypeSelector("c", f.Value.Name),
+			X:  makeTypeSelector("c", makeExportedName(f.Value.Name)),
 		})
 	}
 	formatArgs = append([]ast.Expr{
