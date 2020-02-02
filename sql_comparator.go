@@ -801,6 +801,7 @@ func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterI
 	}
 	// TODO
 	//  ALTER COLUMN
+	//  bool to timestamp: alter table [schema].[table] alter column [name] type timestamptz using case when [name] then now() end;
 	return
 }
 
