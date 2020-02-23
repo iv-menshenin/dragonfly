@@ -74,10 +74,6 @@ func makeTypeArray(expr ast.Expr) ast.Expr {
 	}
 }
 
-func makeName(name string) *ast.Ident {
-	return &ast.Ident{Name: name}
-}
-
 func makeComment(comment []string) *ast.CommentGroup {
 	if len(comment) == 0 {
 		return nil
@@ -140,7 +136,7 @@ func makeBlock(statements ...ast.Stmt) *ast.BlockStmt {
 func makeImportSpec(lPos *token.Pos, imports map[string]string) []ast.Spec {
 	var impSpec = make([]ast.Spec, 0, len(imports))
 	for packageKey, packagePath := range imports {
-		packageAlias := makeName(packageKey)
+		packageAlias := ast.NewIdent(packageKey)
 		pathSgms := strings.Split(packagePath, "/")
 		if pathSgms[len(pathSgms)-1] == packageKey {
 			packageAlias = nil
@@ -176,7 +172,7 @@ func makeImportDecl(lPos *token.Pos, imports map[string]string) ast.Decl {
 
 func makeField(name string, tag *ast.BasicLit, t ast.Expr, comment []string) *ast.Field {
 	return &ast.Field{
-		Names:   []*ast.Ident{makeName(name)},
+		Names:   []*ast.Ident{ast.NewIdent(name)},
 		Type:    t,
 		Tag:     tag,
 		Comment: makeComment(comment),
@@ -186,7 +182,7 @@ func makeField(name string, tag *ast.BasicLit, t ast.Expr, comment []string) *as
 func makeVarType(name string, t ast.Expr) *ast.ValueSpec {
 	return &ast.ValueSpec{
 		Names: []*ast.Ident{
-			makeName(name),
+			ast.NewIdent(name),
 		},
 		Type: t,
 	}
@@ -195,7 +191,7 @@ func makeVarType(name string, t ast.Expr) *ast.ValueSpec {
 func makeVarValue(name string, v ast.Expr) *ast.ValueSpec {
 	return &ast.ValueSpec{
 		Names: []*ast.Ident{
-			makeName(name),
+			ast.NewIdent(name),
 		},
 		Values: []ast.Expr{v},
 	}
@@ -213,7 +209,7 @@ func makeVarStatement(spec ...ast.Spec) ast.Stmt {
 func makeAssignment(lhs []string, rhs ...ast.Expr) ast.Stmt {
 	lhsExpr := make([]ast.Expr, 0, len(lhs))
 	for _, e := range lhs {
-		lhsExpr = append(lhsExpr, makeName(e))
+		lhsExpr = append(lhsExpr, ast.NewIdent(e))
 	}
 	return &ast.AssignStmt{
 		Lhs: lhsExpr,
@@ -225,7 +221,7 @@ func makeAssignment(lhs []string, rhs ...ast.Expr) ast.Stmt {
 func makeAddAssignment(lhs []string, rhs ...ast.Expr) ast.Stmt {
 	lhsExpr := make([]ast.Expr, 0, len(lhs))
 	for _, e := range lhs {
-		lhsExpr = append(lhsExpr, makeName(e))
+		lhsExpr = append(lhsExpr, ast.NewIdent(e))
 	}
 	return &ast.AssignStmt{
 		Lhs: lhsExpr,
@@ -237,7 +233,7 @@ func makeAddAssignment(lhs []string, rhs ...ast.Expr) ast.Stmt {
 func makeDefinition(lhs []string, rhs ...ast.Expr) ast.Stmt {
 	lhsExpr := make([]ast.Expr, 0, len(lhs))
 	for _, e := range lhs {
-		lhsExpr = append(lhsExpr, makeName(e))
+		lhsExpr = append(lhsExpr, ast.NewIdent(e))
 	}
 	return &ast.AssignStmt{
 		Lhs: lhsExpr,
@@ -282,7 +278,7 @@ func makeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body 
 				[]string{varName, "err"},
 				callExpr,
 			),
-			Cond: makeNotEqualExpression(makeName("err"), makeName("nil")),
+			Cond: makeNotEqualExpression(ast.NewIdent("err"), ast.NewIdent("nil")),
 			Body: &ast.BlockStmt{
 				List: body,
 			},
@@ -293,7 +289,7 @@ func makeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body 
 				[]string{"err"},
 				callExpr,
 			),
-			Cond: makeNotEqualExpression(makeName("err"), makeName("nil")),
+			Cond: makeNotEqualExpression(ast.NewIdent("err"), ast.NewIdent("nil")),
 			Body: &ast.BlockStmt{
 				List: body,
 			},
@@ -303,7 +299,7 @@ func makeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body 
 
 func makeNotEmptyArrayExpression(arrayName string) ast.Expr {
 	return &ast.BinaryExpr{
-		X:  makeCall(makeName("len"), makeName(arrayName)),
+		X:  makeCall(ast.NewIdent("len"), ast.NewIdent(arrayName)),
 		Op: token.GTR,
 		Y:  makeBasicLiteralInteger(0),
 	}
@@ -313,6 +309,6 @@ func makeNotNullExpression(variable ast.Expr) ast.Expr {
 	return &ast.BinaryExpr{
 		X:  variable,
 		Op: token.NEQ,
-		Y:  makeName("nil"),
+		Y:  ast.NewIdent("nil"),
 	}
 }

@@ -73,11 +73,11 @@ func (c ApiType) String() string {
 }
 
 func (c ApiType) HasFindOption() bool {
-	return c == apiTypeUpdateOne || c == apiTypeDeleteOne || c == apiTypeFindOne || c == apiTypeFindAll || c == apiTypeLookUp
+	return c != apiTypeInsertOne
 }
 
 func (c ApiType) HasInputOption() bool {
-	return c == apiTypeUpdateOne || c == apiTypeInsertOne
+	return c != apiTypeDeleteOne && c != apiTypeFindOne && c != apiTypeFindAll && c != apiTypeLookUp
 }
 
 func (c ApiType) Operation() ApiDbOperation {
@@ -233,7 +233,7 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	return ast.Field{
 		Doc: nil,
 		Names: []*ast.Ident{
-			makeName(makeExportedName(c.Value.Name)),
+			ast.NewIdent(makeExportedName(c.Value.Name)),
 		},
 		Type: decorator(fieldType),
 		Tag: makeTagsForField(map[string][]string{
@@ -363,7 +363,7 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 				}
 			}
 			baseType.Names = []*ast.Ident{
-				makeName(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
+				ast.NewIdent(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
 			}
 			var (
 				ok      bool
@@ -468,7 +468,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 			{
 				Types: map[string]*ast.TypeSpec{
 					structName: {
-						Name: makeName(structName),
+						Name: ast.NewIdent(structName),
 						Type: &ast.StructType{
 							Fields: &ast.FieldList{List: resultFields},
 						},

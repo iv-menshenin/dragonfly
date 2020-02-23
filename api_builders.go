@@ -11,12 +11,80 @@ import (
 )
 
 type (
+	variableName   string
 	builderOptions struct {
 		appendValueFormat       string
-		variableForColumnNames  *string
-		variableForColumnValues string
-		variableForColumnExpr   string
+		variableForColumnNames  *variableName
+		variableForColumnValues variableName
+		variableForColumnExpr   variableName
 	}
+	executionBlockOptions struct {
+		rowVariableName          variableName
+		rowStructTypeName        variableName
+		variableNameForSqlText   variableName
+		variableNameForArguments variableName
+	}
+)
+
+const (
+	argsVariable    variableName = "args"
+	filtersVariable variableName = "filters"
+	fieldsVariable  variableName = "fields"
+	valuesVariable  variableName = "values"
+
+	scanDestVariable variableName = "row"
+)
+
+func (v variableName) String() string {
+	return string(v)
+}
+
+var (
+	fieldsVariableRef  = fieldsVariable
+	FindBuilderOptions = builderOptions{
+		appendValueFormat:       "%s = $%%d",
+		variableForColumnNames:  nil,
+		variableForColumnValues: "args",
+		variableForColumnExpr:   filtersVariable,
+	}
+	InsertBuilderOptions = builderOptions{
+		appendValueFormat:       "/* %s */ $%%d",
+		variableForColumnNames:  &fieldsVariableRef,
+		variableForColumnValues: argsVariable,
+		variableForColumnExpr:   valuesVariable,
+	}
+	UpdateBuilderOptions = builderOptions{
+		appendValueFormat:       "%s = $%%d",
+		variableForColumnNames:  nil,
+		variableForColumnValues: argsVariable,
+		variableForColumnExpr:   fieldsVariable,
+	}
+	DeleteBuilderOptions = builderOptions{
+		appendValueFormat:       "%s = $%%d",
+		variableForColumnNames:  nil,
+		variableForColumnValues: argsVariable,
+		variableForColumnExpr:   filtersVariable,
+	}
+	IncomingArgumentsBuilderOptions = builderOptions{
+		appendValueFormat:       "",
+		variableForColumnNames:  nil,
+		variableForColumnValues: argsVariable,
+		variableForColumnExpr:   filtersVariable,
+	}
+)
+
+func MakeExecutionOption(rowStructName, sqlVariableName string) executionBlockOptions {
+	return executionBlockOptions{
+		rowVariableName:          scanDestVariable,
+		rowStructTypeName:        variableName(rowStructName),
+		variableNameForSqlText:   variableName(sqlVariableName),
+		variableNameForArguments: argsVariable,
+	}
+}
+
+var (
+	WrapperFindOne = scanBlockForFindOnce
+	WrapperFindAll = scanBlockForFindAll
 )
 
 func exprToString(expr ast.Expr) string {
@@ -73,7 +141,7 @@ func extractFieldRefsAndColumnsFromStruct(rowFields []*ast.Field) (fieldRefs []a
 	fieldRefs = make([]ast.Expr, 0, len(rowFields))
 	fieldNames, columnNames = extractFieldsAndColumnsFromStruct(rowFields)
 	for _, fieldName := range fieldNames {
-		fieldRefs = append(fieldRefs, makeName(fieldName))
+		fieldRefs = append(fieldRefs, ast.NewIdent(fieldName))
 	}
 	return
 }
@@ -86,7 +154,7 @@ func makeArrayQueryOption(
 	const (
 		localVariable = "opt"
 	)
-	var optionExpr ast.Expr = makeName(localVariable)
+	var optionExpr ast.Expr = ast.NewIdent(localVariable)
 	if ci {
 		columnName = fmt.Sprintf("lower(%s)", columnName)
 		optionExpr = makeCall(makeTypeSelector("strings", "ToLower"), optionExpr)
@@ -94,25 +162,25 @@ func makeArrayQueryOption(
 	// for placeholders only
 	var arrVariableName = fmt.Sprintf("array%s", fieldName)
 	return []ast.Stmt{
-		makeVarStatement(makeVarType(arrVariableName, makeTypeArray(makeName("string")))),
+		makeVarStatement(makeVarType(arrVariableName, makeTypeArray(ast.NewIdent("string")))),
 		&ast.RangeStmt{
-			Key:   makeName("_"),
-			Value: makeName(localVariable),
+			Key:   ast.NewIdent("_"),
+			Value: ast.NewIdent(localVariable),
 			X:     makeTypeSelector(optionName, fieldName),
 			Tok:   token.DEFINE,
 			Body: &ast.BlockStmt{
 				List: []ast.Stmt{
-					makeAssignment([]string{options.variableForColumnValues}, makeCall(makeName("append"), makeName(options.variableForColumnValues), optionExpr)),
+					makeAssignment([]string{options.variableForColumnValues.String()}, makeCall(ast.NewIdent("append"), ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
 					makeAssignment(
 						[]string{arrVariableName},
 						makeCall(
-							makeName("append"),
-							makeName(arrVariableName),
+							ast.NewIdent("append"),
+							ast.NewIdent(arrVariableName),
 							makeAddExpressions(
 								makeBasicLiteralString("$"),
 								makeCall(
 									makeTypeSelector("strconv", "Itoa"),
-									makeCall(makeName("len"), makeName(options.variableForColumnValues)),
+									makeCall(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
 								),
 							),
 						),
@@ -124,17 +192,17 @@ func makeArrayQueryOption(
 			Cond: makeNotEmptyArrayExpression(arrVariableName),
 			Body: makeBlock(
 				makeAssignment(
-					[]string{options.variableForColumnExpr},
+					[]string{options.variableForColumnExpr.String()},
 					makeCall(
-						makeName("append"),
-						makeName(options.variableForColumnExpr),
+						ast.NewIdent("append"),
+						ast.NewIdent(options.variableForColumnExpr.String()),
 						makeCall(
 							makeTypeSelector("fmt", "Sprintf"),
 							makeBasicLiteralString(operator),
 							makeBasicLiteralString(columnName),
 							makeCall(
 								makeTypeSelector("strings", "Join"),
-								makeName(arrVariableName),
+								ast.NewIdent(arrVariableName),
 								makeBasicLiteralString(", "),
 							),
 						),
@@ -172,25 +240,25 @@ func makeUnionQueryOption(
 				makeBasicLiteralString("$"),
 				makeCall(
 					makeTypeSelector("strconv", "Itoa"),
-					makeCall(makeName("len"), makeName(options.variableForColumnValues)),
+					makeCall(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
 				),
 			),
 		)
 	}
 	return []ast.Stmt{
 		makeAssignment(
-			[]string{options.variableForColumnValues},
+			[]string{options.variableForColumnValues.String()},
 			makeCall(
-				makeName("append"),
-				makeName(options.variableForColumnValues),
+				ast.NewIdent("append"),
+				ast.NewIdent(options.variableForColumnValues.String()),
 				optionExpr,
 			),
 		),
 		makeAssignment(
-			[]string{options.variableForColumnExpr},
+			[]string{options.variableForColumnExpr.String()},
 			makeCall(
-				makeName("append"),
-				makeName(options.variableForColumnExpr),
+				ast.NewIdent("append"),
+				ast.NewIdent(options.variableForColumnExpr.String()),
 				makeCall(
 					makeTypeSelector("fmt", "Sprintf"),
 					append([]ast.Expr{makeBasicLiteralString(strings.Join(operators, " or "))}, callArgs...)...,
@@ -215,18 +283,18 @@ func makeScalarQueryOption(
 	}
 	return []ast.Stmt{
 		makeAssignment(
-			[]string{options.variableForColumnValues},
+			[]string{options.variableForColumnValues.String()},
 			makeCall(
-				makeName("append"),
-				makeName(options.variableForColumnValues),
+				ast.NewIdent("append"),
+				ast.NewIdent(options.variableForColumnValues.String()),
 				optionExpr,
 			),
 		),
 		makeAssignment(
-			[]string{options.variableForColumnExpr},
+			[]string{options.variableForColumnExpr.String()},
 			makeCall(
-				makeName("append"),
-				makeName(options.variableForColumnExpr),
+				ast.NewIdent("append"),
+				ast.NewIdent(options.variableForColumnExpr.String()),
 				makeCall(
 					makeTypeSelector("fmt", "Sprintf"),
 					makeBasicLiteralString(operator),
@@ -235,7 +303,7 @@ func makeScalarQueryOption(
 						makeBasicLiteralString("$"),
 						makeCall(
 							makeTypeSelector("strconv", "Itoa"),
-							makeCall(makeName("len"), makeName(options.variableForColumnValues)),
+							makeCall(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
 						),
 					),
 				),
@@ -251,7 +319,7 @@ func makeStarQueryOption(
 ) []ast.Stmt {
 	return []ast.Stmt{
 		&ast.IfStmt{
-			Cond: makeNotEqualExpression(makeTypeSelector(optionName, fieldName), makeName("nil")),
+			Cond: makeNotEqualExpression(makeTypeSelector(optionName, fieldName), ast.NewIdent("nil")),
 			Body: makeBlock(
 				makeScalarQueryOption(optionName, fieldName, columnName, operator, ci, true, options)...,
 			),
@@ -289,13 +357,13 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 					Cond: makeCall(makeTypeSelector("rows", "Next")),
 					Body: makeBlock(
 						makeReturn(
-							makeName("row"),
-							makeName("SingletonViolation"),
+							ast.NewIdent("row"),
+							ast.NewIdent("SingletonViolation"),
 						),
 					),
 					Else: makeReturn(
-						makeName("row"),
-						makeName("nil"),
+						ast.NewIdent("row"),
+						ast.NewIdent("nil"),
 					),
 				},
 			)...,
@@ -322,9 +390,9 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 				makeAssignment(
 					[]string{"result"},
 					makeCall(
-						makeName("append"),
-						makeName("result"),
-						makeName("row"),
+						ast.NewIdent("append"),
+						ast.NewIdent("result"),
+						ast.NewIdent("row"),
 					),
 				),
 			)...,
@@ -332,16 +400,7 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 	}
 }
 
-type (
-	executionBlockOptions struct {
-		rowVariableName          string
-		rowStructTypeName        string
-		variableNameForSqlText   string
-		variableNameForArguments string
-	}
-)
-
-func addExecutionBlockToFunctionBody(
+func BuildExecutionBlockForFunction(
 	scanBlock scanWrapper,
 	fieldRefs []ast.Expr,
 	lastReturn ast.Stmt,
@@ -352,12 +411,12 @@ func addExecutionBlockToFunctionBody(
 			"rows",
 			makeCallEllipsis(
 				makeTypeSelector("db", "Query"),
-				makeName(options.variableNameForSqlText),
-				makeName(options.variableNameForArguments),
+				ast.NewIdent(options.variableNameForSqlText.String()),
+				ast.NewIdent(options.variableNameForArguments.String()),
 			),
 		),
 		scanBlock(
-			makeVarStatement(makeVarType(options.rowVariableName, makeName(options.rowStructTypeName))),
+			makeVarStatement(makeVarType(options.rowVariableName.String(), ast.NewIdent(options.rowStructTypeName.String()))),
 			makeAssignmentWithErrChecking(
 				"",
 				makeCall(
@@ -387,7 +446,7 @@ func addVariablesToFunctionBody(
 			),
 			makeAssignmentWithErrChecking(
 				"db",
-				makeCall(makeName("getDatabase"), makeName("ctx")),
+				makeCall(ast.NewIdent("getDatabase"), ast.NewIdent("ctx")),
 				makeEmptyReturn(),
 			),
 		},
@@ -403,25 +462,25 @@ func processValueWrapper(
 	stmts := make([]ast.Stmt, 0, 3)
 	if options.variableForColumnNames != nil {
 		stmts = append(stmts, makeAssignment(
-			[]string{*options.variableForColumnNames},
-			makeCall(makeName("append"), makeName(*options.variableForColumnNames), makeBasicLiteralString(colName)),
+			[]string{options.variableForColumnNames.String()},
+			makeCall(ast.NewIdent("append"), ast.NewIdent(options.variableForColumnNames.String()), makeBasicLiteralString(colName)),
 		))
 	}
 	return append(
 		stmts,
 		makeAssignment(
-			[]string{options.variableForColumnValues},
-			makeCall(makeName("append"), makeName(options.variableForColumnValues), field),
+			[]string{options.variableForColumnValues.String()},
+			makeCall(ast.NewIdent("append"), ast.NewIdent(options.variableForColumnValues.String()), field),
 		),
 		makeAssignment(
-			[]string{options.variableForColumnExpr},
+			[]string{options.variableForColumnExpr.String()},
 			makeCall(
-				makeName("append"),
-				makeName(options.variableForColumnExpr),
+				ast.NewIdent("append"),
+				ast.NewIdent(options.variableForColumnExpr.String()),
 				makeCall(
 					makeTypeSelector("fmt", "Sprintf"),
 					makeBasicLiteralString(fmt.Sprintf(options.appendValueFormat, colName)),
-					makeCall(makeName("len"), makeName(options.variableForColumnValues)),
+					makeCall(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
 				),
 			),
 		),
@@ -466,7 +525,7 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			default:
 				panic(fmt.Sprintf("cannot resolve function name `%s`", funcArgs[0]))
 			}
-			return makeCall(makeName(goFncName), makeBasicLiteralInteger(l))
+			return makeCall(ast.NewIdent(goFncName), makeBasicLiteralInteger(l))
 		}
 	}
 	return nil
@@ -493,7 +552,7 @@ func makeInputParametersProcessorBlock(
 	options builderOptions,
 ) (
 	[]ast.Stmt,
-	[]*ast.TypeSpec,
+	map[string]*ast.TypeSpec,
 	[]*ast.Field,
 ) {
 	var (
@@ -524,12 +583,12 @@ func makeInputParametersProcessorBlock(
 		if arrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
 			if _, star := field.Type.(*ast.StarExpr); star {
 				valueExpr = makeCall(
-					makeName("encryptPassword"),
+					ast.NewIdent("encryptPassword"),
 					makeTypeStar(valueExpr),
 				)
 			} else {
 				valueExpr = makeCall(
-					makeName("encryptPassword"),
+					ast.NewIdent("encryptPassword"),
 					valueExpr,
 				)
 			}
@@ -542,9 +601,9 @@ func makeInputParametersProcessorBlock(
 		)
 	}
 	return functionBody,
-		[]*ast.TypeSpec{
-			{
-				Name: makeName(funcInputOptionTypeName),
+		map[string]*ast.TypeSpec{
+			funcInputOptionTypeName: {
+				Name: ast.NewIdent(funcInputOptionTypeName),
 				Type: &ast.StructType{
 					Fields:     &ast.FieldList{List: optionStructFields},
 					Incomplete: false,
@@ -553,20 +612,24 @@ func makeInputParametersProcessorBlock(
 		},
 		[]*ast.Field{
 			{
-				Names: []*ast.Ident{makeName(funcInputOptionName)},
-				Type:  makeName(funcInputOptionTypeName),
+				Names: []*ast.Ident{ast.NewIdent(funcInputOptionName)},
+				Type:  ast.NewIdent(funcInputOptionTypeName),
 			},
 		}
 }
 
-func makeFilterParametersProcessorBlock(
+/*
+	Extracts required and optional parameters from incoming arguments, builds program code
+	Returns the body of program code, required type declarations and required input fields
+*/
+func BuildIncomingArgumentsProcessor(
 	funcFilterOptionName string,
 	funcFilterOptionTypeName string,
 	optionFields []*ast.Field,
 	options builderOptions,
 ) (
 	[]ast.Stmt,
-	[]*ast.TypeSpec,
+	map[string]*ast.TypeSpec,
 	[]*ast.Field,
 ) {
 	var (
@@ -612,9 +675,9 @@ func makeFilterParametersProcessorBlock(
 		}
 	}
 	return functionBody,
-		[]*ast.TypeSpec{
-			{
-				Name: makeName(funcFilterOptionTypeName),
+		map[string]*ast.TypeSpec{
+			funcFilterOptionTypeName: {
+				Name: ast.NewIdent(funcFilterOptionTypeName),
 				Type: &ast.StructType{
 					Fields:     &ast.FieldList{List: optionFields},
 					Incomplete: false,
@@ -623,18 +686,15 @@ func makeFilterParametersProcessorBlock(
 		},
 		[]*ast.Field{
 			{
-				Names: []*ast.Ident{makeName(funcFilterOptionName)},
-				Type:  makeName(funcFilterOptionTypeName),
+				Names: []*ast.Ident{ast.NewIdent(funcFilterOptionName)},
+				Type:  ast.NewIdent(funcFilterOptionTypeName),
 			},
 		}
 }
 
 func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	const (
-		argsVarName     = "args"
-		scanVarName     = "row"
-		sqlTextName     = "sqlText"
-		filtersVariable = "filters"
+		sqlTextName = "sqlText"
 	)
 	return func(
 		fullTableName, functionName, rowStructName string,
@@ -647,14 +707,14 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		)
 		switch variant {
 		case findVariantOnce:
-			scanBlockWrapper = scanBlockForFindOnce
+			scanBlockWrapper = WrapperFindOne
 			resultExpr = makeTypeIdent(rowStructName)
 			lastReturn = makeReturn(
-				makeName("result"),
-				makeName("EmptyResult"),
+				ast.NewIdent("result"),
+				ast.NewIdent("EmptyResult"),
 			)
 		case findVariantAll:
-			scanBlockWrapper = scanBlockForFindAll
+			scanBlockWrapper = WrapperFindAll
 			resultExpr = makeTypeArray(makeTypeIdent(rowStructName))
 			lastReturn = makeEmptyReturn()
 		default:
@@ -664,32 +724,27 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(rowFields)
 		)
 		sqlQuery := fmt.Sprintf("select %s from %s where %%s", strings.Join(columnList, ", "), fullTableName)
-		functionBody, findTypes, findAttrs := makeFilterParametersProcessorBlock(
+		functionBody, findTypes, findAttrs := BuildIncomingArgumentsProcessor(
 			"find",
 			functionName+"Option",
 			optionFields,
-			builderOptions{
-				appendValueFormat:       "%s = $%%d",
-				variableForColumnNames:  nil,
-				variableForColumnValues: "args",
-				variableForColumnExpr:   filtersVariable,
-			},
+			FindBuilderOptions,
 		)
 		functionBody = append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: makeNotEmptyArrayExpression(filtersVariable),
+				Cond: makeNotEmptyArrayExpression(filtersVariable.String()),
 				Body: makeBlock(
 					makeAssignment(
 						[]string{sqlTextName},
 						makeCall(
 							makeTypeSelector("fmt", "Sprintf"),
-							makeName(sqlTextName),
+							ast.NewIdent(sqlTextName),
 							makeAddExpressions(
 								makeBasicLiteralString("("),
 								makeCall(
 									makeTypeSelector("strings", "Join"),
-									makeName(filtersVariable),
+									ast.NewIdent(filtersVariable.String()),
 									makeBasicLiteralString(") and ("),
 								),
 								makeBasicLiteralString(")"),
@@ -701,7 +756,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 					[]string{sqlTextName},
 					makeCall(
 						makeTypeSelector("fmt", "Sprintf"),
-						makeName(sqlTextName),
+						ast.NewIdent(sqlTextName),
 						makeBasicLiteralString("1 = 1"),
 					),
 				),
@@ -709,28 +764,23 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		)
 		functionBody = append(
 			functionBody,
-			addExecutionBlockToFunctionBody(scanBlockWrapper, fieldRefs, lastReturn, executionBlockOptions{
-				rowVariableName:          scanVarName,
-				rowStructTypeName:        rowStructName,
-				variableNameForSqlText:   sqlTextName,
-				variableNameForArguments: argsVarName,
-			})...,
+			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
 		)
 		functionBody = addVariablesToFunctionBody(
 			functionBody,
 			sqlTextName,
 			sqlQuery,
 			makeVarValue(
-				argsVarName,
-				makeCall(makeName("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
+				argsVariable.String(),
+				makeCall(ast.NewIdent("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
 			),
 			makeVarValue(
-				filtersVariable,
-				makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
+				filtersVariable.String(),
+				makeCall(ast.NewIdent("make"), makeTypeArray(ast.NewIdent("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
 			),
 		)
 		return AstDataChain{
-			Types:     typeDeclsToMap(findTypes),
+			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
 				functionName: makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
@@ -741,10 +791,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 
 func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	const (
-		argsVarName     = "args"
-		scanVarName     = "row"
-		sqlTextName     = "sqlText"
-		filtersVariable = "filters"
+		sqlTextName = "sqlText"
 	)
 	return func(
 		fullTableName, functionName, rowStructName string,
@@ -757,14 +804,14 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 		)
 		switch variant {
 		case findVariantOnce:
-			scanBlockWrapper = scanBlockForFindOnce
+			scanBlockWrapper = WrapperFindOne
 			resultExpr = makeTypeIdent(rowStructName)
 			lastReturn = makeReturn(
-				makeName("result"),
-				makeName("EmptyResult"),
+				ast.NewIdent("result"),
+				ast.NewIdent("EmptyResult"),
 			)
 		case findVariantAll:
-			scanBlockWrapper = scanBlockForFindAll
+			scanBlockWrapper = WrapperFindAll
 			resultExpr = makeTypeArray(makeTypeIdent(rowStructName))
 			lastReturn = makeEmptyReturn()
 		default:
@@ -774,32 +821,27 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(rowFields)
 		)
 		sqlQuery := fmt.Sprintf("delete from %s where %%s returning %s", fullTableName, strings.Join(columnList, ", "))
-		functionBody, findTypes, findAttrs := makeFilterParametersProcessorBlock(
+		functionBody, findTypes, findAttrs := BuildIncomingArgumentsProcessor(
 			"find",
 			functionName+"Option",
 			optionFields,
-			builderOptions{
-				appendValueFormat:       "%s = $%%d",
-				variableForColumnNames:  nil,
-				variableForColumnValues: argsVarName,
-				variableForColumnExpr:   filtersVariable,
-			},
+			DeleteBuilderOptions,
 		)
 		functionBody = append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: makeNotEmptyArrayExpression(filtersVariable),
+				Cond: makeNotEmptyArrayExpression(filtersVariable.String()),
 				Body: makeBlock(
 					makeAssignment(
 						[]string{sqlTextName},
 						makeCall(
 							makeTypeSelector("fmt", "Sprintf"),
-							makeName(sqlTextName),
+							ast.NewIdent(sqlTextName),
 							makeAddExpressions(
 								makeBasicLiteralString("("),
 								makeCall(
 									makeTypeSelector("strings", "Join"),
-									makeName(filtersVariable),
+									ast.NewIdent(filtersVariable.String()),
 									makeBasicLiteralString(") and ("),
 								),
 								makeBasicLiteralString(")"),
@@ -811,7 +853,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 					[]string{sqlTextName},
 					makeCall(
 						makeTypeSelector("fmt", "Sprintf"),
-						makeName(sqlTextName),
+						ast.NewIdent(sqlTextName),
 						makeBasicLiteralString("/* ERROR: CANNOT DELETE ALL */ !"),
 					),
 				),
@@ -819,28 +861,23 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 		)
 		functionBody = append(
 			functionBody,
-			addExecutionBlockToFunctionBody(scanBlockWrapper, fieldRefs, lastReturn, executionBlockOptions{
-				rowVariableName:          scanVarName,
-				rowStructTypeName:        rowStructName,
-				variableNameForSqlText:   sqlTextName,
-				variableNameForArguments: argsVarName,
-			})...,
+			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
 		)
 		functionBody = addVariablesToFunctionBody(
 			functionBody,
 			sqlTextName,
 			sqlQuery,
 			makeVarValue(
-				argsVarName,
-				makeCall(makeName("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
+				argsVariable.String(),
+				makeCall(ast.NewIdent("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
 			),
 			makeVarValue(
-				filtersVariable,
-				makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
+				filtersVariable.String(),
+				makeCall(ast.NewIdent("make"), makeTypeArray(ast.NewIdent("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(optionFields))),
 			),
 		)
 		return AstDataChain{
-			Types:     typeDeclsToMap(findTypes),
+			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
 				functionName: makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
@@ -854,17 +891,13 @@ func updateOneBuilder(
 	optionFields, mutableFields, rowFields []*ast.Field,
 ) AstDataChain {
 	const (
-		argsVarName        = "args"
-		scanVarName        = "row"
-		sqlTextName        = "sqlText"
-		filtersVariable    = "filters"
-		fieldsNameVariable = "fields"
+		sqlTextName = "sqlText"
 	)
 	resultExpr := makeTypeIdent(rowStructName)
-	scanBlockWrapper := scanBlockForFindOnce
+	scanBlockWrapper := WrapperFindOne
 	lastReturn := makeReturn(
-		makeName("result"),
-		makeName("EmptyResult"),
+		ast.NewIdent("result"),
+		ast.NewIdent("EmptyResult"),
 	)
 	var (
 		fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(rowFields)
@@ -874,23 +907,13 @@ func updateOneBuilder(
 		"values",
 		makeExportedName(functionName+"Values"),
 		mutableFields,
-		builderOptions{
-			appendValueFormat:       "%s = $%%d",
-			variableForColumnNames:  nil,
-			variableForColumnValues: argsVarName,
-			variableForColumnExpr:   fieldsNameVariable,
-		},
+		UpdateBuilderOptions,
 	)
-	findBlock, findTypes, findAttrs := makeFilterParametersProcessorBlock(
+	findBlock, findTypes, findAttrs := BuildIncomingArgumentsProcessor(
 		"filter",
 		makeExportedName(functionName+"Option"),
 		optionFields,
-		builderOptions{
-			appendValueFormat:       "",
-			variableForColumnNames:  nil,
-			variableForColumnValues: argsVarName,
-			variableForColumnExpr:   filtersVariable,
-		},
+		IncomingArgumentsBuilderOptions,
 	)
 	functionBody = append(functionBody, findBlock...)
 	functionBody = append(
@@ -899,17 +922,17 @@ func updateOneBuilder(
 			[]string{sqlTextName},
 			makeCall(
 				makeTypeSelector("fmt", "Sprintf"),
-				makeName(sqlTextName),
+				ast.NewIdent(sqlTextName),
 				makeCall(
 					makeTypeSelector("strings", "Join"),
-					makeName(fieldsNameVariable),
+					ast.NewIdent(fieldsVariable.String()),
 					makeBasicLiteralString(", "),
 				),
 				makeAddExpressions(
 					makeBasicLiteralString("("),
 					makeCall(
 						makeTypeSelector("strings", "Join"),
-						makeName(filtersVariable),
+						ast.NewIdent(filtersVariable.String()),
 						makeBasicLiteralString(") and ("),
 					),
 					makeBasicLiteralString(")"),
@@ -919,32 +942,33 @@ func updateOneBuilder(
 	)
 	functionBody = append(
 		functionBody,
-		addExecutionBlockToFunctionBody(scanBlockWrapper, fieldRefs, lastReturn, executionBlockOptions{
-			rowVariableName:          scanVarName,
-			rowStructTypeName:        rowStructName,
-			variableNameForSqlText:   sqlTextName,
-			variableNameForArguments: argsVarName,
-		})...,
+		BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
 	)
 	functionBody = addVariablesToFunctionBody(
 		functionBody,
 		sqlTextName,
 		sqlQuery,
 		makeVarValue(
-			argsVarName,
-			makeCall(makeName("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
+			argsVariable.String(),
+			makeCall(ast.NewIdent("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
 		),
 		makeVarValue(
-			fieldsNameVariable,
-			makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
+			fieldsVariable.String(),
+			makeCall(ast.NewIdent("make"), makeTypeArray(ast.NewIdent("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
 		),
 		makeVarValue(
-			filtersVariable,
-			makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
+			filtersVariable.String(),
+			makeCall(ast.NewIdent("make"), makeTypeArray(ast.NewIdent("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
 		),
 	)
+	unionTypeDeclMaps := func(a, b map[string]*ast.TypeSpec) map[string]*ast.TypeSpec {
+		for key := range b {
+			a[key] = b[key]
+		}
+		return a
+	}
 	return AstDataChain{
-		Types:     typeDeclsToMap(append(inputTypes, findTypes...)),
+		Types:     unionTypeDeclMaps(inputTypes, findTypes),
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
 			functionName: makeApiFunction(functionName, resultExpr, functionBody, append(inputAttrs, findAttrs...)...),
@@ -957,17 +981,13 @@ func insertOneBuilder(
 	_, mutableFields, rowFields []*ast.Field,
 ) AstDataChain {
 	const (
-		argsVarName        = "args"
-		scanVarName        = "row"
-		sqlTextName        = "sqlText"
-		fieldsNameVariable = "fields"
-		valuesNameVariable = "values"
+		sqlTextName = "sqlText"
 	)
 	resultExpr := makeTypeIdent(rowStructName)
-	scanBlockWrapper := scanBlockForFindOnce
+	scanBlockWrapper := WrapperFindOne
 	lastReturn := makeReturn(
-		makeName("result"),
-		makeName("EmptyResult"),
+		ast.NewIdent("result"),
+		ast.NewIdent("EmptyResult"),
 	)
 	var (
 		fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(rowFields)
@@ -977,12 +997,7 @@ func insertOneBuilder(
 		"record",
 		makeExportedName(functionName+"Values"),
 		mutableFields,
-		builderOptions{
-			appendValueFormat:       "/* %s */ $%%d",
-			variableForColumnNames:  refString(fieldsNameVariable),
-			variableForColumnValues: argsVarName,
-			variableForColumnExpr:   valuesNameVariable,
-		},
+		InsertBuilderOptions,
 	)
 	functionBody = append(
 		functionBody,
@@ -990,15 +1005,15 @@ func insertOneBuilder(
 			[]string{sqlTextName},
 			makeCall(
 				makeTypeSelector("fmt", "Sprintf"),
-				makeName(sqlTextName),
+				ast.NewIdent(sqlTextName),
 				makeCall(
 					makeTypeSelector("strings", "Join"),
-					makeName(fieldsNameVariable),
+					ast.NewIdent(fieldsVariable.String()),
 					makeBasicLiteralString(", "),
 				),
 				makeCall(
 					makeTypeSelector("strings", "Join"),
-					makeName(valuesNameVariable),
+					ast.NewIdent(valuesVariable.String()),
 					makeBasicLiteralString(", "),
 				),
 			),
@@ -1006,32 +1021,27 @@ func insertOneBuilder(
 	)
 	functionBody = append(
 		functionBody,
-		addExecutionBlockToFunctionBody(scanBlockWrapper, fieldRefs, lastReturn, executionBlockOptions{
-			rowVariableName:          scanVarName,
-			rowStructTypeName:        rowStructName,
-			variableNameForSqlText:   sqlTextName,
-			variableNameForArguments: argsVarName,
-		})...,
+		BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
 	)
 	functionBody = addVariablesToFunctionBody(
 		functionBody,
 		sqlTextName,
 		sqlQuery,
 		makeVarValue(
-			argsVarName,
-			makeCall(makeName("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
+			argsVariable.String(),
+			makeCall(ast.NewIdent("make"), makeTypeArray(makeEmptyInterface()), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
 		),
 		makeVarValue(
-			fieldsNameVariable,
-			makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
+			fieldsVariable.String(),
+			makeCall(ast.NewIdent("make"), makeTypeArray(ast.NewIdent("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
 		),
 		makeVarValue(
-			valuesNameVariable,
-			makeCall(makeName("make"), makeTypeArray(makeName("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
+			valuesVariable.String(),
+			makeCall(ast.NewIdent("make"), makeTypeArray(ast.NewIdent("string")), makeBasicLiteralInteger(0), makeBasicLiteralInteger(len(mutableFields))),
 		),
 	)
 	return AstDataChain{
-		Types:     typeDeclsToMap(functionTypes),
+		Types:     functionTypes,
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
 			functionName: makeApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
@@ -1046,7 +1056,7 @@ func makeApiFunction(
 	functionArgs ...*ast.Field,
 ) *ast.FuncDecl {
 	return &ast.FuncDecl{
-		Name: makeName(functionName),
+		Name: ast.NewIdent(functionName),
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
 				List: append(

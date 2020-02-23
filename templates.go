@@ -179,7 +179,7 @@ func (c AstDataChain) extractImports() map[string]string {
 
 func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 	var file ast.File
-	file.Name = makeName(packageName)
+	file.Name = ast.NewIdent(packageName)
 	imports := make(map[string]string, 0)
 	var lPos token.Pos = 1
 	for _, chain := range c.Chains {
