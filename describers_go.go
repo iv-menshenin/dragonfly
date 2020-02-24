@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/code_builders"
 	"go/ast"
 	"go/token"
 	"strings"
@@ -65,9 +66,9 @@ func (c simpleTypeDescriber) getFile() []AstDataChain {
 
 func (c simpleTypeDescriber) fieldTypeExpr() ast.Expr {
 	if c.typePrefix == "" {
-		return makeTypeIdent(c.typeLit) // just type string
+		return ast.NewIdent(c.typeLit) // just type string
 	} else {
-		return makeTypeSelector(c.typePrefix, c.typeLit) // like "package.type"
+		return builders.MakeSelectorExpression(c.typePrefix, c.typeLit) // like "package.type"
 	}
 }
 
@@ -119,40 +120,40 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 	)
 	for _, entity := range c.domain.Enum {
 		entityName := ast.NewIdent(c.typeName + makeExportedName(entity.Value))
-		entityValue := makeBasicLiteralString(entity.Value)
+		entityValue := builders.MakeBasicLiteralString(entity.Value)
 		allowedValues[entityName.Name] = &ast.ValueSpec{
 			Names:  []*ast.Ident{entityName},
 			Type:   ast.NewIdent(c.typeName),
 			Values: []ast.Expr{entityValue},
 		}
-		enumValues = append(enumValues, makeCall(ast.NewIdent("string"), entityName))
+		enumValues = append(enumValues, builders.MakeCallExpression(ast.NewIdent("string"), entityName))
 	}
-	returnTypeValueErrorExpr := makeReturn(
-		makeCall(
+	returnTypeValueErrorExpr := builders.MakeReturn(
+		builders.MakeCallExpression(
 			ast.NewIdent("makeTypeValueError"),
-			makeCall(
-				makeTypeSelector("fmt", "Sprintf"),
-				makeBasicLiteralString("%T"),
+			builders.MakeCallExpression(
+				builders.MakeSelectorExpression("fmt", "Sprintf"),
+				builders.MakeBasicLiteralString("%T"),
 				ast.NewIdent(methodReceiverLit),
 			),
-			makeCall(ast.NewIdent("string"), ast.NewIdent(methodReceiverLit)),
+			builders.MakeCallExpression(ast.NewIdent("string"), ast.NewIdent(methodReceiverLit)),
 		),
 	)
-	rangeBody := makeBlock(
+	rangeBody := builders.MakeBlockStmt(
 		&ast.IfStmt{
-			Cond: makeCall(
-				makeTypeSelector("strings", "EqualFold"),
+			Cond: builders.MakeCallExpression(
+				builders.MakeSelectorExpression("strings", "EqualFold"),
 				ast.NewIdent("s"),
-				makeCall(ast.NewIdent("string"), ast.NewIdent(methodReceiverLit)),
+				builders.MakeCallExpression(ast.NewIdent("string"), ast.NewIdent(methodReceiverLit)),
 			),
-			Body: makeBlock(makeReturn(ast.NewIdent("nil"))),
+			Body: builders.MakeBlockStmt(builders.MakeReturn(ast.NewIdent("nil"))),
 		},
 	)
 	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
 			mainTypeName.Name: {
 				Name: mainTypeName,
-				Type: makeTypeIdent("string"),
+				Type: ast.NewIdent("string"),
 			},
 		},
 		Constants: allowedValues,
@@ -167,15 +168,15 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 						Results: &ast.FieldList{
 							List: []*ast.Field{
 								{
-									Type: makeTypeArray(ast.NewIdent("string")),
+									Type: builders.MakeArrayType(ast.NewIdent("string")),
 								},
 							},
 						},
 					},
-					Body: makeBlock(
-						makeReturn(
+					Body: builders.MakeBlockStmt(
+						builders.MakeReturn(
 							&ast.CompositeLit{
-								Type: makeTypeArray(ast.NewIdent("string")),
+								Type: builders.MakeArrayType(ast.NewIdent("string")),
 								Elts: enumValues,
 							},
 						),
@@ -203,7 +204,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 								Value: ast.NewIdent("s"),
 								Tok:   token.DEFINE,
 								X: &ast.CallExpr{
-									Fun: makeTypeSelector(methodReceiverLit, enumFunctionName),
+									Fun: builders.MakeSelectorExpression(methodReceiverLit, enumFunctionName),
 								},
 								Body: rangeBody,
 							},
@@ -266,7 +267,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		formatArgs   = make([]ast.Expr, 0, len(c.domain.Fields))
 	)
 	for _, entity := range c.domain.Enum {
-		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
+		enumValues = append(enumValues, builders.MakeBasicLiteralString(entity.Value))
 	}
 	for _, f := range c.domain.Fields {
 		intDesc := f.Value.describeGO()
@@ -281,19 +282,19 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		}
 		formatArgs = append(formatArgs, &ast.UnaryExpr{
 			Op: token.AND,
-			X:  makeTypeSelector("c", makeExportedName(f.Value.Name)),
+			X:  builders.MakeSelectorExpression("c", makeExportedName(f.Value.Name)),
 		})
 	}
 	formatArgs = append([]ast.Expr{
 		&ast.CallExpr{
-			Fun: makeTypeSelector("bytes", "NewReader"),
+			Fun: builders.MakeSelectorExpression("bytes", "NewReader"),
 			Args: []ast.Expr{
 				&ast.TypeAssertExpr{
 					X:    ast.NewIdent("value"),
-					Type: makeTypeArray(ast.NewIdent("uint8")),
+					Type: builders.MakeArrayType(ast.NewIdent("uint8")),
 				},
 			},
-		}, makeBasicLiteralString("(" + strings.Join(formatLiters, ",") + ")"),
+		}, builders.MakeBasicLiteralString("(" + strings.Join(formatLiters, ",") + ")"),
 	}, formatArgs...)
 	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
@@ -452,7 +453,7 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 		objFields  = make([]*ast.Field, 0, len(c.domain.Fields))
 	)
 	for _, entity := range c.domain.Enum {
-		enumValues = append(enumValues, makeBasicLiteralString(entity.Value))
+		enumValues = append(enumValues, builders.MakeBasicLiteralString(entity.Value))
 	}
 	for _, f := range c.domain.Fields {
 		intDesc := f.Value.describeGO()

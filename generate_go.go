@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"errors"
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/code_builders"
 	"go/ast"
 	"go/printer"
 	"io"
@@ -222,7 +223,7 @@ func (c *Column) describeGO() fieldDescriber {
 func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	var decorator = func(e ast.Expr) ast.Expr { return e }
 	if !required {
-		decorator = makeTypeStar
+		decorator = builders.MakeStarExpression
 	}
 	fieldDescriber := c.Value.describeGO()
 	fieldType := fieldDescriber.fieldTypeExpr()
@@ -236,10 +237,10 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 			ast.NewIdent(makeExportedName(c.Value.Name)),
 		},
 		Type: decorator(fieldType),
-		Tag: makeTagsForField(map[string][]string{
+		Tag: builders.MakeTagsForField(map[string][]string{
 			"sql": c.Value.tags(),
 		}),
-		Comment: makeComment([]string{c.Value.Description}),
+		Comment: builders.MakeComment([]string{c.Value.Description}),
 	}
 }
 
@@ -332,7 +333,7 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			if field.Tag != nil {
 				if sqlTags, ok := tagToMap(field.Tag.Value)[TagTypeSQL]; ok {
 					sqlTags = arrayRemove(sqlTags, "required")
-					field.Tag = makeTagsForField(map[string][]string{
+					field.Tag = builders.MakeTagsForField(map[string][]string{
 						TagTypeSQL: sqlTags,
 						TagTypeOp:  {string(operator)},
 					})
@@ -375,7 +376,7 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 					sqlTags = append(sqlTags, TagTypeUnion)
 				}
 			}
-			baseType.Tag = makeTagsForField(map[string][]string{
+			baseType.Tag = builders.MakeTagsForField(map[string][]string{
 				TagTypeSQL:   sqlTags,
 				TagTypeUnion: unionColumns,
 				TagTypeOp:    {string(operator)},
@@ -472,7 +473,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 						Type: &ast.StructType{
 							Fields: &ast.FieldList{List: resultFields},
 						},
-						Comment: makeComment(stringToSlice(table.Description)),
+						Comment: builders.MakeComment(stringToSlice(table.Description)),
 					},
 				},
 				Constants:       nil,

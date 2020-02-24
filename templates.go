@@ -1,6 +1,7 @@
 package dragonfly
 
 import (
+	"github.com/iv-menshenin/dragonfly/code_builders"
 	"go/ast"
 	"go/token"
 )
@@ -233,7 +234,7 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 	if len(imports) > 0 {
 		file.Decls = append(
 			[]ast.Decl{
-				makeImportDecl(&lPos, imports),
+				builders.MakeImportDecl(&lPos, imports),
 			},
 			file.Decls...,
 		)
