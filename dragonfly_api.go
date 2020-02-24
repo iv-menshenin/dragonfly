@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"database/sql"
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"io"
 	"net/url"
 	"os"
@@ -111,17 +112,17 @@ func RegisterApiBuilder(typeName string, builderFunc ApiFuncBuilder) {
 }
 
 func (c *Diff) Print(w io.Writer) {
-	writer(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
+	utils.WriteWrapper(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.preInstall {
-		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+		utils.WriteWrapper(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
 	}
-	writer(w, "\n/* SECTION INSTALL %s */", strings.Repeat("=", 58))
+	utils.WriteWrapper(w, "\n/* SECTION INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.install {
-		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+		utils.WriteWrapper(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
 	}
-	writer(w, "\n/* SECTION AFTER INSTALL %s */", strings.Repeat("=", 52))
+	utils.WriteWrapper(w, "\n/* SECTION AFTER INSTALL %s */", strings.Repeat("=", 52))
 	for _, stmt := range c.afterInstall {
-		writer(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+		utils.WriteWrapper(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
 	}
-	writer(w, "\n/* END OF UPDATE SCRIPT %s */", strings.Repeat("=", 53))
+	utils.WriteWrapper(w, "\n/* END OF UPDATE SCRIPT %s */", strings.Repeat("=", 53))
 }

@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/utils"
 	_ "github.com/lib/pq"
 	"go/token"
 	"math/rand"
@@ -83,7 +84,7 @@ func makeUnusedDomainsComparator(
 			NewStructure: &newDomain,
 		},
 	}
-	somethingMatched(
+	utils.SomethingMatched(
 		matches,
 		func(matchedName string) {
 			result.Schema.Actual, result.Name.Actual = strings.Split(matchedName, ".")[0], strings.Split(matchedName, ".")[1]
@@ -172,7 +173,7 @@ func makeUnusedTablesComparator(
 			NewStructure: &newTable,
 		},
 	}
-	somethingMatched(
+	utils.SomethingMatched(
 		matches,
 		func(matchedName string) {
 			result.Schema.Actual, result.Name.Actual = strings.Split(matchedName, ".")[0], strings.Split(matchedName, ".")[1]
@@ -262,7 +263,7 @@ func makeUnusedTypesComparator(
 			NewStructure: &newType,
 		},
 	}
-	somethingMatched(
+	utils.SomethingMatched(
 		matches,
 		func(matchedName string) {
 			result.Schema.Actual, result.Name.Actual = strings.Split(matchedName, ".")[0], strings.Split(matchedName, ".")[1]
@@ -317,7 +318,7 @@ func makeTablesComparator(
 func (c *Table) getAllColumnConstraints(columnName string) []Constraint {
 	var constraints = make([]Constraint, 0, 0)
 	for i, constraint := range c.Constraints {
-		if iArrayContains(constraint.Columns, columnName) {
+		if utils.ArrayContainsCI(constraint.Columns, columnName) {
 			constraints = append(constraints, c.Constraints[i].Constraint)
 		}
 	}
@@ -390,7 +391,7 @@ func makeColumnsComparator(
 				matches[column.Name.New] = 0
 			}
 		}
-		keys, vals := sortMap(matches).getSortedKeysValues()
+		keys, vals := utils.SortMap(matches).GetSortedKeysValues()
 		if len(keys) == 1 || (len(keys) > 1 && vals[0] > 0) {
 			// we can assume that we found what we need
 			for ci, column := range columns {

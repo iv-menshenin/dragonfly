@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"errors"
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"testing"
 	"time"
 )
@@ -122,12 +123,12 @@ func TestColumnRef_normalize(t *testing.T) {
 							Columns: []ColumnRef{
 								{
 									Value: Column{},
-									Ref:   refString("#/components/columns/test_column_1"),
+									Ref:   utils.RefString("#/components/columns/test_column_1"),
 									used:  nil, // test it
 								},
 								{
 									Value: Column{},
-									Ref:   refString("#/components/columns/test_column_2"),
+									Ref:   utils.RefString("#/components/columns/test_column_2"),
 									used:  nil, // test it
 								},
 								{
@@ -152,11 +153,11 @@ func TestColumnRef_normalize(t *testing.T) {
 									used: nil, // test it
 								},
 							},
-							used: refBool(false),
+							used: utils.RefBool(false),
 						},
 						"test_table_2": {
 							Columns: []ColumnRef{},
-							used:    refBool(false),
+							used:    utils.RefBool(false),
 						},
 					},
 				},
@@ -168,7 +169,7 @@ func TestColumnRef_normalize(t *testing.T) {
 					Tables: map[string]Table{
 						"test_table_3": {
 							Columns: []ColumnRef{},
-							used:    refBool(false),
+							used:    utils.RefBool(false),
 						},
 					},
 				},
@@ -183,7 +184,7 @@ func TestColumnRef_normalize(t *testing.T) {
 						Value: DomainSchema{
 							TypeBase: TypeBase{Type: "varchar"},
 							NotNull:  true,
-							used:     refBool(false),
+							used:     utils.RefBool(false),
 						},
 						Ref: nil,
 					},
@@ -200,7 +201,7 @@ func TestColumnRef_normalize(t *testing.T) {
 						Value: DomainSchema{
 							TypeBase: TypeBase{Type: "int8"},
 							NotNull:  true,
-							used:     refBool(false),
+							used:     utils.RefBool(false),
 						},
 						Ref: nil,
 					},
@@ -348,11 +349,11 @@ func TestConstraintSchema_normalize(t *testing.T) {
 										Schema: ColumnSchemaRef{
 											Value: DomainSchema{
 												TypeBase: TypeBase{Type: "int8"},
-												used:     refBool(false),
+												used:     utils.RefBool(false),
 											},
 										},
 									},
-									used: refBool(false),
+									used: utils.RefBool(false),
 								},
 							},
 							Constraints: TableConstraints{
@@ -376,7 +377,7 @@ func TestConstraintSchema_normalize(t *testing.T) {
 									},
 								},
 							},
-							used: refBool(false),
+							used: utils.RefBool(false),
 						},
 					},
 				},
@@ -530,7 +531,7 @@ func TestTableClass_normalize(t *testing.T) {
 									Value: DomainSchema{
 										TypeBase: TypeBase{Type: "int4"},
 										NotNull:  false,
-										used:     refBool(false),
+										used:     utils.RefBool(false),
 									},
 								},
 								Constraints: []Constraint{
@@ -538,11 +539,11 @@ func TestTableClass_normalize(t *testing.T) {
 										Name:       "", // test
 										Type:       ConstraintUniqueKey,
 										Parameters: ConstraintParameters{Parameter: nil},
-										used:       refBool(false),
+										used:       utils.RefBool(false),
 									},
 								},
 							},
-							used: refBool(false),
+							used: utils.RefBool(false),
 						},
 						{
 							Value: Column{
@@ -551,11 +552,11 @@ func TestTableClass_normalize(t *testing.T) {
 									Value: DomainSchema{
 										TypeBase: TypeBase{Type: "int8"},
 										NotNull:  true,
-										used:     refBool(false),
+										used:     utils.RefBool(false),
 									},
 								},
 							},
-							used: refBool(false),
+							used: utils.RefBool(false),
 						},
 					},
 					Constraints: nil,
@@ -570,11 +571,11 @@ func TestTableClass_normalize(t *testing.T) {
 									Value: DomainSchema{
 										TypeBase: TypeBase{Type: "int4"},
 										NotNull:  false,
-										used:     refBool(false),
+										used:     utils.RefBool(false),
 									},
 								},
 							},
-							used: refBool(false),
+							used: utils.RefBool(false),
 						},
 					},
 					Constraints: TableConstraints{
@@ -584,7 +585,7 @@ func TestTableClass_normalize(t *testing.T) {
 								Name:       "Test_{%Schema}_{%Table}_{%Num}",
 								Type:       ConstraintPrimaryKey,
 								Parameters: ConstraintParameters{Parameter: nil},
-								used:       refBool(false),
+								used:       utils.RefBool(false),
 							},
 						},
 						{
@@ -593,7 +594,7 @@ func TestTableClass_normalize(t *testing.T) {
 								Name:       "Test_{%Schema}_{%Table}_{%Num}",
 								Type:       ConstraintUniqueKey,
 								Parameters: ConstraintParameters{Parameter: nil},
-								used:       refBool(false),
+								used:       utils.RefBool(false),
 							},
 						},
 					},

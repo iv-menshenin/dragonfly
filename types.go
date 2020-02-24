@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/code_builders"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"os"
 	"reflect"
 	"strconv"
@@ -120,10 +122,10 @@ type (
 		Where     string        `yaml:"where" json:"where"`
 	}
 	ApiFindOption struct {
-		Column   string             `yaml:"column,omitempty" json:"column,omitempty"`
-		Required bool               `yaml:"required,omitempty" json:"required,omitempty"`
-		OneOf    []ApiFindOption    `yaml:"one_of,omitempty" json:"one_of,omitempty"`
-		Operator sqlCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
+		Column   string                          `yaml:"column,omitempty" json:"column,omitempty"`
+		Required bool                            `yaml:"required,omitempty" json:"required,omitempty"`
+		OneOf    []ApiFindOption                 `yaml:"one_of,omitempty" json:"one_of,omitempty"`
+		Operator builders.SQLDataCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 	}
 	ApiFindOptions []ApiFindOption
 	TableApi       struct {
@@ -253,7 +255,7 @@ func splitPath(path string) (result map[string]string) {
 			pass = false
 			continue
 		}
-		if iArrayContains(elements, s) {
+		if utils.ArrayContainsCI(elements, s) {
 			if i+1 < len(pathSmt) {
 				result[s] = pathSmt[i+1]
 			}
@@ -436,7 +438,7 @@ const (
 )
 
 func (c *ColumnRef) normalize(schema *SchemaRef, relationName string, columnIndex int, db *Root) {
-	c.used = refBool(false)
+	c.used = utils.RefBool(false)
 	if c.Ref != nil {
 		processRef(db, *c.Ref, &c.Value)
 	}
@@ -456,7 +458,7 @@ func (c *ColumnRef) normalize(schema *SchemaRef, relationName string, columnInde
 }
 
 func (c *Constraint) normalize(schema *SchemaRef, tableName string, constraintIndex int, db *Root) {
-	c.used = refBool(false)
+	c.used = utils.RefBool(false)
 	constraintNameDefault := map[ConstraintType]string{
 		ConstraintPrimaryKey: fmt.Sprintf("pk_{%%%s}_{%%%s}", cSchema, cTable),
 		ConstraintForeignKey: fmt.Sprintf("fk_{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cForeignTable),
@@ -473,7 +475,7 @@ func (c *Constraint) normalize(schema *SchemaRef, tableName string, constraintIn
 	if fk, ok := c.Parameters.Parameter.(ForeignKey); ok {
 		foreignTable = fk.ToTable
 	}
-	c.Name = evalTemplateParameters(c.Name, map[string]string{
+	c.Name = utils.EvalTemplateParameters(c.Name, map[string]string{
 		cTable:        tableName,
 		cSchema:       schema.Value.Name,
 		cForeignTable: strings.Replace(foreignTable, ".", "_", -1),
@@ -487,7 +489,7 @@ func (c *ConstraintSchema) normalize(schema *SchemaRef, tableName string, constr
 }
 
 func (c *ColumnSchemaRef) normalize(tableName string, columnIndex int, db *Root) {
-	c.Value.used = refBool(false)
+	c.Value.used = utils.RefBool(false)
 	if c.Ref != nil {
 		processRef(db, *c.Ref, &c.Value)
 	}
@@ -654,7 +656,7 @@ func (c *Table) follow(db *Root, path []string, i interface{}) bool {
 }
 
 func (c *Table) normalize(schema *SchemaRef, tableName string, db *Root) {
-	c.used = refBool(false)
+	c.used = utils.RefBool(false)
 	inheritColumns := make(ColumnsContainer, 0, 10)
 	inheritConstraints := make(TableConstraints, 0, 10)
 	inheritApis := make(ApiContainer, 0, 10)
@@ -685,7 +687,7 @@ func (c *TableApi) normalize(schema *SchemaRef, tableName string, apiIndex int, 
 		c.Name = fmt.Sprintf("{%%%s}_{%%%s}_{%%%s}", cSchema, cTable, cApiType)
 	}
 	// TODO test
-	c.Name = evalTemplateParameters(c.Name, map[string]string{
+	c.Name = utils.EvalTemplateParameters(c.Name, map[string]string{
 		cApiType: c.Type.String(),
 		cTable:   tableName,
 		cSchema:  schema.Value.Name,
@@ -700,7 +702,7 @@ func (c *SchemaRef) normalize(db *Root) {
 		c.Value.Types[typeName] = customType
 	}
 	for i, domain := range c.Value.Domains {
-		domain.used = refBool(false)
+		domain.used = utils.RefBool(false)
 		c.Value.Domains[i] = domain
 	}
 	for tableName, table := range c.Value.Tables {
@@ -710,10 +712,10 @@ func (c *SchemaRef) normalize(db *Root) {
 }
 
 func (c *TypeSchema) normalize(schema *SchemaRef, typeName string, db *Root) {
-	c.used = refBool(false)
+	c.used = utils.RefBool(false)
 	for i, f := range c.Fields {
 		f.normalize(schema, typeName, i, db)
-		f.used = refBool(false)
+		f.used = utils.RefBool(false)
 		c.Fields[i] = f
 	}
 }

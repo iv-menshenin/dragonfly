@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"github.com/iv-menshenin/dragonfly/code_builders"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
 	"go/token"
 )
@@ -36,7 +37,7 @@ func getPackagePath(pack string) string {
 
 func inScopePackageAppend(scope, packages []string, x ...string) []string {
 	for _, pack := range x {
-		if !arrayContains(scope, pack) {
+		if !utils.ArrayContains(scope, pack) {
 			packages = append(packages, pack)
 		}
 	}
@@ -184,7 +185,7 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 	imports := make(map[string]string, 0)
 	var lPos token.Pos = 1
 	for _, chain := range c.Chains {
-		imports = mergeStringMap(imports, chain.extractImports())
+		imports = utils.MergeStringMap(imports, chain.extractImports())
 		typeSpecs := make([]ast.Spec, 0, len(chain.Types))
 		for _, typeDecl := range chain.Types {
 			if typeDecl != nil {

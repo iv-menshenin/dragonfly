@@ -15,9 +15,8 @@ import (
 )
 
 type (
-	sqlCompareOperator string
-	ApiDbOperation     int
-	ApiInterface       interface {
+	ApiDbOperation int
+	ApiInterface   interface {
 		String() string
 		HasFindOption() bool
 		HasInputOption() bool
@@ -32,31 +31,11 @@ const (
 	ApiOperationSelect
 	ApiOperationDelete
 
-	CompareEqual     sqlCompareOperator = "equal"
-	CompareNotEqual  sqlCompareOperator = "notEqual"
-	CompareLike      sqlCompareOperator = "like"
-	CompareNotLike   sqlCompareOperator = "notLike"
-	CompareIn        sqlCompareOperator = "in"
-	CompareNotIn     sqlCompareOperator = "notIn"
-	CompareGreatThan sqlCompareOperator = "great"
-	CompareLessThan  sqlCompareOperator = "less"
-	CompareNotGreat  sqlCompareOperator = "notGreat"
-	CompareNotLess   sqlCompareOperator = "notLess"
-	CompareStarts    sqlCompareOperator = "starts"
-
-	tagNoInsert        = "noInsert"
-	tagNoUpdate        = "noUpdate"
-	tagAlwaysUpdate    = "alwaysUpdate"
-	tagDeletedFlag     = "deletedFlag"
-	tagGenerate        = "generate"
-	tagCaseInsensitive = "ci"
-	tagEncrypt         = "encrypt"
-	tagIdentifier      = "identifier"
-
-	generateFunctionNow    = "now"
-	generateFunctionHex    = "H"
-	generateFunctionAlpha  = "A"
-	generateFunctionDigits = "0"
+	tagNoInsert     = "noInsert"
+	tagNoUpdate     = "noUpdate"
+	tagAlwaysUpdate = "alwaysUpdate"
+	tagDeletedFlag  = "deletedFlag"
+	tagIdentifier   = "identifier"
 
 	apiTypeInsertOne ApiType = "insertOne"
 	apiTypeUpdateOne ApiType = "updateOne"
@@ -88,72 +67,6 @@ func (c ApiType) Operation() ApiDbOperation {
 		return ApiOperationDelete
 	}
 	return ApiOperationSelect
-}
-
-var (
-	compareOperators = []sqlCompareOperator{
-		CompareEqual,
-		CompareNotEqual,
-		CompareLike,
-		CompareNotLike,
-		CompareIn,
-		CompareNotIn,
-		CompareGreatThan,
-		CompareLessThan,
-		CompareNotGreat,
-		CompareNotLess,
-		CompareStarts,
-	}
-	multiCompareOperators = []sqlCompareOperator{
-		CompareIn,
-		CompareNotIn,
-	}
-)
-
-func (c *sqlCompareOperator) Check() {
-	if c == nil || *c == "" {
-		*c = CompareEqual
-	}
-	for _, op := range compareOperators {
-		if op == *c {
-			return
-		}
-	}
-	panic(fmt.Sprintf("unknown compare operator '%s'", string(*c)))
-}
-
-func (c sqlCompareOperator) isMult() bool {
-	for _, op := range multiCompareOperators {
-		if op == c {
-			return true
-		}
-	}
-	return false
-}
-
-func (c sqlCompareOperator) getRawExpression() string {
-	c.Check()
-	templates := map[sqlCompareOperator]string{
-		CompareEqual:     `%s = %s`,
-		CompareNotEqual:  `% != %s`,
-		CompareLike:      `%s like %s`,
-		CompareNotLike:   `%s not like %s`,
-		CompareIn:        `%s in (%s)`,
-		CompareNotIn:     `%s not in (%s)`,
-		CompareGreatThan: `%s > %s`,
-		CompareLessThan:  `%s < %s`,
-		CompareNotGreat:  `%s <= %s`,
-		CompareNotLess:   `%s >= %s`,
-		CompareStarts:    `%s starts with %s`,
-	}
-	if template, ok := templates[c]; ok {
-		return template
-	}
-	panic(fmt.Sprintf("cannot find template for operator '%s'", string(c)))
-}
-
-func (c sqlCompareOperator) getExpression(sLeft, sRight string) string {
-	return fmt.Sprintf(c.getRawExpression(), sLeft, sRight)
 }
 
 func generateExportedNameFromRef(ref *string) string {
@@ -253,7 +166,7 @@ func (c *Table) generateFields(w *AstData) (fields []*ast.Field) {
 func (c *TableApi) generateInsertable(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		if !arrayContains(column.Value.Tags, tagNoInsert) {
+		if !utils.ArrayContains(column.Value.Tags, tagNoInsert) {
 			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
 			fields = append(fields, &field)
 		}
@@ -264,7 +177,7 @@ func (c *TableApi) generateInsertable(table *Table, w *AstData) (fields []*ast.F
 func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		if !arrayContains(column.Value.Tags, tagNoUpdate) {
+		if !utils.ArrayContains(column.Value.Tags, tagNoUpdate) {
 			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
 			fields = append(fields, &field)
 		}
@@ -275,7 +188,7 @@ func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Fiel
 func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		if arrayContains(column.Value.Tags, tagIdentifier) {
+		if utils.ArrayContains(column.Value.Tags, tagIdentifier) {
 			field := column.generateField(w, column.Value.Schema.Value.NotNull)
 			fields = append(fields, &field)
 		}
@@ -321,15 +234,15 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 				panic("the option must contains 'one_of' or 'field' not both")
 			}
 			column := table.Columns.getColumn(option.Column)
-			field := column.generateField(w, option.Required || operator.isMult())
-			if operator.isMult() {
+			field := column.generateField(w, option.Required || operator.IsMult())
+			if operator.IsMult() {
 				field.Type = &ast.ArrayType{
 					Elt: field.Type,
 				}
 			}
 			if field.Tag != nil {
 				if sqlTags, ok := utils.FieldTagToMap(field.Tag.Value)[builders.TagTypeSQL]; ok {
-					sqlTags = arrayRemove(sqlTags, "required")
+					sqlTags = utils.ArrayRemove(sqlTags, "required")
 					field.Tag = builders.MakeTagsForField(map[string][]string{
 						builders.TagTypeSQL: sqlTags,
 						builders.TagTypeOp:  {string(operator)},
@@ -481,7 +394,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 		}
 		if len(table.Api) > 0 {
 			for i, api := range table.Api {
-				apiName := evalTemplateParameters(
+				apiName := utils.EvalTemplateParameters(
 					api.Name,
 					map[string]string{
 						cNN:      strconv.Itoa(i),

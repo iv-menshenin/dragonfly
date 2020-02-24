@@ -1,4 +1,4 @@
-package dragonfly
+package utils
 
 import (
 	"reflect"
@@ -8,7 +8,7 @@ import (
 func Test_sortMap_getSorted(t *testing.T) {
 	tests := []struct {
 		name       string
-		c          sortMap
+		c          SortMap
 		wantKeys   []string
 		wantValues []int
 	}{
@@ -98,12 +98,12 @@ func Test_sortMap_getSorted(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotKeys, gotValues := tt.c.getSortedKeysValues()
+			gotKeys, gotValues := tt.c.GetSortedKeysValues()
 			if !reflect.DeepEqual(gotKeys, tt.wantKeys) {
-				t.Errorf("getSortedKeysValues() gotKeys = %v, want %v", gotKeys, tt.wantKeys)
+				t.Errorf("GetSortedKeysValues() gotKeys = %v, want %v", gotKeys, tt.wantKeys)
 			}
 			if !reflect.DeepEqual(gotValues, tt.wantValues) {
-				t.Errorf("getSortedKeysValues() gotValues = %v, want %v", gotValues, tt.wantValues)
+				t.Errorf("GetSortedKeysValues() gotValues = %v, want %v", gotValues, tt.wantValues)
 			}
 		})
 	}

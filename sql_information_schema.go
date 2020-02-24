@@ -188,7 +188,7 @@ func (c rawEnums) toEnumSchema() TypeSchema {
 	return TypeSchema{
 		TypeBase: TypeBase{Type: "enum"},
 		Enum:     values,
-		used:     refBool(false),
+		used:     utils.RefBool(false),
 	}
 }
 
@@ -211,13 +211,13 @@ func (c typesStruct) toRecordSchema() TypeSchema {
 		fields[r.AttrOrd-1] = ColumnRef{
 			Value: r.toColumn(),
 			Ref:   nil,
-			used:  refBool(false),
+			used:  utils.RefBool(false),
 		}
 	}
 	return TypeSchema{
 		TypeBase: TypeBase{Type: "record"},
 		Fields:   fields,
-		used:     refBool(false),
+		used:     utils.RefBool(false),
 	}
 }
 
@@ -234,7 +234,7 @@ func (c *rawTypeStruct) toColumn() Column {
 				NotNull: c.AttrRequired,
 				Default: nil, // TODO
 				Check:   nil,
-				used:    refBool(false),
+				used:    utils.RefBool(false),
 			},
 			Ref: nil,
 		},
@@ -254,7 +254,7 @@ func (c *rawDomainStruct) toDomainSchema() DomainSchema {
 		NotNull: !c.Nullable,
 		Default: c.Default,
 		Check:   nil, // TODO
-		used:    refBool(false),
+		used:    utils.RefBool(false),
 	}
 }
 
@@ -276,7 +276,7 @@ func (c *rawColumnStruct) toColumnRef() ColumnRef {
 					NotNull: !c.Nullable,
 					Default: c.Default,
 					Check:   nil, // TODO
-					used:    refBool(false),
+					used:    utils.RefBool(false),
 				},
 				Ref: columnSchemaRef,
 			},
@@ -285,7 +285,7 @@ func (c *rawColumnStruct) toColumnRef() ColumnRef {
 			Description: "",
 		},
 		Ref:  nil,
-		used: refBool(false),
+		used: utils.RefBool(false),
 	}
 }
 
@@ -428,7 +428,7 @@ func (c *Root) getColumnConstraints(schemaName, tableName, columnName string) []
 			if strings.EqualFold(name, tableName) {
 				constraints := make([]Constraint, 0, len(table.Constraints))
 				for i, constraint := range table.Constraints {
-					if iArrayContains(constraint.Columns, columnName) {
+					if utils.ArrayContainsCI(constraint.Columns, columnName) {
 						constraints = append(constraints, table.Constraints[i].Constraint)
 					}
 				}
@@ -626,7 +626,7 @@ func getAllDomains(db *sql.DB, catalog string) (domains []rawDomainStruct, err e
 			); err != nil {
 				return
 			} else {
-				domain.Used = refBool(false)
+				domain.Used = utils.RefBool(false)
 				domains = append(domains, domain)
 			}
 		}
@@ -828,7 +828,7 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 			table := Table{
 				Columns:     tableStruct,
 				Constraints: allConstraints.filterConstraints(actualSchemaName, tableName).toTableConstraints(),
-				used:        refBool(false),
+				used:        utils.RefBool(false),
 			}
 			schemaTables[tableName] = table
 		}

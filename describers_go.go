@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"fmt"
 	"github.com/iv-menshenin/dragonfly/code_builders"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
 	"go/token"
 	"strings"
@@ -694,8 +695,8 @@ func isMatchedTypes(a, b TypeBase) bool {
 	if !strings.EqualFold(a.Type, b.Type) {
 		var typeMatched = false
 		for _, aliases := range typeAliases {
-			if iArrayContains(aliases, a.Type) {
-				if iArrayContains(aliases, b.Type) {
+			if utils.ArrayContainsCI(aliases, a.Type) {
+				if utils.ArrayContainsCI(aliases, b.Type) {
 					typeMatched = true
 					break
 				} else {
@@ -707,7 +708,7 @@ func isMatchedTypes(a, b TypeBase) bool {
 			return false
 		}
 	}
-	if iArrayContains(lengthLimited, a.Type) {
+	if utils.ArrayContainsCI(lengthLimited, a.Type) {
 		if a.Length != nil {
 			if b.Length == nil || *b.Length != *a.Length {
 				return false

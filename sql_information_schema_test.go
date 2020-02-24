@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"errors"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"reflect"
 	"testing"
 )
@@ -30,7 +31,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 							Constraints: nil,
 							Description: "",
 							Api:         nil,
-							used:        refBool(false),
+							used:        utils.RefBool(false),
 						},
 						"test2": {
 							Inherits:    nil,
@@ -38,7 +39,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 							Constraints: nil,
 							Description: "Test Descr",
 							Api:         nil,
-							used:        refBool(false),
+							used:        utils.RefBool(false),
 						},
 					},
 					Domains: nil,
@@ -54,7 +55,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 				Constraints: nil,
 				Description: "Test Descr",
 				Api:         nil,
-				used:        refBool(true),
+				used:        utils.RefBool(true),
 			},
 			test: func(f *Root) error {
 				if s, ok := f.Schemas.tryToFind("schema-a"); ok {
@@ -86,7 +87,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 							Constraints: nil,
 							Description: "Test 1 bar",
 							Api:         nil,
-							used:        refBool(false),
+							used:        utils.RefBool(false),
 						},
 						"test2": {
 							Inherits:    nil,
@@ -94,7 +95,7 @@ func TestSchemas_getUnusedTableAndSetItAsUsed(t *testing.T) {
 							Constraints: nil,
 							Description: "Test 2 foo",
 							Api:         nil,
-							used:        refBool(false),
+							used:        utils.RefBool(false),
 						},
 					},
 					Domains: nil,

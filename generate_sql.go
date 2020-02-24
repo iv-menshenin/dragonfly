@@ -2,18 +2,19 @@ package dragonfly
 
 import (
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"io"
 	"strconv"
 	"strings"
 )
 
 func (c *DomainSchema) generateSQL(schemaName, domainName string, db *Root, w io.Writer) {
-	writer(w, "create domain %s.%s %s;\n", schemaName, domainName, c.describeSQL())
+	utils.WriteWrapper(w, "create domain %s.%s %s;\n", schemaName, domainName, c.describeSQL())
 }
 
 func (c *SchemaRef) generateSQL(schemaName string, db *Root, w io.Writer) {
 	writeHead := func(stage string) {
-		writer(
+		utils.WriteWrapper(
 			w,
 			"\n/*\n\tSchema: %s %s\n\t%s %s\n*/\n",
 			schemaName,
@@ -24,8 +25,8 @@ func (c *SchemaRef) generateSQL(schemaName string, db *Root, w io.Writer) {
 	if schemaName != "public" {
 		// do not create `public`
 		writeHead("Creation")
-		writer(w, "drop schema if exists %s cascade;\n", schemaName)
-		writer(w, "create schema %s;\n", schemaName)
+		utils.WriteWrapper(w, "drop schema if exists %s cascade;\n", schemaName)
+		utils.WriteWrapper(w, "create schema %s;\n", schemaName)
 	}
 	if len(c.Value.Domains) > 0 {
 		writeHead("Domains")
@@ -38,28 +39,28 @@ func (c *SchemaRef) generateSQL(schemaName string, db *Root, w io.Writer) {
 	}
 	for tableName, table := range c.Value.Tables {
 		if table.Description != "" {
-			writer(w, "-- description: %s\n", table.Description)
+			utils.WriteWrapper(w, "-- description: %s\n", table.Description)
 		}
 		table.generateSQL(schemaName, tableName, db, w)
 	}
 }
 
 func (c *ConstraintSchema) generateSQL(schemaName, tableName string, constraintIndex int, db *Root, w io.Writer) {
-	writer(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns, constraintIndex))
+	utils.WriteWrapper(w, ",\n\t%s", c.Constraint.describeSQL(schemaName, tableName, c.Columns, constraintIndex))
 }
 
 func (c *Table) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
-	writer(w, "create table %s.%s(\n", schemaName, tableName)
+	utils.WriteWrapper(w, "create table %s.%s(\n", schemaName, tableName)
 	for i, column := range c.Columns {
 		column.generateSQL(schemaName, tableName, db, w)
 		if i < len(c.Columns)-1 {
-			writer(w, ",\n")
+			utils.WriteWrapper(w, ",\n")
 		}
 	}
 	for i, constraint := range c.Constraints {
 		constraint.generateSQL(schemaName, tableName, i, db, w)
 	}
-	writer(w, "\n);\n")
+	utils.WriteWrapper(w, "\n);\n")
 }
 
 func (c *ConstraintParameters) describeSQL(columns []string) string {
@@ -122,9 +123,9 @@ func (c *ColumnRef) describeSQL() string {
 }
 
 func (c *ColumnRef) generateSQL(schemaName, tableName string, db *Root, w io.Writer) {
-	writer(w, "\t%s %s", c.Value.Name, c.describeSQL())
+	utils.WriteWrapper(w, "\t%s %s", c.Value.Name, c.describeSQL())
 	for i, constraint := range c.Value.Constraints {
-		writer(w, " %s", constraint.describeSQL(schemaName, tableName, nil, i))
+		utils.WriteWrapper(w, " %s", constraint.describeSQL(schemaName, tableName, nil, i))
 	}
 }
 

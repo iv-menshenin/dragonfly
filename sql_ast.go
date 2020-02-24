@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"go/token"
 	"strconv"
 	"strings"
@@ -265,14 +266,14 @@ func (c *SqlField) String() string {
 			constraintsClause = append(constraintsClause, constraint.Expression())
 		}
 	}
-	return nonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.Describer, strings.Join(constraintsClause, " "))
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.Describer, strings.Join(constraintsClause, " "))
 }
 
 func (c *ShortTypeDesc) typeDescriber() string {
 	return c.String()
 }
 func (c *ShortTypeDesc) String() string {
-	return nonEmptyStringsConcatSpaceSeparated(c.TypeName.Expression(), c.Collation)
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.TypeName.Expression(), c.Collation)
 }
 
 func (c *FullTypeDesc) typeDescriber() string {
@@ -289,7 +290,7 @@ func (c *FullTypeDesc) String() string {
 	if c.Default != nil {
 		defaultClause = c.Default.Expression()
 	}
-	return nonEmptyStringsConcatSpaceSeparated(c.ShortTypeDesc.typeDescriber(), nullableClause, defaultClause)
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.ShortTypeDesc.typeDescriber(), nullableClause, defaultClause)
 }
 
 /* </FIELDS AND TYPES> ============================================================================================== */
@@ -406,9 +407,9 @@ func (c *CreateStmt) GetComment() string {
 
 func (c *CreateStmt) MakeStmt() string {
 	if c.Create != nil {
-		return nonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName(), c.Create.Expression())
+		return utils.NonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName(), c.Create.Expression())
 	} else {
-		return nonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName())
+		return utils.NonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName())
 	}
 }
 
@@ -417,7 +418,7 @@ func (c *DropStmt) GetComment() string {
 }
 
 func (c *DropStmt) MakeStmt() string {
-	return nonEmptyStringsConcatSpaceSeparated("drop", c.Target, c.Name.GetName())
+	return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Target, c.Name.GetName())
 }
 
 func (c *UpdateStmt) GetComment() string {
@@ -964,22 +965,22 @@ func (c *SqlNullable) Expression() string {
 func (c *SetDropExpr) Expression() string {
 	if sqlExpr := c.Expr.Expression(); sqlExpr != "" {
 		if c.SetDrop == SetDropSet {
-			return nonEmptyStringsConcatSpaceSeparated("set", c.Expr.Expression())
+			return utils.NonEmptyStringsConcatSpaceSeparated("set", c.Expr.Expression())
 		} else {
-			return nonEmptyStringsConcatSpaceSeparated("drop", c.Expr.Expression())
+			return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Expr.Expression())
 		}
 	}
 	return ""
 }
 
 func (c *AlterAttributeExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated("alter attribute", c.AttributeName, c.AlterExpr.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated("alter attribute", c.AttributeName, c.AlterExpr.Expression())
 }
 
 func (c *AlterDataTypeExpr) Expression() string {
 	// TODO use datatypefillers
 	if c.Length == nil && c.Precision == nil {
-		return nonEmptyStringsConcatSpaceSeparated("type", c.DataType)
+		return utils.NonEmptyStringsConcatSpaceSeparated("type", c.DataType)
 	}
 	if c.Length != nil {
 		if c.Precision == nil {
@@ -1001,15 +1002,15 @@ func (c *DropExpr) Expression() string {
 	if c.Cascade {
 		cascadeExpr = "cascade"
 	}
-	return nonEmptyStringsConcatSpaceSeparated("drop", c.Target, ifExistsExpr, c.Name.GetName(), cascadeExpr)
+	return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Target, ifExistsExpr, c.Name.GetName(), cascadeExpr)
 }
 
 func (c *AddExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated("add", c.Target, c.Name.GetName(), c.Definition.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated("add", c.Target, c.Name.GetName(), c.Definition.Expression())
 }
 
 func (c *BinaryExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated(c.Left.Expression(), c.Op, c.Right.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.Left.Expression(), c.Op, c.Right.Expression())
 }
 
 func (c *UnaryExpr) Expression() string {
@@ -1019,7 +1020,7 @@ func (c *UnaryExpr) Expression() string {
 /* CONSTRAINTS */
 
 func (c *NamedConstraintExpr) ConstraintString() string {
-	return nonEmptyStringsConcatSpaceSeparated("constraint", c.Name.GetName(), c.Constraint.ConstraintString())
+	return utils.NonEmptyStringsConcatSpaceSeparated("constraint", c.Name.GetName(), c.Constraint.ConstraintString())
 }
 
 func (c *NamedConstraintExpr) ConstraintParams() string {
@@ -1027,7 +1028,7 @@ func (c *NamedConstraintExpr) ConstraintParams() string {
 }
 
 func (c *NamedConstraintExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
 }
 
 func (c *UnnamedConstraintExpr) ConstraintString() string {
@@ -1039,11 +1040,11 @@ func (c *UnnamedConstraintExpr) ConstraintParams() string {
 }
 
 func (c *UnnamedConstraintExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), c.Constraint.ConstraintParams())
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), c.Constraint.ConstraintParams())
 }
 
 func (c *ConstraintWithColumns) ConstraintString() string {
-	return nonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), "(", strings.Join(c.Columns, ", "), ")")
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), "(", strings.Join(c.Columns, ", "), ")")
 }
 
 func (c *ConstraintWithColumns) ConstraintParams() string {
@@ -1051,7 +1052,7 @@ func (c *ConstraintWithColumns) ConstraintParams() string {
 }
 
 func (c *ConstraintWithColumns) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
 }
 
 func (c *ConstraintNullableExpr) ConstraintString() string {
@@ -1084,7 +1085,7 @@ func (c *ConstraintCheckExpr) ConstraintParams() string {
 }
 
 func (c *ConstraintDefaultExpr) ConstraintString() string {
-	return nonEmptyStringsConcatSpaceSeparated("default", c.Expression.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Expression.Expression())
 }
 
 func (c *ConstraintDefaultExpr) ConstraintParams() string {
@@ -1133,9 +1134,9 @@ func (c *ConstraintForeignKeyExpr) ConstraintParams() string {
 func (c *ColumnDefinitionExpr) Expression() string {
 	constraints := make([]interface{}, 0, len(c.Constraints))
 	for _, constraint := range c.Constraints {
-		constraints = append(constraints, nonEmptyStringsConcatSpaceSeparated(constraint.ConstraintString(), constraint.ConstraintParams()))
+		constraints = append(constraints, utils.NonEmptyStringsConcatSpaceSeparated(constraint.ConstraintString(), constraint.ConstraintParams()))
 	}
-	return nonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.DataType, c.Collation, nonEmptyStringsConcatSpaceSeparated(constraints...))
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.DataType, c.Collation, utils.NonEmptyStringsConcatSpaceSeparated(constraints...))
 }
 
 func (c *BracketBlock) Expression() string {
@@ -1147,17 +1148,17 @@ func (c *BracketBlock) Expression() string {
 		for _, expr := range c.Expr {
 			exprs = append(exprs, expr.Expression())
 		}
-		return nonEmptyStringsConcatSpaceSeparated("(\n\t", strings.Join(exprs, ",\n\t"), "\n)")
+		return utils.NonEmptyStringsConcatSpaceSeparated("(\n\t", strings.Join(exprs, ",\n\t"), "\n)")
 	} else {
 		if c.Statement == nil {
 			panic("BracketBlock require Expr or Statement")
 		}
-		return nonEmptyStringsConcatSpaceSeparated("\n/*", c.Statement.GetComment(), "*/\n(", c.Statement.MakeStmt(), ")")
+		return utils.NonEmptyStringsConcatSpaceSeparated("\n/*", c.Statement.GetComment(), "*/\n(", c.Statement.MakeStmt(), ")")
 	}
 }
 
 func (c *AlterExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name.GetName(), c.Alter.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name.GetName(), c.Alter.Expression())
 }
 
 func (c *SchemaExpr) Expression() string {
@@ -1165,22 +1166,22 @@ func (c *SchemaExpr) Expression() string {
 }
 
 func (c *SetMetadataExpr) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated("set", c.Set.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated("set", c.Set.Expression())
 }
 
 func (c *Default) Expression() string {
-	return nonEmptyStringsConcatSpaceSeparated("default", c.Default.Expression())
+	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Default.Expression())
 }
 
 func (c *SqlRename) Expression() string {
 	if c.Target == TargetNone {
-		return nonEmptyStringsConcatSpaceSeparated("rename", "to", c.NewName.GetName())
+		return utils.NonEmptyStringsConcatSpaceSeparated("rename", "to", c.NewName.GetName())
 	}
-	return nonEmptyStringsConcatSpaceSeparated("rename", c.Target, c.OldName.GetName(), "to", c.NewName.GetName())
+	return utils.NonEmptyStringsConcatSpaceSeparated("rename", c.Target, c.OldName.GetName(), "to", c.NewName.GetName())
 }
 
 func (c *Literal) Expression() string {
-	if iArrayContains(sqlReservedWords, c.Text) {
+	if utils.ArrayContainsCI(sqlReservedWords, c.Text) {
 		return "\"" + c.Text + "\""
 	}
 	return c.Text
@@ -1218,7 +1219,7 @@ func (c *EnumDescription) Expression() string {
 func (c *TypeDescription) Expression() string {
 	colType := c.Type
 	if c.Length != nil {
-		colType += "(" + nonEmptyStringsConcatCommaSeparated(c.Length, c.Precision) + ")"
+		colType += "(" + utils.NonEmptyStringsConcatCommaSeparated(c.Length, c.Precision) + ")"
 	}
 	nullable := " null"
 	if c.Null == NullableNotNull {
