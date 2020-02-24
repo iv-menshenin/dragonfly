@@ -403,7 +403,6 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 func BuildExecutionBlockForFunction(
 	scanBlock scanWrapper,
 	fieldRefs []ast.Expr,
-	lastReturn ast.Stmt,
 	options executionBlockOptions,
 ) []ast.Stmt {
 	return []ast.Stmt{
@@ -425,7 +424,6 @@ func BuildExecutionBlockForFunction(
 				),
 			),
 		),
-		lastReturn,
 	}
 }
 
@@ -763,8 +761,11 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			},
 		)
 		functionBody = append(
-			functionBody,
-			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
+			append(
+				functionBody,
+				BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
+			),
+			lastReturn,
 		)
 		functionBody = addVariablesToFunctionBody(
 			functionBody,
@@ -860,8 +861,11 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			},
 		)
 		functionBody = append(
-			functionBody,
-			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
+			append(
+				functionBody,
+				BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
+			),
+			lastReturn,
 		)
 		functionBody = addVariablesToFunctionBody(
 			functionBody,
@@ -941,8 +945,11 @@ func updateOneBuilder(
 		),
 	)
 	functionBody = append(
-		functionBody,
-		BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
+		append(
+			functionBody,
+			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
+		),
+		lastReturn,
 	)
 	functionBody = addVariablesToFunctionBody(
 		functionBody,
@@ -1020,8 +1027,11 @@ func insertOneBuilder(
 		),
 	)
 	functionBody = append(
-		functionBody,
-		BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, lastReturn, MakeExecutionOption(rowStructName, sqlTextName))...,
+		append(
+			functionBody,
+			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
+		),
+		lastReturn,
 	)
 	functionBody = addVariablesToFunctionBody(
 		functionBody,
