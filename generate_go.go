@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/iv-menshenin/dragonfly/code_builders"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
 	"go/printer"
 	"io"
@@ -42,10 +43,6 @@ const (
 	CompareNotGreat  sqlCompareOperator = "notGreat"
 	CompareNotLess   sqlCompareOperator = "notLess"
 	CompareStarts    sqlCompareOperator = "starts"
-
-	TagTypeSQL   = "sql"
-	TagTypeUnion = "union"
-	TagTypeOp    = "operator"
 
 	tagNoInsert        = "noInsert"
 	tagNoUpdate        = "noUpdate"
@@ -331,11 +328,11 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 				}
 			}
 			if field.Tag != nil {
-				if sqlTags, ok := tagToMap(field.Tag.Value)[TagTypeSQL]; ok {
+				if sqlTags, ok := utils.FieldTagToMap(field.Tag.Value)[builders.TagTypeSQL]; ok {
 					sqlTags = arrayRemove(sqlTags, "required")
 					field.Tag = builders.MakeTagsForField(map[string][]string{
-						TagTypeSQL: sqlTags,
-						TagTypeOp:  {string(operator)},
+						builders.TagTypeSQL: sqlTags,
+						builders.TagTypeOp:  {string(operator)},
 					})
 				}
 			}
@@ -368,18 +365,18 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			}
 			var (
 				ok      bool
-				sqlTags = []string{"-", TagTypeUnion}
+				sqlTags = []string{"-", builders.TagTypeUnion}
 			)
 			if baseType.Tag != nil {
-				if sqlTags, ok = tagToMap(baseType.Tag.Value)[TagTypeSQL]; ok {
+				if sqlTags, ok = utils.FieldTagToMap(baseType.Tag.Value)[builders.TagTypeSQL]; ok {
 					sqlTags[0] = "-"
-					sqlTags = append(sqlTags, TagTypeUnion)
+					sqlTags = append(sqlTags, builders.TagTypeUnion)
 				}
 			}
 			baseType.Tag = builders.MakeTagsForField(map[string][]string{
-				TagTypeSQL:   sqlTags,
-				TagTypeUnion: unionColumns,
-				TagTypeOp:    {string(operator)},
+				builders.TagTypeSQL:   sqlTags,
+				builders.TagTypeUnion: unionColumns,
+				builders.TagTypeOp:    {string(operator)},
 			})
 			findBy = append(findBy, &baseType)
 			continue
@@ -473,7 +470,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 						Type: &ast.StructType{
 							Fields: &ast.FieldList{List: resultFields},
 						},
-						Comment: builders.MakeComment(stringToSlice(table.Description)),
+						Comment: builders.MakeComment(utils.StringToSlice(table.Description)),
 					},
 				},
 				Constants:       nil,

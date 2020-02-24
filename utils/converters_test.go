@@ -1,4 +1,4 @@
-package dragonfly
+package utils
 
 import (
 	"reflect"
@@ -39,8 +39,8 @@ func Test_tagToMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tagToMap(tt.args.tag); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("tagToMap() = %v, want %v", got, tt.want)
+			if got := FieldTagToMap(tt.args.tag); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("FieldTagToMap() = %v, want %v", got, tt.want)
 			}
 		})
 	}

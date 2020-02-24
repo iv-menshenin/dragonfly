@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"database/sql"
 	"fmt"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"strings"
 )
 
@@ -260,7 +261,7 @@ func (c *rawDomainStruct) toDomainSchema() DomainSchema {
 func (c *rawColumnStruct) toColumnRef() ColumnRef {
 	var columnSchemaRef *string = nil
 	if c.DomainSchema != nil && c.Domain != nil {
-		columnSchemaRef = stringToRef(fmt.Sprintf(pathToDomainTemplate, *c.DomainSchema, *c.Domain))
+		columnSchemaRef = utils.StringToRef(fmt.Sprintf(pathToDomainTemplate, *c.DomainSchema, *c.Domain))
 	}
 	return ColumnRef{
 		Value: Column{

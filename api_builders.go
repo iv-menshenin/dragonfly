@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"fmt"
 	"github.com/iv-menshenin/dragonfly/code_builders"
+	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
 	"go/token"
 	"reflect"
@@ -134,17 +135,6 @@ func funcDeclsToMap(functions []*ast.FuncDecl) map[string]*ast.FuncDecl {
 		result[funcName] = functions[i]
 	}
 	return result
-}
-
-// get a list of table columns and string field descriptors for the output structure. column and field positions correspond to each other
-func extractFieldRefsAndColumnsFromStruct(rowFields []*ast.Field) (fieldRefs []ast.Expr, columnNames []string) {
-	var fieldNames []string
-	fieldRefs = make([]ast.Expr, 0, len(rowFields))
-	fieldNames, columnNames = extractFieldsAndColumnsFromStruct(rowFields)
-	for _, fieldName := range fieldNames {
-		fieldRefs = append(fieldRefs, ast.NewIdent(fieldName))
-	}
-	return
 }
 
 func makeArrayQueryOption(
@@ -574,11 +564,11 @@ func makeInputParametersProcessorBlock(
 	)
 	for _, field := range optionFields {
 		var (
-			tags      = tagToMap(field.Tag.Value)
-			colName   = tags[TagTypeSQL][0]
+			tags      = utils.FieldTagToMap(field.Tag.Value)
+			colName   = tags[builders.TagTypeSQL][0]
 			fieldName = builders.MakeSelectorExpression(funcInputOptionName, field.Names[0].Name)
 		)
-		valueExpr, isOmittedField := makeValuePicker(tags[TagTypeSQL][1:], fieldName)
+		valueExpr, isOmittedField := makeValuePicker(tags[builders.TagTypeSQL][1:], fieldName)
 		if !isOmittedField {
 			optionStructFields = append(optionStructFields, field)
 		}
@@ -593,7 +583,7 @@ func makeInputParametersProcessorBlock(
 				}
 			}
 		}
-		if arrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
+		if arrayFind(tags[builders.TagTypeSQL], tagEncrypt) > 0 {
 			encryptPasswordFn := builders.CallFunctionDescriber{
 				FunctionName:                ast.NewIdent("encryptPassword"),
 				MinimumNumberOfArguments:    1,
@@ -654,16 +644,16 @@ func BuildIncomingArgumentsProcessor(
 		functionBody = make([]ast.Stmt, 0, len(optionFields)*3)
 	)
 	for _, field := range optionFields {
-		tags := tagToMap(field.Tag.Value)
-		colName := tags[TagTypeSQL][0]
-		ci := arrayFind(tags[TagTypeSQL], tagCaseInsensitive) > 0
-		opTagValue, ok := tags[TagTypeOp]
+		tags := utils.FieldTagToMap(field.Tag.Value)
+		colName := tags[builders.TagTypeSQL][0]
+		ci := arrayFind(tags[builders.TagTypeSQL], tagCaseInsensitive) > 0
+		opTagValue, ok := tags[builders.TagTypeOp]
 		if !ok || len(opTagValue) < 1 {
 			opTagValue = []string{string(CompareEqual)}
 		}
 		operator := sqlCompareOperator(opTagValue[0])
-		if arrayFind(tags[TagTypeSQL], TagTypeUnion) > 0 {
-			columns := tags[TagTypeUnion]
+		if arrayFind(tags[builders.TagTypeSQL], builders.TagTypeUnion) > 0 {
+			columns := tags[builders.TagTypeUnion]
 			if operator.isMult() {
 				panic(fmt.Sprintf("joins cannot be used in multiple expressions, for example '%s' in the expression '%s'", field.Names[0].Name, opTagValue[0]))
 			}
@@ -739,7 +729,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			panic("cannot resolve 'variant'")
 		}
 		var (
-			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(rowFields)
+			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(scanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("select %s from %s where %%s", strings.Join(columnList, ", "), fullTableName)
 		functionBody, findTypes, findAttrs := BuildIncomingArgumentsProcessor(
@@ -839,7 +829,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			panic("cannot resolve 'variant'")
 		}
 		var (
-			fieldRefs, columnList = extractFieldRefsAndColumnsFromStruct(rowFields)
+			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(scanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("delete from %s where %%s returning %s", fullTableName, strings.Join(columnList, ", "))
 		functionBody, findTypes, findAttrs := BuildIncomingArgumentsProcessor(
@@ -924,7 +914,7 @@ func updateOneBuilder(
 		ast.NewIdent("EmptyResult"),
 	)
 	var (
-		fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(rowFields)
+		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(scanDestVariable.String(), rowFields)
 	)
 	sqlQuery := fmt.Sprintf("update %s set %%s where %%s returning %s", fullTableName, strings.Join(outColumnList, ", "))
 	functionBody, inputTypes, inputAttrs := makeInputParametersProcessorBlock(
@@ -1017,7 +1007,7 @@ func insertOneBuilder(
 		ast.NewIdent("EmptyResult"),
 	)
 	var (
-		fieldRefs, outColumnList = extractFieldRefsAndColumnsFromStruct(rowFields)
+		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(scanDestVariable.String(), rowFields)
 	)
 	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) returning %s", fullTableName, strings.Join(outColumnList, ", "))
 	functionBody, functionTypes, functionAttrs := makeInputParametersProcessorBlock(

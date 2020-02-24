@@ -300,6 +300,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 			},
 		}, builders.MakeBasicLiteralString("(" + strings.Join(formatLiters, ",") + ")"),
 	}, formatArgs...)
+	// TODO simplify
 	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
 			ast.NewIdent(c.typeName).Name: {
