@@ -161,6 +161,7 @@ func main() {
 				diff := dragonfly.MakeDiff(&dump, root)
 				diff.Print(w)
 			case "go":
+				dragonfly.RegisterApiBuilder("localizedFind", localizedFind)
 				dragonfly.GenerateGO(root, *state.Schema, *state.PackageName, w)
 			}
 			return nil

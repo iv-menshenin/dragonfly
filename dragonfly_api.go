@@ -106,6 +106,10 @@ func MakeEmptyRoot() Root {
 	}
 }
 
+func RegisterApiBuilder(typeName string, builderFunc ApiFuncBuilder) {
+	funcTemplates[typeName] = builderFunc
+}
+
 func (c *Diff) Print(w io.Writer) {
 	writer(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.preInstall {
