@@ -126,27 +126,31 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 			Type:   ast.NewIdent(c.typeName),
 			Values: []ast.Expr{entityValue},
 		}
-		enumValues = append(enumValues, builders.MakeCallExpression(ast.NewIdent("string"), entityName))
+		enumValues = append(enumValues, builders.MakeCallExpression(builders.ConvertStringFn, entityName))
 	}
 	returnTypeValueErrorExpr := builders.MakeReturn(
 		builders.MakeCallExpression(
-			ast.NewIdent("makeTypeValueError"),
+			builders.CallFunctionDescriber{
+				FunctionName:                ast.NewIdent("makeTypeValueError"),
+				MinimumNumberOfArguments:    2,
+				ExtensibleNumberOfArguments: false,
+			},
 			builders.MakeCallExpression(
-				builders.MakeSelectorExpression("fmt", "Sprintf"),
+				builders.SprintfFn,
 				builders.MakeBasicLiteralString("%T"),
 				ast.NewIdent(methodReceiverLit),
 			),
-			builders.MakeCallExpression(ast.NewIdent("string"), ast.NewIdent(methodReceiverLit)),
+			builders.MakeCallExpression(builders.ConvertStringFn, ast.NewIdent(methodReceiverLit)),
 		),
 	)
 	rangeBody := builders.MakeBlockStmt(
 		&ast.IfStmt{
 			Cond: builders.MakeCallExpression(
-				builders.MakeSelectorExpression("strings", "EqualFold"),
+				builders.EqualFoldFn,
 				ast.NewIdent("s"),
-				builders.MakeCallExpression(ast.NewIdent("string"), ast.NewIdent(methodReceiverLit)),
+				builders.MakeCallExpression(builders.ConvertStringFn, ast.NewIdent(methodReceiverLit)),
 			),
-			Body: builders.MakeBlockStmt(builders.MakeReturn(ast.NewIdent("nil"))),
+			Body: builders.MakeBlockStmt(builders.MakeReturn(builders.Nil)),
 		},
 	)
 	main := AstDataChain{

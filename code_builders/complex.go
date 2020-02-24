@@ -31,7 +31,7 @@ func MakeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body 
 				[]string{varName, "err"},
 				callExpr,
 			),
-			Cond: MakeNotEqualExpression(ast.NewIdent("err"), ast.NewIdent("nil")),
+			Cond: MakeNotEqualExpression(ast.NewIdent("err"), Nil),
 			Body: &ast.BlockStmt{
 				List: body,
 			},
@@ -42,7 +42,7 @@ func MakeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body 
 				[]string{"err"},
 				callExpr,
 			),
-			Cond: MakeNotEqualExpression(ast.NewIdent("err"), ast.NewIdent("nil")),
+			Cond: MakeNotEqualExpression(ast.NewIdent("err"), Nil),
 			Body: &ast.BlockStmt{
 				List: body,
 			},

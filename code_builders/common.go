@@ -6,6 +6,41 @@ import (
 	"strings"
 )
 
+type (
+	CallFunctionDescriber struct {
+		FunctionName                ast.Expr
+		MinimumNumberOfArguments    int
+		ExtensibleNumberOfArguments bool
+	}
+)
+
+func makeFunc(n ast.Expr, m int, e bool) CallFunctionDescriber {
+	return CallFunctionDescriber{n, m, e}
+}
+
+var (
+	Nil         = ast.NewIdent("nil")
+	ContextType = MakeSelectorExpression("context", "Context")
+
+	MakeFn   = makeFunc(ast.NewIdent("make"), 1, true)
+	LengthFn = makeFunc(ast.NewIdent("len"), 1, false)
+	AppendFn = makeFunc(ast.NewIdent("append"), 1, true)
+
+	ConvertItoaFn   = makeFunc(MakeSelectorExpression("strconv", "Itoa"), 1, false)
+	ConvertStringFn = makeFunc(ast.NewIdent("string"), 1, false)
+
+	EqualFoldFn   = makeFunc(MakeSelectorExpression("strings", "EqualFold"), 2, false)
+	ToLowerFn     = makeFunc(MakeSelectorExpression("strings", "ToLower"), 1, false)
+	StringsJoinFn = makeFunc(MakeSelectorExpression("strings", "Join"), 2, false)
+	SprintfFn     = makeFunc(MakeSelectorExpression("fmt", "Sprintf"), 1, true)
+	TimeNowFn     = makeFunc(MakeSelectorExpression("time", "Now"), 0, false)
+
+	DbQueryFn  = makeFunc(MakeSelectorExpression("db", "Query"), 1, true)
+	RowsNextFn = makeFunc(MakeSelectorExpression("rows", "Next"), 0, false)
+	RowsErrFn  = makeFunc(MakeSelectorExpression("rows", "Err"), 0, false)
+	RowsScanFn = makeFunc(MakeSelectorExpression("rows", "Scan"), 1, true)
+)
+
 func MakeReturn(results ...ast.Expr) *ast.ReturnStmt {
 	return &ast.ReturnStmt{
 		Results: results,
@@ -33,16 +68,28 @@ func MakeComment(comment []string) *ast.CommentGroup {
 	}
 }
 
-func MakeCallExpression(name ast.Expr, args ...ast.Expr) *ast.CallExpr {
+func MakeCallExpression(fn CallFunctionDescriber, args ...ast.Expr) *ast.CallExpr {
+	if fn.MinimumNumberOfArguments > len(args) {
+		panic("the minimum number of arguments has not been reached")
+	}
+	if !fn.ExtensibleNumberOfArguments && len(args) > fn.MinimumNumberOfArguments {
+		panic("the maximum number of arguments exceeded")
+	}
 	return &ast.CallExpr{
-		Fun:  name,
+		Fun:  fn.FunctionName,
 		Args: args,
 	}
 }
 
-func MakeCallExpressionEllipsis(name ast.Expr, args ...ast.Expr) *ast.CallExpr {
+func MakeCallExpressionEllipsis(fn CallFunctionDescriber, args ...ast.Expr) *ast.CallExpr {
+	if fn.MinimumNumberOfArguments > len(args) {
+		panic("the minimum number of arguments has not been reached")
+	}
+	if !fn.ExtensibleNumberOfArguments && len(args) > fn.MinimumNumberOfArguments {
+		panic("the maximum number of arguments exceeded")
+	}
 	return &ast.CallExpr{
-		Fun:      name,
+		Fun:      fn.FunctionName,
 		Args:     args,
 		Ellipsis: token.Pos(1),
 	}

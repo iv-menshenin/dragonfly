@@ -92,7 +92,7 @@ func MakeAddExpressions(exps ...ast.Expr) ast.Expr {
 
 func MakeNotEmptyArrayExpression(arrayName string) ast.Expr {
 	return &ast.BinaryExpr{
-		X:  MakeCallExpression(ast.NewIdent("len"), ast.NewIdent(arrayName)),
+		X:  MakeCallExpression(LengthFn, ast.NewIdent(arrayName)),
 		Op: token.GTR,
 		Y:  MakeBasicLiteralInteger(0),
 	}
@@ -102,6 +102,6 @@ func MakeNotNullExpression(variable ast.Expr) ast.Expr {
 	return &ast.BinaryExpr{
 		X:  variable,
 		Op: token.NEQ,
-		Y:  ast.NewIdent("nil"),
+		Y:  Nil,
 	}
 }

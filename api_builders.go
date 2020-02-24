@@ -158,7 +158,7 @@ func makeArrayQueryOption(
 	var optionExpr ast.Expr = ast.NewIdent(localVariable)
 	if ci {
 		columnName = fmt.Sprintf("lower(%s)", columnName)
-		optionExpr = builders.MakeCallExpression(builders.MakeSelectorExpression("strings", "ToLower"), optionExpr)
+		optionExpr = builders.MakeCallExpression(builders.ToLowerFn, optionExpr)
 	}
 	// for placeholders only
 	var arrVariableName = fmt.Sprintf("array%s", fieldName)
@@ -171,17 +171,17 @@ func makeArrayQueryOption(
 			Tok:   token.DEFINE,
 			Body: &ast.BlockStmt{
 				List: []ast.Stmt{
-					builders.MakeAssignment([]string{options.variableForColumnValues.String()}, builders.MakeCallExpression(ast.NewIdent("append"), ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
+					builders.MakeAssignment([]string{options.variableForColumnValues.String()}, builders.MakeCallExpression(builders.AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
 					builders.MakeAssignment(
 						[]string{arrVariableName},
 						builders.MakeCallExpression(
-							ast.NewIdent("append"),
+							builders.AppendFn,
 							ast.NewIdent(arrVariableName),
 							builders.MakeAddExpressions(
 								builders.MakeBasicLiteralString("$"),
 								builders.MakeCallExpression(
-									builders.MakeSelectorExpression("strconv", "Itoa"),
-									builders.MakeCallExpression(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
+									builders.ConvertItoaFn,
+									builders.MakeCallExpression(builders.LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 								),
 							),
 						),
@@ -195,14 +195,14 @@ func makeArrayQueryOption(
 				builders.MakeAssignment(
 					[]string{options.variableForColumnExpr.String()},
 					builders.MakeCallExpression(
-						ast.NewIdent("append"),
+						builders.AppendFn,
 						ast.NewIdent(options.variableForColumnExpr.String()),
 						builders.MakeCallExpression(
-							builders.MakeSelectorExpression("fmt", "Sprintf"),
+							builders.SprintfFn,
 							builders.MakeBasicLiteralString(operator),
 							builders.MakeBasicLiteralString(columnName),
 							builders.MakeCallExpression(
-								builders.MakeSelectorExpression("strings", "Join"),
+								builders.StringsJoinFn,
 								ast.NewIdent(arrVariableName),
 								builders.MakeBasicLiteralString(", "),
 							),
@@ -226,7 +226,7 @@ func makeUnionQueryOption(
 		for i, c := range columnNames {
 			columnNames[i] = fmt.Sprintf("lower(%s)", c)
 		}
-		optionExpr = builders.MakeCallExpression(builders.MakeSelectorExpression("strings", "ToLower"), optionExpr)
+		optionExpr = builders.MakeCallExpression(builders.ToLowerFn, optionExpr)
 	}
 	operators := make([]string, 0, len(operator))
 	for _, _ = range columnNames {
@@ -240,8 +240,8 @@ func makeUnionQueryOption(
 			builders.MakeAddExpressions(
 				builders.MakeBasicLiteralString("$"),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("strconv", "Itoa"),
-					builders.MakeCallExpression(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
+					builders.ConvertItoaFn,
+					builders.MakeCallExpression(builders.LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 				),
 			),
 		)
@@ -250,7 +250,7 @@ func makeUnionQueryOption(
 		builders.MakeAssignment(
 			[]string{options.variableForColumnValues.String()},
 			builders.MakeCallExpression(
-				ast.NewIdent("append"),
+				builders.AppendFn,
 				ast.NewIdent(options.variableForColumnValues.String()),
 				optionExpr,
 			),
@@ -258,10 +258,10 @@ func makeUnionQueryOption(
 		builders.MakeAssignment(
 			[]string{options.variableForColumnExpr.String()},
 			builders.MakeCallExpression(
-				ast.NewIdent("append"),
+				builders.AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("fmt", "Sprintf"),
+					builders.SprintfFn,
 					append([]ast.Expr{builders.MakeBasicLiteralString(strings.Join(operators, " or "))}, callArgs...)...,
 				),
 			),
@@ -280,13 +280,13 @@ func makeScalarQueryOption(
 	}
 	if ci {
 		columnName = fmt.Sprintf("lower(%s)", columnName)
-		optionExpr = builders.MakeCallExpression(builders.MakeSelectorExpression("strings", "ToLower"), optionExpr)
+		optionExpr = builders.MakeCallExpression(builders.ToLowerFn, optionExpr)
 	}
 	return []ast.Stmt{
 		builders.MakeAssignment(
 			[]string{options.variableForColumnValues.String()},
 			builders.MakeCallExpression(
-				ast.NewIdent("append"),
+				builders.AppendFn,
 				ast.NewIdent(options.variableForColumnValues.String()),
 				optionExpr,
 			),
@@ -294,17 +294,17 @@ func makeScalarQueryOption(
 		builders.MakeAssignment(
 			[]string{options.variableForColumnExpr.String()},
 			builders.MakeCallExpression(
-				ast.NewIdent("append"),
+				builders.AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("fmt", "Sprintf"),
+					builders.SprintfFn,
 					builders.MakeBasicLiteralString(operator),
 					builders.MakeBasicLiteralString(columnName),
 					builders.MakeAddExpressions(
 						builders.MakeBasicLiteralString("$"),
 						builders.MakeCallExpression(
-							builders.MakeSelectorExpression("strconv", "Itoa"),
-							builders.MakeCallExpression(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
+							builders.ConvertItoaFn,
+							builders.MakeCallExpression(builders.LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 						),
 					),
 				),
@@ -320,7 +320,7 @@ func makeStarQueryOption(
 ) []ast.Stmt {
 	return []ast.Stmt{
 		&ast.IfStmt{
-			Cond: builders.MakeNotEqualExpression(builders.MakeSelectorExpression(optionName, fieldName), ast.NewIdent("nil")),
+			Cond: builders.MakeNotEqualExpression(builders.MakeSelectorExpression(optionName, fieldName), builders.Nil),
 			Body: builders.MakeBlockStmt(
 				makeScalarQueryOption(optionName, fieldName, columnName, operator, ci, true, options)...,
 			),
@@ -340,7 +340,7 @@ const (
 
 func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 	return &ast.IfStmt{
-		Cond: builders.MakeCallExpression(builders.MakeSelectorExpression("rows", "Next")),
+		Cond: builders.MakeCallExpression(builders.RowsNextFn),
 		Body: builders.MakeBlockStmt(
 			append(
 				append(
@@ -348,14 +348,14 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 						builders.MakeAssignmentWithErrChecking(
 							"",
 							builders.MakeCallExpression(
-								builders.MakeSelectorExpression("rows", "Err"),
+								builders.RowsErrFn,
 							),
 						),
 					},
 					stmts...,
 				),
 				&ast.IfStmt{
-					Cond: builders.MakeCallExpression(builders.MakeSelectorExpression("rows", "Next")),
+					Cond: builders.MakeCallExpression(builders.RowsNextFn),
 					Body: builders.MakeBlockStmt(
 						builders.MakeReturn(
 							ast.NewIdent("row"),
@@ -364,7 +364,7 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 					),
 					Else: builders.MakeReturn(
 						ast.NewIdent("row"),
-						ast.NewIdent("nil"),
+						builders.Nil,
 					),
 				},
 			)...,
@@ -374,7 +374,7 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 
 func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 	return &ast.ForStmt{
-		Cond: builders.MakeCallExpression(builders.MakeSelectorExpression("rows", "Next")),
+		Cond: builders.MakeCallExpression(builders.RowsNextFn),
 		Body: builders.MakeBlockStmt(
 			append(
 				append(
@@ -382,7 +382,7 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 						builders.MakeAssignmentWithErrChecking(
 							"",
 							builders.MakeCallExpression(
-								builders.MakeSelectorExpression("rows", "Err"),
+								builders.RowsErrFn,
 							),
 						),
 					},
@@ -391,7 +391,7 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 				builders.MakeAssignment(
 					[]string{"result"},
 					builders.MakeCallExpression(
-						ast.NewIdent("append"),
+						builders.AppendFn,
 						ast.NewIdent("result"),
 						ast.NewIdent("row"),
 					),
@@ -410,7 +410,7 @@ func BuildExecutionBlockForFunction(
 		builders.MakeAssignmentWithErrChecking(
 			"rows",
 			builders.MakeCallExpressionEllipsis(
-				builders.MakeSelectorExpression("db", "Query"),
+				builders.DbQueryFn,
 				ast.NewIdent(options.variableNameForSqlText.String()),
 				ast.NewIdent(options.variableNameForArguments.String()),
 			),
@@ -420,7 +420,7 @@ func BuildExecutionBlockForFunction(
 			builders.MakeAssignmentWithErrChecking(
 				"",
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("rows", "Scan"),
+					builders.RowsScanFn,
 					fieldRefs...,
 				),
 			),
@@ -445,7 +445,14 @@ func addVariablesToFunctionBody(
 			),
 			builders.MakeAssignmentWithErrChecking(
 				"db",
-				builders.MakeCallExpression(ast.NewIdent("getDatabase"), ast.NewIdent("ctx")),
+				builders.MakeCallExpression(
+					builders.CallFunctionDescriber{
+						FunctionName:                ast.NewIdent("getDatabase"),
+						MinimumNumberOfArguments:    1,
+						ExtensibleNumberOfArguments: false,
+					},
+					ast.NewIdent("ctx"),
+				),
 				builders.MakeEmptyReturn(),
 			),
 		},
@@ -462,24 +469,24 @@ func processValueWrapper(
 	if options.variableForColumnNames != nil {
 		stmts = append(stmts, builders.MakeAssignment(
 			[]string{options.variableForColumnNames.String()},
-			builders.MakeCallExpression(ast.NewIdent("append"), ast.NewIdent(options.variableForColumnNames.String()), builders.MakeBasicLiteralString(colName)),
+			builders.MakeCallExpression(builders.AppendFn, ast.NewIdent(options.variableForColumnNames.String()), builders.MakeBasicLiteralString(colName)),
 		))
 	}
 	return append(
 		stmts,
 		builders.MakeAssignment(
 			[]string{options.variableForColumnValues.String()},
-			builders.MakeCallExpression(ast.NewIdent("append"), ast.NewIdent(options.variableForColumnValues.String()), field),
+			builders.MakeCallExpression(builders.AppendFn, ast.NewIdent(options.variableForColumnValues.String()), field),
 		),
 		builders.MakeAssignment(
 			[]string{options.variableForColumnExpr.String()},
 			builders.MakeCallExpression(
-				ast.NewIdent("append"),
+				builders.AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("fmt", "Sprintf"),
+					builders.SprintfFn,
 					builders.MakeBasicLiteralString(fmt.Sprintf(options.appendValueFormat, colName)),
-					builders.MakeCallExpression(ast.NewIdent("len"), ast.NewIdent(options.variableForColumnValues.String())),
+					builders.MakeCallExpression(builders.LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 				),
 			),
 		),
@@ -497,7 +504,7 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			panic("tag contains 'generate' function without any argument")
 		}
 		if strings.EqualFold(funcArgs[0], generateFunctionNow) {
-			return builders.MakeCallExpression(builders.MakeSelectorExpression("time", "Now"))
+			return builders.MakeCallExpression(builders.TimeNowFn)
 		}
 		// functions with 'len' argument
 		if arrayContains([]string{
@@ -524,7 +531,14 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			default:
 				panic(fmt.Sprintf("cannot resolve function name `%s`", funcArgs[0]))
 			}
-			return builders.MakeCallExpression(ast.NewIdent(goFncName), builders.MakeBasicLiteralInteger(l))
+			return builders.MakeCallExpression(
+				builders.CallFunctionDescriber{
+					FunctionName:                ast.NewIdent(goFncName),
+					MinimumNumberOfArguments:    1,
+					ExtensibleNumberOfArguments: false,
+				},
+				builders.MakeBasicLiteralInteger(l),
+			)
 		}
 	}
 	return nil
@@ -580,14 +594,19 @@ func makeInputParametersProcessorBlock(
 			}
 		}
 		if arrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
+			encryptPasswordFn := builders.CallFunctionDescriber{
+				FunctionName:                ast.NewIdent("encryptPassword"),
+				MinimumNumberOfArguments:    1,
+				ExtensibleNumberOfArguments: false,
+			}
 			if _, star := field.Type.(*ast.StarExpr); star {
 				valueExpr = builders.MakeCallExpression(
-					ast.NewIdent("encryptPassword"),
+					encryptPasswordFn,
 					builders.MakeStarExpression(valueExpr),
 				)
 			} else {
 				valueExpr = builders.MakeCallExpression(
-					ast.NewIdent("encryptPassword"),
+					encryptPasswordFn,
 					valueExpr,
 				)
 			}
@@ -737,12 +756,12 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 					builders.MakeAssignment(
 						[]string{sqlTextName},
 						builders.MakeCallExpression(
-							builders.MakeSelectorExpression("fmt", "Sprintf"),
+							builders.SprintfFn,
 							ast.NewIdent(sqlTextName),
 							builders.MakeAddExpressions(
 								builders.MakeBasicLiteralString("("),
 								builders.MakeCallExpression(
-									builders.MakeSelectorExpression("strings", "Join"),
+									builders.StringsJoinFn,
 									ast.NewIdent(filtersVariable.String()),
 									builders.MakeBasicLiteralString(") and ("),
 								),
@@ -754,7 +773,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 				Else: builders.MakeAssignment(
 					[]string{sqlTextName},
 					builders.MakeCallExpression(
-						builders.MakeSelectorExpression("fmt", "Sprintf"),
+						builders.SprintfFn,
 						ast.NewIdent(sqlTextName),
 						builders.MakeBasicLiteralString("1 = 1"),
 					),
@@ -774,18 +793,18 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			sqlQuery,
 			builders.MakeVarValue(
 				argsVariable.String(),
-				builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
 			),
 			builders.MakeVarValue(
 				filtersVariable.String(),
-				builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
 			),
 		)
 		return AstDataChain{
 			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
+				functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, findAttrs...),
 			},
 		}
 	}
@@ -837,12 +856,12 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 					builders.MakeAssignment(
 						[]string{sqlTextName},
 						builders.MakeCallExpression(
-							builders.MakeSelectorExpression("fmt", "Sprintf"),
+							builders.SprintfFn,
 							ast.NewIdent(sqlTextName),
 							builders.MakeAddExpressions(
 								builders.MakeBasicLiteralString("("),
 								builders.MakeCallExpression(
-									builders.MakeSelectorExpression("strings", "Join"),
+									builders.StringsJoinFn,
 									ast.NewIdent(filtersVariable.String()),
 									builders.MakeBasicLiteralString(") and ("),
 								),
@@ -854,7 +873,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 				Else: builders.MakeAssignment(
 					[]string{sqlTextName},
 					builders.MakeCallExpression(
-						builders.MakeSelectorExpression("fmt", "Sprintf"),
+						builders.SprintfFn,
 						ast.NewIdent(sqlTextName),
 						builders.MakeBasicLiteralString("/* ERROR: CANNOT DELETE ALL */ !"),
 					),
@@ -874,18 +893,18 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			sqlQuery,
 			builders.MakeVarValue(
 				argsVariable.String(),
-				builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
 			),
 			builders.MakeVarValue(
 				filtersVariable.String(),
-				builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
 			),
 		)
 		return AstDataChain{
 			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: makeApiFunction(functionName, resultExpr, functionBody, findAttrs...),
+				functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, findAttrs...),
 			},
 		}
 	}
@@ -926,17 +945,17 @@ func updateOneBuilder(
 		builders.MakeAssignment(
 			[]string{sqlTextName},
 			builders.MakeCallExpression(
-				builders.MakeSelectorExpression("fmt", "Sprintf"),
+				builders.SprintfFn,
 				ast.NewIdent(sqlTextName),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("strings", "Join"),
+					builders.StringsJoinFn,
 					ast.NewIdent(fieldsVariable.String()),
 					builders.MakeBasicLiteralString(", "),
 				),
 				builders.MakeAddExpressions(
 					builders.MakeBasicLiteralString("("),
 					builders.MakeCallExpression(
-						builders.MakeSelectorExpression("strings", "Join"),
+						builders.StringsJoinFn,
 						ast.NewIdent(filtersVariable.String()),
 						builders.MakeBasicLiteralString(") and ("),
 					),
@@ -958,15 +977,15 @@ func updateOneBuilder(
 		sqlQuery,
 		builders.MakeVarValue(
 			argsVariable.String(),
-			builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
 		),
 		builders.MakeVarValue(
 			fieldsVariable.String(),
-			builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
 		),
 		builders.MakeVarValue(
 			filtersVariable.String(),
-			builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
 		),
 	)
 	unionTypeDeclMaps := func(a, b map[string]*ast.TypeSpec) map[string]*ast.TypeSpec {
@@ -979,7 +998,7 @@ func updateOneBuilder(
 		Types:     unionTypeDeclMaps(inputTypes, findTypes),
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
-			functionName: makeApiFunction(functionName, resultExpr, functionBody, append(inputAttrs, findAttrs...)...),
+			functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, append(inputAttrs, findAttrs...)...),
 		},
 	}
 }
@@ -1012,15 +1031,15 @@ func insertOneBuilder(
 		builders.MakeAssignment(
 			[]string{sqlTextName},
 			builders.MakeCallExpression(
-				builders.MakeSelectorExpression("fmt", "Sprintf"),
+				builders.SprintfFn,
 				ast.NewIdent(sqlTextName),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("strings", "Join"),
+					builders.StringsJoinFn,
 					ast.NewIdent(fieldsVariable.String()),
 					builders.MakeBasicLiteralString(", "),
 				),
 				builders.MakeCallExpression(
-					builders.MakeSelectorExpression("strings", "Join"),
+					builders.StringsJoinFn,
 					ast.NewIdent(valuesVariable.String()),
 					builders.MakeBasicLiteralString(", "),
 				),
@@ -1040,52 +1059,22 @@ func insertOneBuilder(
 		sqlQuery,
 		builders.MakeVarValue(
 			argsVariable.String(),
-			builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
 		),
 		builders.MakeVarValue(
 			fieldsVariable.String(),
-			builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
 		),
 		builders.MakeVarValue(
 			valuesVariable.String(),
-			builders.MakeCallExpression(ast.NewIdent("make"), builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
 		),
 	)
 	return AstDataChain{
 		Types:     functionTypes,
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
-			functionName: makeApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
-		},
-	}
-}
-
-func makeApiFunction(
-	functionName string,
-	resultExpr ast.Expr,
-	functionBody []ast.Stmt,
-	functionArgs ...*ast.Field,
-) *ast.FuncDecl {
-	return &ast.FuncDecl{
-		Name: ast.NewIdent(functionName),
-		Type: &ast.FuncType{
-			Params: &ast.FieldList{
-				List: append(
-					[]*ast.Field{
-						builders.MakeField("ctx", nil, builders.MakeSelectorExpression("context", "Context")),
-					},
-					functionArgs...,
-				),
-			},
-			Results: &ast.FieldList{
-				List: []*ast.Field{
-					builders.MakeField("result", nil, resultExpr),
-					builders.MakeField("err", nil, ast.NewIdent("error")),
-				},
-			},
-		},
-		Body: &ast.BlockStmt{
-			List: functionBody,
+			functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
 		},
 	}
 }
