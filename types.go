@@ -40,6 +40,7 @@ type (
 		Type      string `yaml:"type" json:"type"`
 		Length    *int   `yaml:"length,omitempty" json:"length,omitempty"`
 		Precision *int   `yaml:"precision,omitempty" json:"precision,omitempty"`
+		IsArray   bool   `yaml:"array,omitempty" json:"array,omitempty"`
 	}
 	TypeSchema struct {
 		TypeBase `yaml:"-,inline" json:"-,inline"`
