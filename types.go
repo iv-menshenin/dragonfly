@@ -37,10 +37,11 @@ var (
 
 type (
 	TypeBase struct {
-		Type      string `yaml:"type" json:"type"`
-		Length    *int   `yaml:"length,omitempty" json:"length,omitempty"`
-		Precision *int   `yaml:"precision,omitempty" json:"precision,omitempty"`
-		IsArray   bool   `yaml:"array,omitempty" json:"array,omitempty"`
+		Type      string  `yaml:"type" json:"type"`
+		Length    *int    `yaml:"length,omitempty" json:"length,omitempty"`
+		Precision *int    `yaml:"precision,omitempty" json:"precision,omitempty"`
+		Collate   *string `yaml:"collate,omitempty" json:"collate,omitempty"`
+		IsArray   bool    `yaml:"array,omitempty" json:"array,omitempty"`
 	}
 	TypeSchema struct {
 		TypeBase `yaml:"-,inline" json:"-,inline"`
@@ -56,7 +57,7 @@ type (
 	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
 		TypeBase `yaml:"-,inline" json:"-,inline"`
 		NotNull  bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
-		Default  *string `yaml:"default,omitempty" json:"default,omitempty"`
+		Default  *string `yaml:"default,omitempty" json:"default,omitempty"` // TODO in native type
 		Check    *string `yaml:"check,omitempty" json:"check,omitempty"`
 		used     *bool
 	}

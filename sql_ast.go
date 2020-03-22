@@ -8,7 +8,18 @@ import (
 	"strings"
 )
 
-var sqlReservedWords = []string{"all", "analyse", "analyze", "and", "any", "array", "as", "asc", "asymmetric", "authorization", "binary", "both", "case", "cast", "check", "collate", "column", "concurrently", "constraint", "create", "cross", "current_catalog", "current_date", "current_role", "current_schema", "current_time", "current_timestamp", "current_user", "default", "deferrable", "desc", "distinct", "do", "else", "end", "except", "false", "fetch", "for", "foreign", "freeze", "from", "full", "grant", "group", "having", "ilike", "in", "initially", "inner", "intersect", "into", "is", "isnull", "join", "leading", "left", "like", "limit", "localtime", "localtimestamp", "natural", "not", "notnull", "null", "offset", "on", "only", "or", "order", "outer", "over", "overlaps", "placing", "primary", "references", "returning", "right", "select", "session_user", "similar", "some", "symmetric", "table", "then", "to", "trailing", "true", "union", "unique", "user", "using", "variadic", "verbose", "when", "where", "window", "with"}
+var sqlReservedWords = []string{
+	"all", "analyse", "analyze", "and", "any", "array", "as", "asc", "asymmetric", "authorization",
+	"binary", "both", "case", "cast", "check", "collate", "column", "concurrently", "constraint", "create",
+	"cross", "current_catalog", "current_date", "current_role", "current_schema", "current_time",
+	"current_timestamp", "current_user", "default", "deferrable", "desc", "distinct", "do", "else", "end",
+	"except", "fetch", "for", "foreign", "freeze", "from", "full", "grant", "group", "having",
+	"ilike", "in", "initially", "inner", "intersect", "into", "is", "isnull", "join", "leading", "left",
+	"like", "limit", "localtime", "localtimestamp", "natural", "not", "notnull", "null", "offset", "on",
+	"only", "or", "order", "outer", "over", "overlaps", "placing", "primary", "references", "returning",
+	"right", "select", "session_user", "similar", "some", "symmetric", "table", "then", "to", "trailing",
+	"union", "unique", "user", "using", "variadic", "verbose", "when", "where", "window", "with",
+}
 
 type (
 	SqlTarget          int
@@ -98,6 +109,13 @@ type (
 	UnaryExpr struct {
 		Ident SqlIdent
 	}
+	DataTypeExpr struct {
+		DataType  string
+		IsArray   bool
+		Length    *int
+		Precision *int
+		Collation *string
+	} // NotNull and Default - this is not about data type, this is about Constraints
 
 	ConstraintExpr interface {
 		ConstraintInterface
@@ -375,9 +393,15 @@ func makeSetDropExpr(setDrop bool, expr SqlExpr) SqlExpr {
 
 func makeAddColumnExpr(column ColumnRef) SqlExpr {
 	return &AddExpr{
-		Target:     TargetColumn,
-		Name:       &Literal{Text: column.Value.Name},
-		Definition: &Literal{Text: column.describeSQL()}, // TODO this is not literal
+		Target: TargetColumn,
+		Name:   &Literal{Text: column.Value.Name},
+		Definition: &DataTypeExpr{
+			DataType:  column.Value.Schema.Value.Type,
+			IsArray:   column.Value.Schema.Value.IsArray,
+			Length:    column.Value.Schema.Value.Length,
+			Precision: column.Value.Schema.Value.Precision,
+			Collation: column.Value.Schema.Value.Collate,
+		}, // TODO column constraints
 	}
 }
 
@@ -873,25 +897,12 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 		if isCustom {
 			columnType = &Selector{Name: customType, Container: customSchema}
 		} else {
-			if column.Value.Schema.Value.Length != nil {
-				if column.Value.Schema.Value.Precision != nil {
-					columnType = &FncCall{
-						Name: &Literal{Text: column.Value.Schema.Value.Type},
-						Args: []SqlExpr{
-							&Integer{X: *column.Value.Schema.Value.Length},
-							&Integer{X: *column.Value.Schema.Value.Precision},
-						},
-					}
-				} else {
-					columnType = &FncCall{
-						Name: &Literal{Text: column.Value.Schema.Value.Type},
-						Args: []SqlExpr{
-							&Integer{X: *column.Value.Schema.Value.Length},
-						},
-					}
-				}
-			} else {
-				columnType = &Literal{Text: column.Value.Schema.Value.Type}
+			columnType = &DataTypeExpr{
+				DataType:  column.Value.Schema.Value.Type,
+				IsArray:   column.Value.Schema.Value.IsArray,
+				Length:    column.Value.Schema.Value.Length,
+				Precision: column.Value.Schema.Value.Precision,
+				Collation: column.Value.Schema.Value.Collate,
 			}
 		}
 		var columnConstraints = make([]ConstraintExpr, 0, len(column.Value.Constraints)+2)
@@ -1015,6 +1026,25 @@ func (c *BinaryExpr) Expression() string {
 
 func (c *UnaryExpr) Expression() string {
 	return c.Ident.GetName()
+}
+
+func (c *DataTypeExpr) Expression() string {
+	var dataType = c.DataType
+	if c.Length != nil {
+		if c.Precision != nil {
+			dataType += fmt.Sprintf("(%d, %d)", *c.Length, *c.Precision)
+		} else {
+			dataType += fmt.Sprintf("(%d)", *c.Length)
+		}
+	}
+	if c.IsArray {
+		dataType += "[]"
+	}
+	if c.Collation == nil {
+		return dataType
+	} else {
+		return dataType + " collate " + *c.Collation
+	}
 }
 
 /* CONSTRAINTS */
