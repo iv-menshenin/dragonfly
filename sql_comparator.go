@@ -6,6 +6,7 @@ import (
 	_ "github.com/lib/pq"
 	"go/token"
 	"math/rand"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -650,8 +651,8 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 	if !(c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default == nil) &&
 		((c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default != nil) ||
 			(c.DomainStruct.NewStructure.Default != nil && c.DomainStruct.OldStructure.Default == nil) ||
-			(*c.DomainStruct.NewStructure.Default != *c.DomainStruct.OldStructure.Default)) {
-		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.Default))
+			!reflect.DeepEqual(c.DomainStruct.NewStructure.Default, c.DomainStruct.OldStructure.Default)) {
+		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, defaultToSQL(c.DomainStruct.NewStructure.Default)))
 	}
 	return
 }

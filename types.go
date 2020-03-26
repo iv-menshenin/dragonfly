@@ -56,9 +56,9 @@ type (
 	}
 	DomainSchema struct { // TODO DOMAIN CONSTRAINTS NAME (CHECK/NOT NULL)
 		TypeBase `yaml:"-,inline" json:"-,inline"`
-		NotNull  bool    `yaml:"not_null,omitempty" json:"not_null,omitempty"`
-		Default  *string `yaml:"default,omitempty" json:"default,omitempty"` // TODO in native type
-		Check    *string `yaml:"check,omitempty" json:"check,omitempty"`
+		NotNull  bool        `yaml:"not_null,omitempty" json:"not_null,omitempty"`
+		Default  interface{} `yaml:"default,omitempty" json:"default,omitempty"`
+		Check    *string     `yaml:"check,omitempty" json:"check,omitempty"`
 		used     *bool
 	}
 	EnumEntity struct {

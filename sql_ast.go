@@ -605,7 +605,7 @@ func makeDomain(schema, domain string, domainSchema DomainSchema) SqlStmt {
 			Length:    domainSchema.Length,
 			Precision: domainSchema.Precision,
 			Null:      Nullable(!domainSchema.NotNull),
-			Default:   domainSchema.Default,
+			Default:   defaultToSQL(domainSchema.Default),
 			Check:     domainSchema.Check,
 		},
 	}
@@ -914,11 +914,12 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) SqlStmt {
 				},
 			)
 		}
-		if !isCustom && column.Value.Schema.Value.Default != nil {
+		def := defaultToSQL(column.Value.Schema.Value.Default)
+		if !isCustom && def != nil {
 			columnConstraints = append(
 				columnConstraints,
 				&UnnamedConstraintExpr{
-					Constraint: &ConstraintDefaultExpr{Expression: &Literal{Text: *column.Value.Schema.Value.Default}},
+					Constraint: &ConstraintDefaultExpr{Expression: &Literal{Text: *def}},
 				},
 			)
 		}
