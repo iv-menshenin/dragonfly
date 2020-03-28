@@ -193,6 +193,7 @@ type (
 		Target SqlTarget
 		Name   SqlIdent
 		Create SqlExpr
+		IfNotX bool
 	}
 	DropStmt struct {
 		Target SqlTarget
@@ -430,10 +431,14 @@ func (c *CreateStmt) GetComment() string {
 }
 
 func (c *CreateStmt) MakeStmt() string {
+	createStmt := "create %s %s"
+	if c.IfNotX {
+		createStmt = "create %s if not exists %s"
+	}
 	if c.Create != nil {
-		return utils.NonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName(), c.Create.Expression())
+		return utils.NonEmptyStringsConcatSpaceSeparated(fmt.Sprintf(createStmt, c.Target, c.Name.GetName()), c.Create.Expression())
 	} else {
-		return utils.NonEmptyStringsConcatSpaceSeparated("create", c.Target, c.Name.GetName())
+		return fmt.Sprintf(createStmt, c.Target, c.Name.GetName())
 	}
 }
 

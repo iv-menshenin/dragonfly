@@ -462,6 +462,11 @@ func (c *SchemaRef) diffKnown(
 ) {
 	preInstall = make([]SqlStmt, 0, 0)
 	install = make([]SqlStmt, 0, 0)
+	preInstall = append(preInstall, &CreateStmt{
+		Target: TargetSchema,
+		Name:   &Literal{Text: schema},
+		IfNotX: true,
+	})
 	domains, domainsPostponed := makeDomainsComparator(current, schema, c.Value.Domains)
 	postponed.domains = domainsPostponed
 	for _, domain := range domains {
