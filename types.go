@@ -28,6 +28,8 @@ const (
 	classes     = "classes"
 	constraints = "constraints"
 
+	schema = "schema"
+
 	pathToDomainTemplate = "#/schemas/%s/domains/%s"
 )
 
@@ -422,6 +424,11 @@ func (c *Column) follow(db *Root, path []string, i interface{}) bool {
 	if len(path) == 0 {
 		// can panic
 		copyFromTo(c, i)
+		return true
+	}
+	if len(path) == 1 && path[0] == schema {
+		// can panic
+		copyFromTo(c.Schema.Value, i)
 		return true
 	}
 	return false
