@@ -2,6 +2,7 @@ package dragonfly
 
 import (
 	"fmt"
+	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
 	"github.com/iv-menshenin/dragonfly/utils"
 	_ "github.com/lib/pq"
 	"go/token"
@@ -455,16 +456,16 @@ func (c *SchemaRef) diffKnown(
 	schema string,
 	new *Root,
 ) (
-	preInstall []SqlStmt,
-	install []SqlStmt,
-	afterInstall []SqlStmt,
+	preInstall []sqt.SqlStmt,
+	install []sqt.SqlStmt,
+	afterInstall []sqt.SqlStmt,
 	postponed postponedObjects,
 ) {
-	preInstall = make([]SqlStmt, 0, 0)
-	install = make([]SqlStmt, 0, 0)
-	preInstall = append(preInstall, &CreateStmt{
-		Target: TargetSchema,
-		Name:   &Literal{Text: schema},
+	preInstall = make([]sqt.SqlStmt, 0, 0)
+	install = make([]sqt.SqlStmt, 0, 0)
+	preInstall = append(preInstall, &sqt.CreateStmt{
+		Target: sqt.TargetSchema,
+		Name:   &sqt.Literal{Text: schema},
 		IfNotX: true,
 	})
 	domains, domainsPostponed := makeDomainsComparator(current, schema, c.Value.Domains)
@@ -498,13 +499,13 @@ func (c *SchemaRef) diffPostponed(
 	schema string,
 	new *Root,
 ) (
-	preInstall []SqlStmt,
-	install []SqlStmt,
-	afterInstall []SqlStmt,
+	preInstall []sqt.SqlStmt,
+	install []sqt.SqlStmt,
+	afterInstall []sqt.SqlStmt,
 ) {
-	preInstall = make([]SqlStmt, 0, 0)
-	install = make([]SqlStmt, 0, 0)
-	afterInstall = make([]SqlStmt, 0, 0)
+	preInstall = make([]sqt.SqlStmt, 0, 0)
+	install = make([]sqt.SqlStmt, 0, 0)
+	afterInstall = make([]sqt.SqlStmt, 0, 0)
 	for _, domainName := range postponed.domains {
 		domain, ok := c.Value.Domains[domainName]
 		if !ok {
@@ -546,13 +547,13 @@ func (c *SchemaRef) prepareDeleting(
 	schema string,
 	new *Root,
 ) (
-	preInstall []SqlStmt,
-	install []SqlStmt,
-	afterInstall []SqlStmt,
+	preInstall []sqt.SqlStmt,
+	install []sqt.SqlStmt,
+	afterInstall []sqt.SqlStmt,
 ) {
-	preInstall = make([]SqlStmt, 0, 0)
-	install = make([]SqlStmt, 0, 0)
-	afterInstall = make([]SqlStmt, 0, 0)
+	preInstall = make([]sqt.SqlStmt, 0, 0)
+	install = make([]sqt.SqlStmt, 0, 0)
+	afterInstall = make([]sqt.SqlStmt, 0, 0)
 	// TODO drop tables
 	for domainSchemaName, unusedDomains := range current.getUnusedDomains() {
 		for domainName, unusedDomain := range unusedDomains {
@@ -631,9 +632,9 @@ type (
 	pre-install: create domain, alter domain (except 'set not null')
 	post-install: drop domain and 'set not null'
 */
-func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []SqlStmt) {
-	preInstall = make([]SqlStmt, 0, 0)
-	postInstall = make([]SqlStmt, 0, 0)
+func (c DomainComparator) makeSolution() (preInstall []sqt.SqlStmt, postInstall []sqt.SqlStmt) {
+	preInstall = make([]sqt.SqlStmt, 0, 0)
+	postInstall = make([]sqt.SqlStmt, 0, 0)
 	if c.DomainStruct.OldStructure == nil {
 		preInstall = append(preInstall, makeDomain(c.Schema.New, c.Name.New, *c.DomainStruct.NewStructure))
 		return
@@ -662,7 +663,7 @@ func (c DomainComparator) makeSolution() (preInstall []SqlStmt, postInstall []Sq
 	return
 }
 
-func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postInstall []SqlStmt) {
+func (c TypeComparator) makeSolution(current *Root) (preInstall []sqt.SqlStmt, postInstall []sqt.SqlStmt) {
 	/*
 		TODO: for types that already uses we must do something like this:
 			create type [schema].tmp_[name] as ([field1], [field2], ...);
@@ -677,8 +678,8 @@ func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postI
 			drop type [schema].tmp_[name]
 
 	*/
-	preInstall = make([]SqlStmt, 0, 0)
-	postInstall = make([]SqlStmt, 0, 0)
+	preInstall = make([]sqt.SqlStmt, 0, 0)
+	postInstall = make([]sqt.SqlStmt, 0, 0)
 	// https://www.postgresql.org/docs/9.1/sql-createtype.html
 	if c.TypeStruct.OldStructure == nil {
 		preInstall = append(preInstall, makeType(c.Schema.New, c.Name.New, *c.TypeStruct.NewStructure))
@@ -722,11 +723,11 @@ func (c TypeComparator) makeSolution(current *Root) (preInstall []SqlStmt, postI
 func (c TableComparator) makeSolution(
 	current *Root,
 ) (
-	install []SqlStmt,
-	afterInstall []SqlStmt,
+	install []sqt.SqlStmt,
+	afterInstall []sqt.SqlStmt,
 ) {
-	install = make([]SqlStmt, 0, 0)
-	afterInstall = make([]SqlStmt, 0, 0)
+	install = make([]sqt.SqlStmt, 0, 0)
+	afterInstall = make([]sqt.SqlStmt, 0, 0)
 	if c.Schema.Actual == "" && c.Schema.New != "" {
 		install = append(install, makeTableCreate(c.Schema.New, c.Name.New, *c.TableStruct.NewStructure))
 		return
@@ -753,7 +754,7 @@ func (c TableComparator) makeSolution(
 	return
 }
 
-func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterInstall []SqlStmt) {
+func (c ColumnComparator) makeSolution(current *Root) (install []sqt.SqlStmt, afterInstall []sqt.SqlStmt) {
 	/*
 		TODO make two modes: soft and hard
 		  in soft mode we can alter table:
@@ -767,8 +768,8 @@ func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterI
 				3.	drop (with foreign constraints) and recreate source table with another structure;
 				4.	fill new table and restore all constraints;
 	*/
-	install = make([]SqlStmt, 0, 0)
-	afterInstall = make([]SqlStmt, 0, 0)
+	install = make([]sqt.SqlStmt, 0, 0)
+	afterInstall = make([]sqt.SqlStmt, 0, 0)
 	if c.Name.Actual == "" {
 		customSchema, customType, isCustom := c.NewStruct.Value.Schema.makeCustomType()
 		makeValidateNotNull := false
@@ -812,7 +813,7 @@ func (c ColumnComparator) makeSolution(current *Root) (install []SqlStmt, afterI
 	return
 }
 
-func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []SqlStmt {
+func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []sqt.SqlStmt {
 	// this is the case when we change the data type of the relationship between the dependent and dependent table
 	// simply put, the foreign key is changing
 	for _, constraint := range column.Value.Constraints {
@@ -829,34 +830,34 @@ func fixEmptyColumn(current *Root, schema, table string, column ColumnRef) []Sql
 					if tableSep := strings.Split(existingFK.ToTable, "."); len(tableSep) > 1 {
 						fkSchema, fkTable = tableSep[0], tableSep[1]
 					}
-					return []SqlStmt{
-						&UpdateStmt{
-							Table: TableDesc{
-								Table: &Selector{
+					return []sqt.SqlStmt{
+						&sqt.UpdateStmt{
+							Table: sqt.TableDesc{
+								Table: &sqt.Selector{
 									Name:      table,
 									Container: schema,
 								},
 								Alias: "dest",
 							},
-							Set: []SqlExpr{
-								&BinaryExpr{
-									Left: &Literal{Text: column.Value.Name},
-									Right: &BracketBlock{
-										Statement: &SelectStmt{
-											Columns: []SqlExpr{
-												&UnaryExpr{Ident: &Literal{Text: fk.ToColumn}},
+							Set: []sqt.SqlExpr{
+								&sqt.BinaryExpr{
+									Left: &sqt.Literal{Text: column.Value.Name},
+									Right: &sqt.BracketBlock{
+										Statement: &sqt.SelectStmt{
+											Columns: []sqt.SqlExpr{
+												&sqt.UnaryExpr{Ident: &sqt.Literal{Text: fk.ToColumn}},
 											},
-											From: TableDesc{
-												Table: &Selector{
+											From: sqt.TableDesc{
+												Table: &sqt.Selector{
 													Name:      fkTable,
 													Container: fkSchema,
 												},
 												Alias: "",
 											},
-											Where: &BinaryExpr{
-												Left: &Literal{Text: existingFK.ToColumn},
-												Right: &UnaryExpr{
-													Ident: &Selector{
+											Where: &sqt.BinaryExpr{
+												Left: &sqt.Literal{Text: existingFK.ToColumn},
+												Right: &sqt.UnaryExpr{
+													Ident: &sqt.Selector{
 														Name:      fromColumn,
 														Container: "dest",
 													},

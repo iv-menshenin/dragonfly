@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"database/sql"
 	"fmt"
+	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
 	"github.com/iv-menshenin/dragonfly/utils"
 	"io"
 	"net/url"
@@ -38,9 +39,9 @@ func databaseWork(
 
 type (
 	Diff struct {
-		preInstall   []SqlStmt
-		install      []SqlStmt
-		afterInstall []SqlStmt
+		preInstall   []sqt.SqlStmt
+		install      []sqt.SqlStmt
+		afterInstall []sqt.SqlStmt
 	}
 )
 
@@ -55,9 +56,9 @@ func MakeDatabaseDump(options ConnectionOptions) (dump Root, err error) {
 func MakeDiff(current, new *Root) Diff {
 	var (
 		result = Diff{
-			preInstall:   make([]SqlStmt, 0, 0),
-			install:      make([]SqlStmt, 0, 0),
-			afterInstall: make([]SqlStmt, 0, 0),
+			preInstall:   make([]sqt.SqlStmt, 0, 0),
+			install:      make([]sqt.SqlStmt, 0, 0),
+			afterInstall: make([]sqt.SqlStmt, 0, 0),
 		}
 		postponedSchemaObjects = make(map[string]postponedObjects, 0)
 	)
