@@ -27,17 +27,6 @@ type (
 	SetDrop            bool
 	OnDeleteUpdateRule int
 
-	SqlStmt interface {
-		GetComment() string
-		MakeStmt() string
-	}
-	SqlIdent interface {
-		GetName() string
-	}
-	SqlExpr interface {
-		Expression() string
-	}
-
 	SqlNullable struct {
 		Nullable Nullable
 	}
@@ -182,32 +171,6 @@ type (
 	BracketBlock struct {
 		Expr      []SqlExpr
 		Statement SqlStmt
-	}
-
-	AlterStmt struct {
-		Target SqlTarget
-		Name   SqlIdent
-		Alter  SqlExpr
-	}
-	CreateStmt struct {
-		Target SqlTarget
-		Name   SqlIdent
-		Create SqlExpr
-		IfNotX bool
-	}
-	DropStmt struct {
-		Target SqlTarget
-		Name   SqlIdent
-	}
-	UpdateStmt struct {
-		Table TableDesc
-		Set   []SqlExpr
-		Where SqlExpr
-	}
-	SelectStmt struct {
-		Columns []SqlExpr
-		From    TableDesc
-		Where   SqlExpr
 	}
 
 	TableDesc struct {
@@ -377,74 +340,6 @@ func (c *Selector) GetName() string {
 
 func (c *Selector) Expression() string {
 	return c.GetName()
-}
-
-func (c *AlterStmt) GetComment() string {
-	return fmt.Sprintf("altering %s %s", c.Target, c.Name.GetName())
-}
-
-func (c *AlterStmt) MakeStmt() string {
-	return fmt.Sprintf("alter %s %s %s", c.Target, c.Name.GetName(), c.Alter.Expression())
-}
-
-func (c *CreateStmt) GetComment() string {
-	return fmt.Sprintf("creating %s %s", c.Target, c.Name.GetName())
-}
-
-func (c *CreateStmt) MakeStmt() string {
-	createStmt := "create %s %s"
-	if c.IfNotX {
-		createStmt = "create %s if not exists %s"
-	}
-	if c.Create != nil {
-		return utils.NonEmptyStringsConcatSpaceSeparated(fmt.Sprintf(createStmt, c.Target, c.Name.GetName()), c.Create.Expression())
-	} else {
-		return fmt.Sprintf(createStmt, c.Target, c.Name.GetName())
-	}
-}
-
-func (c *DropStmt) GetComment() string {
-	return fmt.Sprintf("deleting %s %s", c.Target, c.Name.GetName())
-}
-
-func (c *DropStmt) MakeStmt() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Target, c.Name.GetName())
-}
-
-func (c *UpdateStmt) GetComment() string {
-	return fmt.Sprintf("updating %s data", c.Table.Table.GetName())
-}
-
-func (c *UpdateStmt) MakeStmt() string {
-	var (
-		clauseSet   = make([]string, 0, len(c.Set))
-		clauseWhere = "1 = 1"
-	)
-	for _, set := range c.Set {
-		clauseSet = append(clauseSet, set.Expression())
-	}
-	if c.Where != nil {
-		clauseWhere = c.Where.Expression()
-	}
-	return fmt.Sprintf("update %s %s set %s where %s", c.Table.Table.GetName(), c.Table.Alias, strings.Join(clauseSet, ", "), clauseWhere)
-}
-
-func (c *SelectStmt) GetComment() string {
-	return fmt.Sprintf("select data from %s", c.From.Table.GetName())
-}
-
-func (c *SelectStmt) MakeStmt() string {
-	var (
-		clauseColumns = make([]string, 0, len(c.Columns))
-		clauseWhere   = "1 = 1"
-	)
-	for _, col := range c.Columns {
-		clauseColumns = append(clauseColumns, col.Expression())
-	}
-	if c.Where != nil {
-		clauseWhere = c.Where.Expression()
-	}
-	return fmt.Sprintf("select %s from %s %s where %s", strings.Join(clauseColumns, ", "), c.From.Table.GetName(), c.From.Alias, clauseWhere)
 }
 
 func (c *SqlNullable) Expression() string {
@@ -668,7 +563,7 @@ func (c *BracketBlock) Expression() string {
 		if c.Statement == nil {
 			panic("BracketBlock require Expr or Statement")
 		}
-		return utils.NonEmptyStringsConcatSpaceSeparated("\n/*", c.Statement.GetComment(), "*/\n(", c.Statement.MakeStmt(), ")")
+		return fmt.Sprintf("(%s)", c.Statement)
 	}
 }
 

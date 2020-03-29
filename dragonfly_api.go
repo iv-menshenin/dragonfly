@@ -115,15 +115,15 @@ func RegisterApiBuilder(typeName string, builderFunc ApiFuncBuilder) {
 func (c *Diff) Print(w io.Writer) {
 	utils.WriteWrapper(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.preInstall {
-		utils.WriteWrapper(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+		utils.WriteWrapper(w, "\n%s;\n", stmt)
 	}
 	utils.WriteWrapper(w, "\n/* SECTION INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.install {
-		utils.WriteWrapper(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+		utils.WriteWrapper(w, "\n%s;\n", stmt)
 	}
 	utils.WriteWrapper(w, "\n/* SECTION AFTER INSTALL %s */", strings.Repeat("=", 52))
 	for _, stmt := range c.afterInstall {
-		utils.WriteWrapper(w, "\n/* statement: %s */\n%s;\n", stmt.GetComment(), stmt.MakeStmt())
+		utils.WriteWrapper(w, "\n%s;\n", stmt)
 	}
 	utils.WriteWrapper(w, "\n/* END OF UPDATE SCRIPT %s */", strings.Repeat("=", 53))
 }
