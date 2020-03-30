@@ -185,12 +185,24 @@ func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Fiel
 	return
 }
 
+// TODO split this function
 func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if utils.ArrayContains(column.Value.Tags, tagIdentifier) {
 			field := column.generateField(w, column.Value.Schema.Value.NotNull)
 			fields = append(fields, &field)
+		}
+	}
+	if len(fields) > 0 {
+		return
+	}
+	for _, column := range table.Columns {
+		for _, constraint := range column.Value.Constraints {
+			if constraint.Type == ConstraintPrimaryKey {
+				field := column.generateField(w, column.Value.Schema.Value.NotNull)
+				fields = append(fields, &field)
+			}
 		}
 	}
 	if len(fields) > 0 {
@@ -212,6 +224,17 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 		if constraint.Constraint.Type == ConstraintUniqueKey {
 			for _, columnName := range constraint.Columns {
 				column := table.Columns.getColumn(columnName)
+				field := column.generateField(w, column.Value.Schema.Value.NotNull)
+				fields = append(fields, &field)
+			}
+		}
+	}
+	if len(fields) > 0 {
+		return
+	}
+	for _, column := range table.Columns {
+		for _, constraint := range column.Value.Constraints {
+			if constraint.Type == ConstraintUniqueKey {
 				field := column.generateField(w, column.Value.Schema.Value.NotNull)
 				fields = append(fields, &field)
 			}

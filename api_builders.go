@@ -22,22 +22,6 @@ func exprToString(expr ast.Expr) string {
 }
 
 // TODO other place?
-// TODO TypeSpec type
-func typeDeclsToMap(types []*ast.TypeSpec) map[string]*ast.TypeSpec {
-	result := make(map[string]*ast.TypeSpec, len(types))
-	for i, spec := range types {
-		if r, ok := result[spec.Name.Name]; ok {
-			if reflect.DeepEqual(r, spec) {
-				continue
-			}
-			panic(fmt.Sprintf("name `%s` repeated", spec.Name.Name))
-		}
-		result[spec.Name.Name] = types[i]
-	}
-	return result
-}
-
-// TODO other place?
 func funcDeclsToMap(functions []*ast.FuncDecl) map[string]*ast.FuncDecl {
 	result := make(map[string]*ast.FuncDecl, len(functions))
 	for i, f := range functions {
