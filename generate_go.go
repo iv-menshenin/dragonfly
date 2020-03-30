@@ -75,7 +75,7 @@ func generateExportedNameFromRef(ref *string) string {
 	return makeExportedName(strings.Join(refSmts[len(refSmts)-2:], "-"))
 }
 
-func makeExportedName(name string) string {
+func makeExportedName(name string) (result string) {
 	var (
 		reader   io.RuneReader = strings.NewReader(name)
 		toUpper                = true
@@ -423,6 +423,14 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 }
 
 func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
+	// we must allow to use type `schema.domain` as known type
+	for _, schema := range db.Schemas {
+		for domainName, domain := range schema.Value.Domains {
+			if domainType, ok := knownTypes[domain.Type]; ok {
+				knownTypes[fmt.Sprintf("%s.%s", schema.Value.Name, domainName)] = domainType
+			}
+		}
+	}
 	var astData AstData
 	for _, schema := range db.Schemas {
 		if schemaName == "" || schemaName == schema.Value.Name {
