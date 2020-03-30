@@ -65,7 +65,7 @@ func (c *TableBodyDescriber) String() string {
 func (c *TableBodyDescriber) expression() int { return 0 }
 
 func (c *TableBodyDescriber) dependedOn() Dependencies {
-	var result = make(Dependencies, 0)
+	var result = make(Dependencies, 0, len(c.Constraints))
 	for _, constraint := range c.Constraints {
 		result = concatDependencies(result, constraint.dependedOn())
 	}
@@ -96,7 +96,7 @@ func (c *SqlField) String() string {
 func (c *SqlField) expression() int { return 0 }
 
 func (c *SqlField) dependedOn() Dependencies {
-	var result = make(Dependencies, len(c.Constraints))
+	var result = make(Dependencies, 0, len(c.Constraints))
 	for _, constraint := range c.Constraints {
 		result = concatDependencies(result, constraint.dependedOn())
 	}
@@ -135,7 +135,10 @@ func (c *DataTypeExpr) String() string {
 func (c *DataTypeExpr) expression() int { return 0 }
 
 func (c *DataTypeExpr) dependedOn() Dependencies {
-	return nil // TODO ?
+	if sepType := strings.Split(c.DataType, "."); len(sepType) > 1 {
+		return dependedOn2(sepType[0], sepType[1])
+	}
+	return nil
 }
 
 type (

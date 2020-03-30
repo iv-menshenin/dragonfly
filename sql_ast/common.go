@@ -7,7 +7,8 @@ type (
 	}
 	NamedObject struct {
 		Schema string
-		Name   string
+		Object string
+		Field  string
 	}
 	Dependencies []NamedObject
 
@@ -20,6 +21,7 @@ type (
 		String() string
 		statement() int
 		dependedOn() Dependencies
+		solved() Dependencies
 	}
 	SqlIdent interface {
 		GetName() string
@@ -56,11 +58,21 @@ func concatDependencies(a, b Dependencies) Dependencies {
 	return append(a, b...)
 }
 
-func dependedOn(s string, n string) Dependencies {
+func dependedOn2(s, n string) Dependencies {
 	return Dependencies{
 		NamedObject{
 			Schema: s,
-			Name:   n,
+			Object: n,
+		},
+	}
+}
+
+func dependedOn3(s, n, f string) Dependencies {
+	return Dependencies{
+		NamedObject{
+			Schema: s,
+			Object: n,
+			Field:  f,
 		},
 	}
 }
@@ -120,4 +132,12 @@ func (c *SqlNullable) String() string {
 	default:
 		return ""
 	}
+}
+
+func ExploreDependencies(stmt SqlStmt) Dependencies {
+	return stmt.dependedOn()
+}
+
+func ExploreResolved(stmt SqlStmt) Dependencies {
+	return stmt.solved()
 }

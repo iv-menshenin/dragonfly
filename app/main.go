@@ -157,8 +157,9 @@ func main() {
 			readAndParse()
 			switch strings.ToLower(*state.OutputFormat) {
 			case "sql":
-				var dump dragonfly.Root
+				var dump = dragonfly.MakeEmptyRoot()
 				diff := dragonfly.MakeDiff(&dump, root)
+				dragonfly.ResolveDependencies(&diff)
 				diff.Print(w)
 			case "go":
 				dragonfly.RegisterApiBuilder("localizedFind", localizedFind)

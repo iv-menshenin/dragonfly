@@ -226,5 +226,8 @@ func (c *ConstraintForeignKeyExpr) ConstraintParams() string {
 }
 
 func (c *ConstraintForeignKeyExpr) dependencies() Dependencies {
-	return dependedOn(c.ToTable.GetName(), c.ToColumn) // TODO ?
+	if tableName := strings.Split(c.ToTable.GetName(), "."); len(tableName) > 1 {
+		return dependedOn3(tableName[0], tableName[1], c.ToColumn)
+	}
+	panic("unknown schema for table `" + c.ToTable.GetName() + "`")
 }

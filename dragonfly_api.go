@@ -45,6 +45,12 @@ type (
 	}
 )
 
+func ResolveDependencies(d *Diff) {
+	d.preInstall = fixTheOrderOf(d.preInstall)
+	d.install = fixTheOrderOf(d.install)
+	d.afterInstall = fixTheOrderOf(d.afterInstall)
+}
+
 func MakeDatabaseDump(options ConnectionOptions) (dump Root, err error) {
 	err = databaseWork(options, func(db *sql.DB) (e error) {
 		dump, e = getAllDatabaseInformation(db, options.Database)

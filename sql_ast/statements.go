@@ -44,6 +44,25 @@ func (c *AlterStmt) dependedOn() Dependencies {
 	return c.Alter.dependedOn()
 }
 
+func (c *AlterStmt) solved() Dependencies {
+	var s, o, f string
+	if name, ok := c.Name.(*Selector); ok {
+		s, o = name.Container, name.Name
+	} else if n := strings.Split(c.Name.GetName(), "."); len(n) > 1 {
+		s, o = n[0], n[1]
+	} else {
+		if c.Target == TargetSchema {
+			s = c.Name.GetName()
+		} else {
+			panic("cannot resolve schema for `" + c.Name.GetName() + "`")
+		}
+	}
+	if add, ok := c.Alter.(*AddExpr); ok {
+		f = add.Name.GetName()
+	}
+	return dependedOn3(s, o, f)
+}
+
 func (c *CreateStmt) String() string {
 	ifNotExists := ""
 	if c.IfNotX {
@@ -55,7 +74,35 @@ func (c *CreateStmt) String() string {
 func (c *CreateStmt) statement() int { return 0 }
 
 func (c *CreateStmt) dependedOn() Dependencies {
-	return c.Create.dependedOn()
+	if c.Create != nil {
+		return c.Create.dependedOn()
+	}
+	return nil
+}
+
+func (c *CreateStmt) solved() (result Dependencies) {
+	var s, o string
+	if name, ok := c.Name.(*Selector); ok {
+		s, o = name.Container, name.Name
+	} else if n := strings.Split(c.Name.GetName(), "."); len(n) > 1 {
+		s, o = n[0], n[1]
+	} else {
+		if c.Target == TargetSchema {
+			s = c.Name.GetName()
+		} else {
+			panic("cannot resolve schema for `" + c.Name.GetName() + "`")
+		}
+	}
+	result = dependedOn2(s, o)
+	if c.Create != nil {
+		if body, ok := c.Create.(*TableBodyDescriber); ok {
+			for _, f := range body.Fields {
+				result = concatDependencies(result, dependedOn3(s, o, f.Name.GetName()))
+				f.Name.GetName()
+			}
+		}
+	}
+	return result
 }
 
 func (c *DropStmt) String() string {
@@ -65,6 +112,10 @@ func (c *DropStmt) String() string {
 func (c *DropStmt) statement() int { return 0 }
 
 func (c *DropStmt) dependedOn() Dependencies {
+	return nil
+}
+
+func (c *DropStmt) solved() (result Dependencies) {
 	return nil
 }
 
@@ -92,6 +143,10 @@ func (c *UpdateStmt) dependedOn() Dependencies {
 	return result
 }
 
+func (c *UpdateStmt) solved() (result Dependencies) {
+	return nil
+}
+
 func (c *SelectStmt) String() string {
 	var (
 		clauseColumns = make([]string, 0, len(c.Columns))
@@ -109,5 +164,9 @@ func (c *SelectStmt) String() string {
 func (c *SelectStmt) statement() int { return 0 }
 
 func (c *SelectStmt) dependedOn() Dependencies {
-	return nil // TODO ?
+	return nil
+}
+
+func (c *SelectStmt) solved() (result Dependencies) {
+	return nil
 }

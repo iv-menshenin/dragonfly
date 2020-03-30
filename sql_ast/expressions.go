@@ -95,7 +95,7 @@ func (c *Selector) String() string {
 func (c *Selector) expression() int { return 0 }
 
 func (c *Selector) dependedOn() Dependencies {
-	return dependedOn(c.Container, c.Name)
+	return dependedOn2(c.Container, c.Name)
 }
 
 type (
@@ -235,7 +235,7 @@ func (c *SchemaExpr) String() string {
 func (c *SchemaExpr) expression() int { return 0 }
 
 func (c *SchemaExpr) dependedOn() Dependencies {
-	return dependedOn(c.SchemaName, "")
+	return dependedOn2(c.SchemaName, "")
 }
 
 type (
