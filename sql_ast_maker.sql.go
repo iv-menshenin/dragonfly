@@ -34,7 +34,7 @@ func makeDomainSetSchema(domain string, rename NameComparator) sqt.SqlStmt {
 			Name:      domain,
 			Container: rename.Actual,
 		},
-		Alter: &sqt.SetMetadataExpr{
+		Alter: &sqt.SetExpr{
 			Set: &sqt.SchemaExpr{
 				SchemaName: rename.New,
 			},
@@ -49,7 +49,7 @@ func makeTypeSetSchema(domain string, rename NameComparator) sqt.SqlStmt {
 			Name:      domain,
 			Container: rename.Actual,
 		},
-		Alter: &sqt.SetMetadataExpr{
+		Alter: &sqt.SetExpr{
 			Set: &sqt.SchemaExpr{
 				SchemaName: rename.New,
 			},
@@ -98,7 +98,7 @@ func makeTypeAlterAttributeDataType(schemaName, typeName, attrName string, typeS
 func makeAlterAttributeDataType(attrName string, typeSchema TypeBase) sqt.SqlExpr {
 	return &sqt.AlterAttributeExpr{
 		AttributeName: attrName,
-		AlterExpr: &sqt.AlterDataTypeExpr{
+		AlterExpr: &sqt.DataTypeExpr{
 			DataType:  typeSchema.Type,
 			Length:    typeSchema.Length,
 			Precision: typeSchema.Precision,
@@ -139,6 +139,53 @@ func makeDomainSetDefault(schema, domain string, defaultValue *string) sqt.SqlSt
 	}
 }
 
+func makeInlineConstraints(notNull bool, defaultValue interface{}, check *string) (result []sqt.ConstraintExpr) {
+	if notNull {
+		result = append(result, &sqt.UnnamedConstraintExpr{
+			Constraint: &sqt.ConstraintNullableExpr{
+				ConstraintCommon: sqt.ConstraintCommon{InColumn: true},
+				Nullable:         sqt.Nullable(!notNull),
+			},
+		})
+	}
+	if defaultValue != nil {
+		var defExpr sqt.SqlExpr
+		switch v := defaultValue.(type) {
+		case string:
+			defExpr = &sqt.String{X: v}
+		case int:
+			defExpr = &sqt.Integer{X: v}
+		case int16:
+			defExpr = &sqt.Integer{X: int(v)}
+		case int32:
+			defExpr = &sqt.Integer{X: int(v)}
+		case bool:
+			if v {
+				defExpr = &sqt.True{}
+			} else {
+				defExpr = &sqt.False{}
+			}
+		default:
+			panic("unsupported data type for default expression")
+		}
+		result = append(result, &sqt.UnnamedConstraintExpr{
+			Constraint: &sqt.ConstraintDefaultExpr{
+				ConstraintCommon: sqt.ConstraintCommon{InColumn: true},
+				Expression:       defExpr,
+			},
+		})
+	}
+	if check != nil {
+		result = append(result, &sqt.UnnamedConstraintExpr{
+			Constraint: &sqt.ConstraintCheckExpr{
+				ConstraintCommon: sqt.ConstraintCommon{InColumn: true},
+				Expression:       &sqt.String{X: *check},
+			},
+		})
+	}
+	return result
+}
+
 func makeDomain(schema, domain string, domainSchema DomainSchema) sqt.SqlStmt {
 	return &sqt.CreateStmt{
 		Target: sqt.TargetDomain,
@@ -146,13 +193,16 @@ func makeDomain(schema, domain string, domainSchema DomainSchema) sqt.SqlStmt {
 			Name:      domain,
 			Container: schema,
 		},
-		Create: &sqt.TypeDescription{
-			Type:      domainSchema.Type,
-			Length:    domainSchema.Length,
-			Precision: domainSchema.Precision,
-			Null:      sqt.Nullable(!domainSchema.NotNull),
-			Default:   defaultToSQL(domainSchema.Default),
-			Check:     domainSchema.Check,
+		Create: &sqt.SqlField{
+			Name: &sqt.WithoutNameIdent{},
+			Describer: &sqt.DataTypeExpr{
+				DataType:  domainSchema.Type,
+				IsArray:   false,
+				Length:    domainSchema.Length,
+				Precision: domainSchema.Precision,
+				Collation: domainSchema.Collate,
+			},
+			Constraints: makeInlineConstraints(domainSchema.NotNull, domainSchema.Default, domainSchema.Check),
 		},
 	}
 }
@@ -166,10 +216,15 @@ func makeType(schema, typeName string, typeSchema TypeSchema) sqt.SqlStmt {
 			if typeSchema, typeName, ok := f.Value.Schema.makeCustomType(); ok {
 				fieldTypeName = fmt.Sprintf("%s.%s", typeSchema, typeName)
 			}
-			fields[i] = &sqt.ColumnDefinitionExpr{
-				Name:        &sqt.Literal{Text: f.Value.Name},
-				DataType:    fieldTypeName,
-				Collation:   nil, // TODO COLLATION
+			fields[i] = &sqt.SqlField{
+				Name: &sqt.Literal{Text: f.Value.Name},
+				Describer: &sqt.DataTypeExpr{
+					DataType:  fieldTypeName,
+					IsArray:   typeSchema.IsArray,
+					Length:    typeSchema.Length,
+					Precision: typeSchema.Precision,
+					Collation: typeSchema.Collate,
+				},
 				Constraints: nil,
 			}
 		}
@@ -181,8 +236,12 @@ func makeType(schema, typeName string, typeSchema TypeSchema) sqt.SqlStmt {
 		for i, f := range typeSchema.Enum {
 			values[i] = f.Value
 		}
+		var sqlValues = make([]*sqt.String, 0, len(values))
+		for _, v := range values {
+			sqlValues = append(sqlValues, &sqt.String{X: v})
+		}
 		create = &sqt.EnumDescription{
-			Values: values,
+			Values: sqlValues,
 		}
 	} else if strings.EqualFold(typeSchema.Type, "map") {
 		values := make([]string, len(typeSchema.Enum))
@@ -191,9 +250,16 @@ func makeType(schema, typeName string, typeSchema TypeSchema) sqt.SqlStmt {
 		}
 		create = &sqt.RecordDescription{
 			Fields: []sqt.SqlExpr{
-				&sqt.ColumnDefinitionExpr{
-					Name:     &sqt.Literal{Text: "data"},
-					DataType: "json",
+				&sqt.SqlField{
+					Name: &sqt.Literal{Text: "data"},
+					Describer: &sqt.DataTypeExpr{
+						DataType:  "json",
+						IsArray:   false,
+						Length:    nil,
+						Precision: nil,
+						Collation: nil,
+					},
+					Constraints: nil,
 				},
 			},
 		}
@@ -299,10 +365,12 @@ func makeAlterColumnSetType(schema, table, column string, domainSchema DomainSch
 		Alter: &sqt.AlterExpr{
 			Target: sqt.TargetColumn,
 			Name:   &sqt.Literal{Text: column},
-			Alter: &sqt.TypeDescription{
-				Type:      domainSchema.Type,
+			Alter: &sqt.DataTypeExpr{
+				DataType:  domainSchema.Type,
+				IsArray:   domainSchema.IsArray,
 				Length:    domainSchema.Length,
 				Precision: domainSchema.Precision,
+				Collation: domainSchema.Collate,
 			},
 		},
 	}
@@ -318,8 +386,8 @@ func makeAlterColumnSetDomain(schema, table, column, domainName string) sqt.SqlS
 		Alter: &sqt.AlterExpr{
 			Target: sqt.TargetColumn,
 			Name:   &sqt.Literal{Text: column},
-			Alter: &sqt.TypeDescription{
-				Type: domainName,
+			Alter: &sqt.DataTypeExpr{
+				DataType: domainName,
 			},
 		},
 	}
@@ -334,7 +402,7 @@ func makeTableSetSchema(table string, rename NameComparator) sqt.SqlStmt {
 			Name:      table,
 			Container: rename.Actual,
 		},
-		Alter: &sqt.SetMetadataExpr{
+		Alter: &sqt.SetExpr{
 			Set: &sqt.SchemaExpr{
 				SchemaName: rename.New,
 			},
@@ -433,7 +501,7 @@ func makeConstraintsExpr(inColumn bool, constraintSet []Constraint) []sqt.Constr
 	for _, constraintDef := range constraintSet {
 		if constraintDef.Name != "" {
 			constraints = append(constraints, &sqt.NamedConstraintExpr{
-				Name:       &sqt.Literal{constraintDef.Name},
+				Name:       &sqt.Literal{Text: constraintDef.Name},
 				Constraint: makeConstraintInterface(inColumn, constraintDef),
 			})
 		} else {
@@ -450,18 +518,20 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) sqt.SqlStm
 		https://postgrespro.ru/docs/postgresql/9.6/sql-createtable
 	*/
 	var (
-		fields      = make([]sqt.FieldDescriber, 0, len(tableStruct.Columns))
+		fields      = make([]*sqt.SqlField, 0, len(tableStruct.Columns))
 		constraints = make([]sqt.ConstraintExpr, 0, len(tableStruct.Constraints))
 	)
 	for _, column := range tableStruct.Columns {
 		var (
-			columnType sqt.SqlExpr
+			columnType sqt.DataTypeExpr
 		)
 		customSchema, customType, isCustom := column.Value.Schema.makeCustomType()
 		if isCustom {
-			columnType = &sqt.Selector{Name: customType, Container: customSchema}
+			columnType = sqt.DataTypeExpr{
+				DataType: fmt.Sprintf("%s.%s", customSchema, customType),
+			}
 		} else {
-			columnType = &sqt.DataTypeExpr{
+			columnType = sqt.DataTypeExpr{
 				DataType:  column.Value.Schema.Value.Type,
 				IsArray:   column.Value.Schema.Value.IsArray,
 				Length:    column.Value.Schema.Value.Length,
@@ -488,11 +558,8 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) sqt.SqlStm
 			)
 		}
 		fields = append(fields, &sqt.SqlField{
-			Name: &sqt.Literal{Text: column.Value.Name},
-			Describer: &sqt.ShortTypeDesc{
-				TypeName:  columnType,
-				Collation: nil, // TODO COLLATION
-			},
+			Name:        &sqt.Literal{Text: column.Value.Name},
+			Describer:   &columnType,
 			Constraints: append(columnConstraints, makeConstraintsExpr(true, column.Value.Constraints)...),
 		})
 	}
@@ -501,7 +568,7 @@ func makeTableCreate(schemaName, tableName string, tableStruct Table) sqt.SqlStm
 		var constraintExpr sqt.ConstraintExpr
 		if constraint.Constraint.Name != "" {
 			constraintExpr = &sqt.NamedConstraintExpr{
-				Name:       &sqt.Literal{constraint.Constraint.Name},
+				Name:       &sqt.Literal{Text: constraint.Constraint.Name},
 				Constraint: constraintInterface,
 			}
 		} else {

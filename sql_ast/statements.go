@@ -35,24 +35,28 @@ type (
 )
 
 func (c *AlterStmt) String() string {
-	return fmt.Sprintf("alter %s %s %s", c.Target, c.Name.GetName(), c.Alter.Expression())
+	return fmt.Sprintf("alter %s %s %s", c.Target, c.Name.GetName(), c.Alter.String())
 }
 
 func (c *AlterStmt) statement() int { return 0 }
 
+func (c *AlterStmt) dependedOn() Dependencies {
+	return c.Alter.dependedOn()
+}
+
 func (c *CreateStmt) String() string {
-	createStmt := "create %s %s"
+	ifNotExists := ""
 	if c.IfNotX {
-		createStmt = "create %s if not exists %s"
+		ifNotExists = "if not exists"
 	}
-	if c.Create != nil {
-		return utils.NonEmptyStringsConcatSpaceSeparated(fmt.Sprintf(createStmt, c.Target, c.Name.GetName()), c.Create.Expression())
-	} else {
-		return fmt.Sprintf(createStmt, c.Target, c.Name.GetName())
-	}
+	return utils.NonEmptyStringsConcatSpaceSeparated("create", c.Target, ifNotExists, c.Name.GetName(), c.Create)
 }
 
 func (c *CreateStmt) statement() int { return 0 }
+
+func (c *CreateStmt) dependedOn() Dependencies {
+	return c.Create.dependedOn()
+}
 
 func (c *DropStmt) String() string {
 	return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Target, c.Name.GetName())
@@ -60,21 +64,33 @@ func (c *DropStmt) String() string {
 
 func (c *DropStmt) statement() int { return 0 }
 
+func (c *DropStmt) dependedOn() Dependencies {
+	return nil
+}
+
 func (c *UpdateStmt) String() string {
 	var (
 		clauseSet   = make([]string, 0, len(c.Set))
 		clauseWhere = "1 = 1"
 	)
 	for _, set := range c.Set {
-		clauseSet = append(clauseSet, set.Expression())
+		clauseSet = append(clauseSet, set.String())
 	}
 	if c.Where != nil {
-		clauseWhere = c.Where.Expression()
+		clauseWhere = c.Where.String()
 	}
 	return fmt.Sprintf("update %s %s set %s where %s", c.Table.Table.GetName(), c.Table.Alias, strings.Join(clauseSet, ", "), clauseWhere)
 }
 
 func (c *UpdateStmt) statement() int { return 0 }
+
+func (c *UpdateStmt) dependedOn() Dependencies {
+	var result = make(Dependencies, 0)
+	for _, s := range c.Set {
+		result = concatDependencies(result, s.dependedOn())
+	}
+	return result
+}
 
 func (c *SelectStmt) String() string {
 	var (
@@ -82,12 +98,16 @@ func (c *SelectStmt) String() string {
 		clauseWhere   = "1 = 1"
 	)
 	for _, col := range c.Columns {
-		clauseColumns = append(clauseColumns, col.Expression())
+		clauseColumns = append(clauseColumns, col.String())
 	}
 	if c.Where != nil {
-		clauseWhere = c.Where.Expression()
+		clauseWhere = c.Where.String()
 	}
 	return fmt.Sprintf("select %s from %s %s where %s", strings.Join(clauseColumns, ", "), c.From.Table.GetName(), c.From.Alias, clauseWhere)
 }
 
 func (c *SelectStmt) statement() int { return 0 }
+
+func (c *SelectStmt) dependedOn() Dependencies {
+	return nil // TODO ?
+}

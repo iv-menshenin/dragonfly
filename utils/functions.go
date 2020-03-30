@@ -109,72 +109,60 @@ func RefString(s string) *string {
 	return &s
 }
 
+func StringRepresentation(i interface{}) string {
+	if i != nil {
+		switch value := i.(type) {
+		case *string:
+			return *value
+		case string:
+			return value
+		case int, int16, int32, int64:
+			return fmt.Sprintf("%d", value)
+		case float32, float64:
+			return fmt.Sprintf("%f", value)
+		case bool:
+			if value {
+				return "true"
+			} else {
+				return "false"
+			}
+		case *int:
+			return fmt.Sprintf("%d", *value)
+		case *int16:
+			return fmt.Sprintf("%d", *value)
+		case *int32:
+			return fmt.Sprintf("%d", *value)
+		case *int64:
+			return fmt.Sprintf("%d", *value)
+		case *float32:
+			return fmt.Sprintf("%f", *value)
+		case *float64:
+			return fmt.Sprintf("%f", *value)
+		case *bool:
+			if *value {
+				return "true"
+			} else {
+				return "false"
+			}
+		default:
+			if sI, ok := value.(fmt.Stringer); ok {
+				return sI.String()
+			} else if sI, ok := value.(*fmt.Stringer); ok {
+				return (*sI).String()
+			} else {
+				return fmt.Sprintf("%v", value)
+			}
+		}
+	}
+	return ""
+}
+
 func nonEmptyStrings(a ...interface{}) []string {
 	result := make([]string, 0, len(a))
 	for _, i := range a {
-		var s string
-		if i != nil {
-			switch value := i.(type) {
-			case *string:
-				if value != nil {
-					s = *value
-				}
-			case string:
-				s = value
-			case int, int16, int32, int64:
-				s = fmt.Sprintf("%d", value)
-			case float32, float64:
-				s = fmt.Sprintf("%f", value)
-			case bool:
-				if value {
-					s = "true"
-				} else {
-					s = "false"
-				}
-			case *int:
-				if value != nil {
-					s = fmt.Sprintf("%d", *value)
-				}
-			case *int16:
-				if value != nil {
-					s = fmt.Sprintf("%d", *value)
-				}
-			case *int32:
-				if value != nil {
-					s = fmt.Sprintf("%d", *value)
-				}
-			case *int64:
-				if value != nil {
-					s = fmt.Sprintf("%d", *value)
-				}
-			case *float32:
-				if value != nil {
-					s = fmt.Sprintf("%f", *value)
-				}
-			case *float64:
-				if value != nil {
-					s = fmt.Sprintf("%f", *value)
-				}
-			case *bool:
-				if value != nil {
-					if *value {
-						s = "true"
-					} else {
-						s = "false"
-					}
-				}
-			default:
-				if sI, ok := value.(fmt.Stringer); ok {
-					s = sI.String()
-				} else if sI, ok := value.(*fmt.Stringer); ok {
-					s = (*sI).String()
-				} else {
-					s = fmt.Sprintf("%v", value)
-				}
-			}
-			if strings.TrimSpace(s) != "" {
-				result = append(result, s)
-			}
+		var s = StringRepresentation(i)
+		if strings.TrimSpace(s) != "" {
+			result = append(result, s)
 		}
 	}
 	return result

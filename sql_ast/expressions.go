@@ -22,74 +22,176 @@ var sqlReservedWords = []string{
 }
 
 type (
-	SqlTarget          int
-	Nullable           bool
-	SetDrop            bool
-	OnDeleteUpdateRule int
+	WithoutNameIdent struct{}
+)
 
-	SqlNullable struct {
-		Nullable Nullable
-	}
-	SqlRename struct {
-		Target  SqlTarget
-		OldName SqlIdent
-		NewName SqlIdent
-	}
+func (c *WithoutNameIdent) GetName() string {
+	return ""
+}
 
-	Default struct {
-		Default SqlExpr
-	}
+type (
+	True  struct{}
+	False struct{}
+)
+
+func (c *True) String() string {
+	return "true"
+}
+
+func (c *True) expression() int { return 0 }
+
+func (c *True) dependedOn() Dependencies {
+	return nil
+}
+
+func (c *False) String() string {
+	return "false"
+}
+
+func (c *False) expression() int { return 0 }
+
+func (c *False) dependedOn() Dependencies {
+	return nil
+}
+
+type (
 	Literal struct {
 		Text string
 	}
+)
+
+func (c *Literal) GetName() string {
+	return c.String()
+}
+
+func (c *Literal) String() string {
+	if utils.ArrayContainsCI(sqlReservedWords, c.Text) {
+		return "\"" + c.Text + "\""
+	}
+	return c.Text
+}
+
+func (c *Literal) expression() int { return 0 }
+
+func (c *Literal) dependedOn() Dependencies {
+	return nil
+}
+
+type (
 	Selector struct {
 		Name      string
 		Container string
 	}
-	Integer struct {
-		X int
-	}
-	FncCall struct {
-		Name SqlIdent
-		Args []SqlExpr
-	}
+)
 
-	NotNullClause struct{}
+func (c *Selector) GetName() string {
+	return fmt.Sprintf("%s.%s", c.Container, c.Name)
+}
 
-	SchemaExpr struct {
-		SchemaName string
-	}
-	SetMetadataExpr struct {
-		Set SqlExpr
-	}
-	SetDropExpr struct {
-		SetDrop SetDrop
-		Expr    SqlExpr
-	}
+func (c *Selector) String() string {
+	return c.GetName()
+}
+
+func (c *Selector) expression() int { return 0 }
+
+func (c *Selector) dependedOn() Dependencies {
+	return dependedOn(c.Container, c.Name)
+}
+
+type (
 	AlterAttributeExpr struct {
 		AttributeName string
 		AlterExpr     SqlExpr
 	}
-	AlterDataTypeExpr struct {
-		DataType  string
-		Length    *int
-		Precision *int
+)
+
+func (c *AlterAttributeExpr) String() string {
+	if dataType, ok := c.AlterExpr.(*DataTypeExpr); ok {
+		return utils.NonEmptyStringsConcatSpaceSeparated("alter attribute", c.AttributeName, "type", dataType)
+	} else {
+		return utils.NonEmptyStringsConcatSpaceSeparated("alter attribute", c.AttributeName, c.AlterExpr)
+	}
+}
+
+func (c *AlterAttributeExpr) expression() int { return 0 }
+
+func (c *AlterAttributeExpr) dependedOn() Dependencies {
+	return c.AlterExpr.dependedOn()
+}
+
+type (
+	SetDropExpr struct {
+		SetDrop SetDrop
+		Expr    SqlExpr
+	}
+)
+
+func (c *SetDropExpr) String() string {
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.SetDrop, c.Expr)
+}
+
+func (c *SetDropExpr) expression() int { return 0 }
+
+func (c *SetDropExpr) dependedOn() Dependencies {
+	return nil
+}
+
+type (
+	AddExpr struct {
+		Target     SqlTarget
+		Name       SqlIdent
+		Definition SqlExpr
 	}
 	DropExpr struct {
 		Target            SqlTarget
 		Name              SqlIdent
 		IfExists, Cascade bool
 	}
-	AddExpr struct {
-		Target     SqlTarget
-		Name       SqlIdent
-		Definition SqlExpr
-	}
 	AlterExpr struct {
 		Target SqlTarget
 		Name   SqlIdent
 		Alter  SqlExpr
 	}
+)
+
+func (c *AddExpr) String() string {
+	return utils.NonEmptyStringsConcatSpaceSeparated("add", c.Target, c.Name, c.Definition)
+}
+
+func (c *AddExpr) expression() int { return 0 }
+
+func (c *AddExpr) dependedOn() Dependencies {
+	return c.Definition.dependedOn()
+}
+
+func (c *DropExpr) String() string {
+	cascadeExpr, ifExistsExpr := "", ""
+	if c.IfExists {
+		ifExistsExpr = "if exists"
+	}
+	if c.Cascade {
+		cascadeExpr = "cascade"
+	}
+	return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Target, ifExistsExpr, c.Name, cascadeExpr)
+}
+
+func (c *DropExpr) expression() int { return 0 }
+
+func (c *DropExpr) dependedOn() Dependencies {
+	return nil
+}
+
+func (c *AlterExpr) String() string {
+	return utils.NonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name, c.Alter)
+}
+
+func (c *AlterExpr) expression() int { return 0 }
+
+func (c *AlterExpr) dependedOn() Dependencies {
+	return c.Alter.dependedOn()
+}
+
+type (
 	BinaryExpr struct {
 		Left  SqlExpr
 		Right SqlExpr
@@ -98,550 +200,161 @@ type (
 	UnaryExpr struct {
 		Ident SqlIdent
 	}
-	DataTypeExpr struct {
-		DataType  string
-		IsArray   bool
-		Length    *int
-		Precision *int
-		Collation *string
-	} // NotNull and Default - this is not about data type, this is about Constraints
-
-	ConstraintExpr interface {
-		ConstraintInterface
-		SqlExpr
-	}
-	ConstraintInterface interface {
-		ConstraintString() string
-		ConstraintParams() string
-	}
-	NamedConstraintExpr struct {
-		Name       SqlIdent
-		Constraint ConstraintInterface
-	}
-	UnnamedConstraintExpr struct {
-		Constraint ConstraintInterface
-	}
-	ConstraintWithColumns struct {
-		Columns    []string
-		Constraint ConstraintExpr
-	}
-	ConstraintCommon struct {
-		InColumn bool
-	}
-	// not null
-	ConstraintNullableExpr struct {
-		ConstraintCommon
-		Nullable Nullable
-	}
-	// check
-	ConstraintCheckExpr struct {
-		ConstraintCommon
-		Expression SqlExpr
-		Where      SqlExpr
-	}
-	// default
-	ConstraintDefaultExpr struct {
-		ConstraintCommon
-		Expression SqlExpr
-	}
-	// primary key
-	ConstraintPrimaryKeyExpr struct {
-		ConstraintCommon
-	}
-	// unique
-	ConstraintUniqueExpr struct {
-		ConstraintCommon
-		Where SqlExpr
-	}
-	// foreign key
-	ConstraintForeignKeyExpr struct {
-		ConstraintCommon
-		ToTable  SqlIdent
-		ToColumn string
-		OnDelete OnDeleteUpdateRule
-		OnUpdate OnDeleteUpdateRule
-	}
-
-	ColumnDefinitionExpr struct {
-		Name        SqlIdent
-		DataType    string
-		Collation   *string
-		Constraints []ConstraintExpr
-	}
-	BracketBlock struct {
-		Expr      []SqlExpr
-		Statement SqlStmt
-	}
-
-	TableDesc struct {
-		Table SqlIdent
-		Alias string
-	}
-
-	RecordDescription struct {
-		Fields []SqlExpr
-	}
-	EnumDescription struct {
-		Values []string
-	}
-
-	TypeDescription struct {
-		Type              string
-		Length, Precision *int
-		Null              Nullable
-		Default, Check    *string
-	}
 )
 
-/* <FIELDS AND TYPES> =============================================================================================== */
-
-type (
-	TableBodyDescriber struct {
-		Fields      []FieldDescriber
-		Constraints []ConstraintExpr
-	}
-)
-
-func (c *TableBodyDescriber) Expression() string {
-	var columns = make([]string, 0, len(c.Fields)+len(c.Constraints))
-	for _, fld := range c.Fields {
-		columns = append(columns, fmt.Sprintf("\n\t%s", fld))
-	}
-	for _, cts := range c.Constraints {
-		columns = append(columns, fmt.Sprintf("\n\t%s", cts.Expression()))
-	}
-	return "(" + strings.Join(columns, ",") + "\n)"
+func (c *BinaryExpr) String() string {
+	return utils.NonEmptyStringsConcatSpaceSeparated(c.Left, c.Op, c.Right)
 }
 
-type (
-	FieldDescriber interface {
-		fmt.Stringer
-		fieldDescriber() string
-	}
-	TypeDescriber interface {
-		fmt.Stringer
-		typeDescriber() string
-	}
-	SqlField struct {
-		Name        SqlIdent
-		Describer   TypeDescriber
-		Constraints []ConstraintExpr
-	} // FieldDescriber
-	FullTypeDesc struct {
-		ShortTypeDesc
-		Nullable *SqlNullable
-		Default  SqlExpr
-	} // TypeDescriber
-	ShortTypeDesc struct {
-		TypeName  SqlExpr
-		Collation *string
-	} // TypeDescriber
-)
+func (c *BinaryExpr) expression() int { return 0 }
 
-func (c *SqlField) fieldDescriber() string {
-	return c.String()
-}
-func (c *SqlField) String() string {
-	var constraintsClause = make([]string, 0, len(c.Constraints))
-	if len(c.Constraints) > 0 {
-		for _, constraint := range c.Constraints {
-			constraintsClause = append(constraintsClause, constraint.Expression())
-		}
-	}
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.Describer, strings.Join(constraintsClause, " "))
+func (c *BinaryExpr) dependedOn() Dependencies {
+	return concatDependencies(c.Left.dependedOn(), c.Right.dependedOn())
 }
 
-func (c *ShortTypeDesc) typeDescriber() string {
-	return c.String()
-}
-func (c *ShortTypeDesc) String() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.TypeName.Expression(), c.Collation)
-}
-
-func (c *FullTypeDesc) typeDescriber() string {
-	return c.String()
-}
-func (c *FullTypeDesc) String() string {
-	var (
-		nullableClause string
-		defaultClause  string
-	)
-	if c.Nullable != nil {
-		nullableClause = c.Nullable.Expression()
-	}
-	if c.Default != nil {
-		defaultClause = c.Default.Expression()
-	}
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.ShortTypeDesc.typeDescriber(), nullableClause, defaultClause)
-}
-
-/* </FIELDS AND TYPES> ============================================================================================== */
-
-const (
-	TargetNone SqlTarget = iota
-	TargetSchema
-	TargetTable
-	TargetColumn
-	TargetDomain
-	TargetType
-
-	RuleNoAction OnDeleteUpdateRule = iota
-	RuleCascade
-	RuleRestrict
-	RuleSetNull
-	RuleSetDefault
-
-	NullableNull    Nullable = true
-	NullableNotNull Nullable = false
-
-	SetDropDrop SetDrop = false
-	SetDropSet  SetDrop = true
-)
-
-func (c OnDeleteUpdateRule) String() string {
-	switch c {
-	case RuleCascade:
-		return "cascade"
-	case RuleRestrict:
-		return "restrict"
-	case RuleSetNull:
-		return "set null"
-	case RuleSetDefault:
-		return "set default"
-	default:
-		return "no action"
-	}
-}
-
-var (
-	targetDescriptor = map[SqlTarget]string{
-		TargetSchema: "schema",
-		TargetTable:  "table",
-		TargetColumn: "column",
-		TargetDomain: "domain",
-		TargetType:   "type",
-	}
-)
-
-func (c SqlTarget) String() string {
-	if s, ok := targetDescriptor[c]; ok {
-		return s
-	}
-	panic("unknown target %v")
-}
-
-func (c *Literal) GetName() string {
-	return c.Expression()
-}
-
-func (c *Selector) GetName() string {
-	return fmt.Sprintf("%s.%s", c.Container, c.Name)
-}
-
-func (c *Selector) Expression() string {
-	return c.GetName()
-}
-
-func (c *SqlNullable) Expression() string {
-	switch c.Nullable {
-	case NullableNotNull:
-		return "not null"
-	case NullableNull:
-		return "null"
-	default:
-		return ""
-	}
-}
-
-func (c *SetDropExpr) Expression() string {
-	if sqlExpr := c.Expr.Expression(); sqlExpr != "" {
-		if c.SetDrop == SetDropSet {
-			return utils.NonEmptyStringsConcatSpaceSeparated("set", c.Expr.Expression())
-		} else {
-			return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Expr.Expression())
-		}
-	}
-	return ""
-}
-
-func (c *AlterAttributeExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("alter attribute", c.AttributeName, c.AlterExpr.Expression())
-}
-
-func (c *AlterDataTypeExpr) Expression() string {
-	// TODO use datatypefillers
-	if c.Length == nil && c.Precision == nil {
-		return utils.NonEmptyStringsConcatSpaceSeparated("type", c.DataType)
-	}
-	if c.Length != nil {
-		if c.Precision == nil {
-			return fmt.Sprintf("type %s(%d)", c.DataType, *c.Length)
-		} else {
-			return fmt.Sprintf("type %s(%d, %d)", c.DataType, *c.Length, *c.Precision)
-		}
-	} else {
-		// Length == nil && Precision != nil
-		return fmt.Sprintf("type %s(%d)", c.DataType, *c.Precision)
-	}
-}
-
-func (c *DropExpr) Expression() string {
-	cascadeExpr, ifExistsExpr := "", ""
-	if c.IfExists {
-		ifExistsExpr = "if exists"
-	}
-	if c.Cascade {
-		cascadeExpr = "cascade"
-	}
-	return utils.NonEmptyStringsConcatSpaceSeparated("drop", c.Target, ifExistsExpr, c.Name.GetName(), cascadeExpr)
-}
-
-func (c *AddExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("add", c.Target, c.Name.GetName(), c.Definition.Expression())
-}
-
-func (c *BinaryExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.Left.Expression(), c.Op, c.Right.Expression())
-}
-
-func (c *UnaryExpr) Expression() string {
+func (c *UnaryExpr) String() string {
 	return c.Ident.GetName()
 }
 
-func (c *DataTypeExpr) Expression() string {
-	var dataType = c.DataType
-	if c.Length != nil {
-		if c.Precision != nil {
-			dataType += fmt.Sprintf("(%d, %d)", *c.Length, *c.Precision)
-		} else {
-			dataType += fmt.Sprintf("(%d)", *c.Length)
-		}
+func (c *UnaryExpr) expression() int { return 0 }
+
+func (c *UnaryExpr) dependedOn() Dependencies {
+	return nil
+}
+
+type (
+	SchemaExpr struct {
+		SchemaName string
 	}
-	if c.IsArray {
-		dataType += "[]"
-	}
-	if c.Collation == nil {
-		return dataType
-	} else {
-		return dataType + " collate " + *c.Collation
-	}
-}
+)
 
-/* CONSTRAINTS */
-
-func (c *NamedConstraintExpr) ConstraintString() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("constraint", c.Name.GetName(), c.Constraint.ConstraintString())
-}
-
-func (c *NamedConstraintExpr) ConstraintParams() string {
-	return c.Constraint.ConstraintParams()
-}
-
-func (c *NamedConstraintExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
-}
-
-func (c *UnnamedConstraintExpr) ConstraintString() string {
-	return c.Constraint.ConstraintString()
-}
-
-func (c *UnnamedConstraintExpr) ConstraintParams() string {
-	return c.Constraint.ConstraintParams()
-}
-
-func (c *UnnamedConstraintExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), c.Constraint.ConstraintParams())
-}
-
-func (c *ConstraintWithColumns) ConstraintString() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.Constraint.ConstraintString(), "(", strings.Join(c.Columns, ", "), ")")
-}
-
-func (c *ConstraintWithColumns) ConstraintParams() string {
-	return c.Constraint.ConstraintParams()
-}
-
-func (c *ConstraintWithColumns) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.ConstraintString(), c.ConstraintParams())
-}
-
-func (c *ConstraintNullableExpr) ConstraintString() string {
-	if c == nil {
-		return ""
-	}
-	switch c.Nullable {
-	case NullableNotNull:
-		return "not null"
-	case NullableNull:
-		return "null"
-	default:
-		return ""
-	}
-}
-
-func (c *ConstraintNullableExpr) ConstraintParams() string {
-	return ""
-}
-
-func (c *ConstraintCheckExpr) ConstraintString() string {
-	return fmt.Sprintf("check (%s)", c.Expression.Expression())
-}
-
-func (c *ConstraintCheckExpr) ConstraintParams() string {
-	if c.Where != nil {
-		return "where " + c.Where.Expression()
-	}
-	return ""
-}
-
-func (c *ConstraintDefaultExpr) ConstraintString() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Expression.Expression())
-}
-
-func (c *ConstraintDefaultExpr) ConstraintParams() string {
-	return ""
-}
-
-func (c *ConstraintPrimaryKeyExpr) ConstraintString() string {
-	return "primary key"
-}
-
-func (c *ConstraintPrimaryKeyExpr) ConstraintParams() string {
-	return ""
-}
-
-func (c *ConstraintUniqueExpr) ConstraintString() string {
-	return "unique"
-}
-
-func (c *ConstraintUniqueExpr) ConstraintParams() string {
-	if c.Where != nil {
-		return "where " + c.Where.Expression()
-	}
-	return ""
-}
-
-func (c *ConstraintForeignKeyExpr) ConstraintString() string {
-	if c.InColumn {
-		return ""
-	}
-	return "foreign key"
-}
-
-func (c *ConstraintForeignKeyExpr) ConstraintParams() string {
-	updateRules := ""
-	if int(c.OnUpdate) > -1 {
-		updateRules += fmt.Sprintf(" on update %s", c.OnUpdate)
-	}
-	if int(c.OnDelete) > -1 {
-		updateRules += fmt.Sprintf(" on delete %s", c.OnDelete)
-	}
-	return fmt.Sprintf("references %s (%s)%s", c.ToTable.GetName(), c.ToColumn, updateRules)
-}
-
-/* */
-
-func (c *ColumnDefinitionExpr) Expression() string {
-	constraints := make([]interface{}, 0, len(c.Constraints))
-	for _, constraint := range c.Constraints {
-		constraints = append(constraints, utils.NonEmptyStringsConcatSpaceSeparated(constraint.ConstraintString(), constraint.ConstraintParams()))
-	}
-	return utils.NonEmptyStringsConcatSpaceSeparated(c.Name.GetName(), c.DataType, c.Collation, utils.NonEmptyStringsConcatSpaceSeparated(constraints...))
-}
-
-func (c *BracketBlock) Expression() string {
-	if len(c.Expr) > 0 {
-		if c.Statement != nil {
-			panic("BracketBlock allows just Expr or Statement not both")
-		}
-		var exprs = make([]string, 0, len(c.Expr))
-		for _, expr := range c.Expr {
-			exprs = append(exprs, expr.Expression())
-		}
-		return utils.NonEmptyStringsConcatSpaceSeparated("(\n\t", strings.Join(exprs, ",\n\t"), "\n)")
-	} else {
-		if c.Statement == nil {
-			panic("BracketBlock require Expr or Statement")
-		}
-		return fmt.Sprintf("(%s)", c.Statement)
-	}
-}
-
-func (c *AlterExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name.GetName(), c.Alter.Expression())
-}
-
-func (c *SchemaExpr) Expression() string {
+func (c *SchemaExpr) String() string {
 	return fmt.Sprintf("schema %s", c.SchemaName)
 }
 
-func (c *SetMetadataExpr) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("set", c.Set.Expression())
+func (c *SchemaExpr) expression() int { return 0 }
+
+func (c *SchemaExpr) dependedOn() Dependencies {
+	return dependedOn(c.SchemaName, "")
 }
 
-func (c *Default) Expression() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Default.Expression())
+type (
+	SetExpr struct {
+		Set SqlExpr
+	}
+)
+
+func (c *SetExpr) String() string {
+	return utils.NonEmptyStringsConcatSpaceSeparated("set", c.Set.String())
 }
 
-func (c *SqlRename) Expression() string {
+func (c *SetExpr) expression() int { return 0 }
+
+func (c *SetExpr) dependedOn() Dependencies {
+	return c.Set.dependedOn()
+}
+
+type (
+	Default struct {
+		Default SqlExpr
+	}
+)
+
+func (c *Default) String() string {
+	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Default.String())
+}
+
+func (c *Default) expression() int { return 0 }
+
+func (c *Default) dependedOn() Dependencies {
+	return nil
+}
+
+type (
+	SqlRename struct {
+		Target  SqlTarget
+		OldName SqlIdent
+		NewName SqlIdent
+	}
+)
+
+func (c *SqlRename) String() string {
 	if c.Target == TargetNone {
-		return utils.NonEmptyStringsConcatSpaceSeparated("rename", "to", c.NewName.GetName())
+		return utils.NonEmptyStringsConcatSpaceSeparated("rename", "to", c.NewName)
 	}
-	return utils.NonEmptyStringsConcatSpaceSeparated("rename", c.Target, c.OldName.GetName(), "to", c.NewName.GetName())
+	return utils.NonEmptyStringsConcatSpaceSeparated("rename", c.Target, c.OldName, "to", c.NewName)
 }
 
-func (c *Literal) Expression() string {
-	if utils.ArrayContainsCI(sqlReservedWords, c.Text) {
-		return "\"" + c.Text + "\""
-	}
-	return c.Text
+func (c *SqlRename) expression() int { return 0 }
+
+func (c *SqlRename) dependedOn() Dependencies {
+	return nil
 }
 
-func (c *FncCall) Expression() string {
+type (
+	FncCall struct {
+		Name SqlIdent
+		Args []SqlExpr
+	}
+)
+
+func (c *FncCall) String() string {
 	var argmStr = make([]string, 0, len(c.Args))
 	for _, arg := range c.Args {
-		argmStr = append(argmStr, arg.Expression())
+		argmStr = append(argmStr, arg.String())
 	}
 	return fmt.Sprintf("%s(%s)", c.Name.GetName(), strings.Join(argmStr, ", "))
 }
 
-func (c *Integer) Expression() string {
+func (c *FncCall) expression() int { return 0 }
+
+func (c *FncCall) dependedOn() Dependencies {
+	var result Dependencies
+	for _, a := range c.Args {
+		result = concatDependencies(result, a.dependedOn())
+	}
+	return result
+}
+
+type (
+	Integer struct {
+		X int
+	}
+	String struct {
+		X string
+	}
+)
+
+func (c *Integer) String() string {
 	return strconv.Itoa(c.X)
 }
 
-func (c *NotNullClause) Expression() string {
+func (c *Integer) expression() int { return 0 }
+
+func (c *Integer) dependedOn() Dependencies {
+	return nil
+}
+
+func (c *String) String() string {
+	return "'" + strings.Replace(c.X, "'", "''", -1) + "'"
+}
+
+func (c *String) expression() int { return 0 }
+
+func (c *String) dependedOn() Dependencies {
+	return nil
+}
+
+type (
+	NotNullClause struct{}
+)
+
+func (c *NotNullClause) String() string {
 	return "not null"
 }
 
-func (c *RecordDescription) Expression() string {
-	var s = make([]string, len(c.Fields))
-	for i, f := range c.Fields {
-		s[i] = f.Expression()
-	}
-	return fmt.Sprintf(" as (%s)", strings.Join(s, ", "))
-}
+func (c *NotNullClause) expression() int { return 0 }
 
-func (c *EnumDescription) Expression() string {
-	// TODO caution. may sql inject by '
-	return fmt.Sprintf(" as enum ('%s')", strings.Join(c.Values, "', '"))
-}
-
-func (c *TypeDescription) Expression() string {
-	colType := c.Type
-	if c.Length != nil {
-		colType += "(" + utils.NonEmptyStringsConcatCommaSeparated(c.Length, c.Precision) + ")"
-	}
-	nullable := " null"
-	if c.Null == NullableNotNull {
-		nullable = " not null"
-	}
-	defValue := ""
-	if c.Default != nil {
-		defValue = " default " + *c.Default
-	}
-	check := ""
-	if c.Check != nil {
-		check = " check(" + *c.Check + ")"
-	}
-	return colType + nullable + defValue + check
+func (c *NotNullClause) dependedOn() Dependencies {
+	return nil
 }
