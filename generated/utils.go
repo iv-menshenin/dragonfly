@@ -3,9 +3,11 @@ package generated
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"gopkg.in/yaml.v2"
+	"strings"
 )
 
 type (
@@ -61,6 +63,17 @@ func (c *SqlStringArray) Scan(i interface{}) error {
 	}
 }
 
+func (c SqlStringArray) Value() (driver.Value, error) {
+	if len(c) == 0 {
+		return nil, nil
+	}
+	var serialized = make([]string, 0, len(c))
+	for _, v := range c {
+		serialized = append(serialized, fmt.Sprintf("'%s'", strings.Replace(v, "'", "''", -1)))
+	}
+	return fmt.Sprintf("{%s}", strings.Join(serialized, ",")), nil
+}
+
 func (c *SqlIntegerArray) Scan(i interface{}) error {
 	if u, ok := i.([]uint8); ok {
 		u[0] = '['
@@ -69,6 +82,17 @@ func (c *SqlIntegerArray) Scan(i interface{}) error {
 	} else {
 		return errors.New("unexpected data")
 	}
+}
+
+func (c SqlIntegerArray) Value() (driver.Value, error) {
+	if len(c) == 0 {
+		return nil, nil
+	}
+	var serialized = make([]string, 0, len(c))
+	for _, v := range c {
+		serialized = append(serialized, fmt.Sprintf("%d", v))
+	}
+	return fmt.Sprintf("{%s}", strings.Join(serialized, ",")), nil
 }
 
 func (c *SqlUnsignedArray) Scan(i interface{}) error {
@@ -81,6 +105,17 @@ func (c *SqlUnsignedArray) Scan(i interface{}) error {
 	}
 }
 
+func (c SqlUnsignedArray) Value() (driver.Value, error) {
+	if len(c) == 0 {
+		return nil, nil
+	}
+	var serialized = make([]string, 0, len(c))
+	for _, v := range c {
+		serialized = append(serialized, fmt.Sprintf("%d", v))
+	}
+	return fmt.Sprintf("{%s}", strings.Join(serialized, ",")), nil
+}
+
 func (c *SqlFloatArray) Scan(i interface{}) error {
 	if u, ok := i.([]uint8); ok {
 		u[0] = '['
@@ -89,4 +124,15 @@ func (c *SqlFloatArray) Scan(i interface{}) error {
 	} else {
 		return errors.New("unexpected data")
 	}
+}
+
+func (c SqlFloatArray) Value() (driver.Value, error) {
+	if len(c) == 0 {
+		return nil, nil
+	}
+	var serialized = make([]string, 0, len(c))
+	for _, v := range c {
+		serialized = append(serialized, fmt.Sprintf("%f", v))
+	}
+	return fmt.Sprintf("{%s}", strings.Join(serialized, ",")), nil
 }
