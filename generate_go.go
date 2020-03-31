@@ -133,7 +133,7 @@ func (c *Column) describeGO() fieldDescriber {
 func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	var decorator = func(e ast.Expr) ast.Expr { return e }
 	if c.Value.Schema.Value.IsArray {
-		decorator = builders.MakeArrayType
+		decorator = builders.MakeSqlFieldArrayType
 	} else if !required {
 		decorator = builders.MakeStarExpression
 	}

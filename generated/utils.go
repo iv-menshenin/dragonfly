@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"gopkg.in/yaml.v2"
 )
 
 type (
@@ -41,4 +42,51 @@ func getDatabase(ctx context.Context) (*sql.DB, error) {
 		return db, nil
 	}
 	return nil, errors.New("cannot get connection from context")
+}
+
+type (
+	SqlStringArray   []string
+	SqlIntegerArray  []int64
+	SqlUnsignedArray []uint64
+	SqlFloatArray    []float64
+)
+
+func (c *SqlStringArray) Scan(i interface{}) error {
+	if u, ok := i.([]uint8); ok {
+		u[0] = '['
+		u[len(u)-1] = ']'
+		return yaml.Unmarshal(u, c)
+	} else {
+		return errors.New("unexpected data")
+	}
+}
+
+func (c *SqlIntegerArray) Scan(i interface{}) error {
+	if u, ok := i.([]uint8); ok {
+		u[0] = '['
+		u[len(u)-1] = ']'
+		return yaml.Unmarshal(u, c)
+	} else {
+		return errors.New("unexpected data")
+	}
+}
+
+func (c *SqlUnsignedArray) Scan(i interface{}) error {
+	if u, ok := i.([]uint8); ok {
+		u[0] = '['
+		u[len(u)-1] = ']'
+		return yaml.Unmarshal(u, c)
+	} else {
+		return errors.New("unexpected data")
+	}
+}
+
+func (c *SqlFloatArray) Scan(i interface{}) error {
+	if u, ok := i.([]uint8); ok {
+		u[0] = '['
+		u[len(u)-1] = ']'
+		return yaml.Unmarshal(u, c)
+	} else {
+		return errors.New("unexpected data")
+	}
 }

@@ -64,6 +64,25 @@ func MakeArrayType(expr ast.Expr) ast.Expr {
 	}
 }
 
+func MakeSqlFieldArrayType(expr ast.Expr) ast.Expr {
+	if i, ok := expr.(*ast.Ident); ok {
+		switch i.Name {
+		case "string":
+			return ast.NewIdent("SqlStringArray")
+		case "int", "int4", "int8", "int16", "int32", "int64":
+			return ast.NewIdent("SqlIntegerArray")
+		case "uint", "uint4", "uint8", "uint16", "uint32", "uint64":
+			return ast.NewIdent("SqlUnsignedArray")
+		case "float32", "float64":
+			return ast.NewIdent("SqlFloatArray")
+		default:
+			return MakeArrayType(expr)
+		}
+	} else {
+		return MakeArrayType(expr)
+	}
+}
+
 func MakeNotEqualExpression(left, right ast.Expr) ast.Expr {
 	return &ast.BinaryExpr{
 		X:  left,
