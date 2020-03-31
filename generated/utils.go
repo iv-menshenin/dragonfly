@@ -14,7 +14,7 @@ type (
 )
 
 var (
-	EmptyResult        = errors.New("got empty result")
+	sqlEmptyResult     = errors.New("got empty result")
 	SingletonViolation = errors.New("singleton violation")
 )
 
@@ -23,7 +23,7 @@ func makeTypeValueError(typeName, gotValue string) EnumValueError {
 }
 
 func IsEmptyResult(err error) bool {
-	return err == EmptyResult
+	return err == sqlEmptyResult
 }
 
 func EncryptField(input, salt string) string {

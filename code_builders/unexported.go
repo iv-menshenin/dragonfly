@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+const (
+	sqlSingletonViolationErrorName = "SingletonViolation"
+)
+
 func makeImportSpec(lPos *token.Pos, imports map[string]string) []ast.Spec {
 	var impSpec = make([]ast.Spec, 0, len(imports))
 	for packageKey, packagePath := range imports {
@@ -332,7 +336,7 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 					Body: MakeBlockStmt(
 						MakeReturn(
 							ast.NewIdent("row"),
-							ast.NewIdent("SingletonViolation"),
+							ast.NewIdent(sqlSingletonViolationErrorName),
 						),
 					),
 					Else: MakeReturn(

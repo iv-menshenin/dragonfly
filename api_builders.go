@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+const (
+	sqlEmptyResultErrorName = "sqlEmptyResult"
+)
+
 func exprToString(expr ast.Expr) string {
 	if i, ok := expr.(*ast.StarExpr); ok {
 		return exprToString(i.X)
@@ -100,7 +104,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			resultExpr = ast.NewIdent(rowStructName)
 			lastReturn = builders.MakeReturn(
 				ast.NewIdent("result"),
-				ast.NewIdent("EmptyResult"),
+				ast.NewIdent(sqlEmptyResultErrorName),
 			)
 		case findVariantAll:
 			scanBlockWrapper = builders.WrapperFindAll
@@ -200,7 +204,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			resultExpr = ast.NewIdent(rowStructName)
 			lastReturn = builders.MakeReturn(
 				ast.NewIdent("result"),
-				ast.NewIdent("EmptyResult"),
+				ast.NewIdent(sqlEmptyResultErrorName),
 			)
 		case findVariantAll:
 			scanBlockWrapper = builders.WrapperFindAll
@@ -292,7 +296,7 @@ func updateOneBuilder(
 	scanBlockWrapper := builders.WrapperFindOne
 	lastReturn := builders.MakeReturn(
 		ast.NewIdent("result"),
-		ast.NewIdent("EmptyResult"),
+		ast.NewIdent(sqlEmptyResultErrorName),
 	)
 	var (
 		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
@@ -385,7 +389,7 @@ func insertOneBuilder(
 	scanBlockWrapper := builders.WrapperFindOne
 	lastReturn := builders.MakeReturn(
 		ast.NewIdent("result"),
-		ast.NewIdent("EmptyResult"),
+		ast.NewIdent(sqlEmptyResultErrorName),
 	)
 	var (
 		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
