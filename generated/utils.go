@@ -54,6 +54,9 @@ type (
 )
 
 func (c *SqlStringArray) Scan(i interface{}) error {
+	if i == nil {
+		return nil
+	}
 	if u, ok := i.([]uint8); ok {
 		u[0] = '['
 		u[len(u)-1] = ']'
@@ -75,6 +78,9 @@ func (c SqlStringArray) Value() (driver.Value, error) {
 }
 
 func (c *SqlIntegerArray) Scan(i interface{}) error {
+	if i == nil {
+		return nil
+	}
 	if u, ok := i.([]uint8); ok {
 		u[0] = '['
 		u[len(u)-1] = ']'
@@ -96,6 +102,9 @@ func (c SqlIntegerArray) Value() (driver.Value, error) {
 }
 
 func (c *SqlUnsignedArray) Scan(i interface{}) error {
+	if i == nil {
+		return nil
+	}
 	if u, ok := i.([]uint8); ok {
 		u[0] = '['
 		u[len(u)-1] = ']'
@@ -117,6 +126,9 @@ func (c SqlUnsignedArray) Value() (driver.Value, error) {
 }
 
 func (c *SqlFloatArray) Scan(i interface{}) error {
+	if i == nil {
+		return nil
+	}
 	if u, ok := i.([]uint8); ok {
 		u[0] = '['
 		u[len(u)-1] = ']'
