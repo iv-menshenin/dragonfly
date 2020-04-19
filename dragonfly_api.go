@@ -15,14 +15,17 @@ func databaseWork(
 	options ConnectionOptions,
 	fn func(*sql.DB) error,
 ) error {
-	dbConnectionString := fmt.Sprintf(
-		"%s://%s:%s@%s/%s",
-		options.Driver,
-		url.QueryEscape(options.UserName),
-		url.QueryEscape(options.Password),
-		options.Host,
-		options.Database,
-	)
+	dbConnectionString := options.ConnStr
+	if dbConnectionString == "" {
+		dbConnectionString = fmt.Sprintf(
+			"%s://%s:%s@%s/%s",
+			options.Driver,
+			url.QueryEscape(options.UserName),
+			url.QueryEscape(options.Password),
+			options.Host,
+			options.Database,
+		)
+	}
 	if db, err := sql.Open(options.Driver, dbConnectionString); err != nil {
 		return err
 	} else {

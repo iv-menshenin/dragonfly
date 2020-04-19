@@ -886,6 +886,7 @@ type (
 		Password string
 		Host     string
 		Database string
+		ConnStr  string
 	}
 )
 

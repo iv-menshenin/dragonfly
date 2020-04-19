@@ -20,9 +20,9 @@ type (
 		OutputFormat *string
 		Schema       *string
 		PackageName  *string
+		Connection   *string
 		ShowHelp     *bool
 	}
-	arrayStringFinder []string
 )
 
 const (
@@ -32,15 +32,6 @@ const (
 	ToDoReverse  ToDo = "reverse"
 	ToDoHelp     ToDo = "help"
 )
-
-func (a arrayStringFinder) exists(s string) bool {
-	for _, e := range a {
-		if e == s {
-			return true
-		}
-	}
-	return false
-}
 
 func printWithoutOperationError() {
 	raise(errors.New("you must select one of the valid operations: validate, generate or help"))
@@ -98,6 +89,7 @@ func initFlags() ProgramParams {
 		OutputFile:  fsDiff.String("output", os.Stdout.Name(), "file to output"),
 		PackageName: fsDiff.String("package", "generated", "go package name"),
 		Schema:      fsDiff.String("schema", "", "generate code for schema"),
+		Connection:  fsDiff.String("connection", os.Stdout.Name(), "connection string"),
 	}
 	flagSets[ToDoDiff] = fsDiff
 
@@ -105,6 +97,7 @@ func initFlags() ProgramParams {
 	parameters[ToDoReverse] = ProgramParams{
 		ToDo:       ToDoReverse,
 		OutputFile: fsReverse.String("output", os.Stdout.Name(), "file to output"),
+		Connection: fsReverse.String("connection", os.Stdout.Name(), "connection string"),
 	}
 	flagSets[ToDoReverse] = fsReverse
 
@@ -185,6 +178,7 @@ func main() {
 				Password: os.Getenv("DB_PASSWORD"),
 				Host:     os.Getenv("DB_HOST"),
 				Database: os.Getenv("DB_NAME"),
+				ConnStr:  *state.Connection,
 			}); e != nil {
 				return e
 			}
@@ -208,6 +202,7 @@ func main() {
 				Password: os.Getenv("DB_PASSWORD"),
 				Host:     os.Getenv("DB_HOST"),
 				Database: os.Getenv("DB_NAME"),
+				ConnStr:  *state.Connection,
 			}); e != nil {
 				return e
 			}
