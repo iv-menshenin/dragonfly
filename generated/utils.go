@@ -18,6 +18,7 @@ type (
 var (
 	sqlEmptyResult     = errors.New("got empty result")
 	SingletonViolation = errors.New("singleton violation")
+	UUID               []byte
 )
 
 func makeTypeValueError(typeName, gotValue string) EnumValueError {

@@ -598,6 +598,7 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 
 var (
 	knownTypes = map[string]makeDescriber{
+		"uuid":        makeSimpleDescriber("UUID", "", ""),
 		"smallserial": makeSimpleDescriber("int16", "", ""),
 		"serial":      makeSimpleDescriber("int32", "", ""),
 		"bigserial":   makeSimpleDescriber("int64", "", ""),
@@ -627,6 +628,7 @@ var (
 		"double precision": makeSimpleDescriber("float64", "", ""),
 	}
 	formatTypes = map[string]string{
+		"uuid":        "%v",
 		"smallserial": "%d",
 		"serial":      "%d",
 		"bigserial":   "%d",
