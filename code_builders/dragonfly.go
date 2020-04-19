@@ -113,6 +113,7 @@ var (
 
 const (
 	TagTypeSQL   = "sql"
+	TagTypeJSON  = "json"
 	TagTypeUnion = "union"    // TODO internal, remove from export
 	TagTypeOp    = "operator" // TODO internal, remove from export
 )

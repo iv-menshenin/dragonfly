@@ -9,6 +9,7 @@ import (
 	"go/printer"
 	"io"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -110,12 +111,26 @@ func (c *DomainSchema) describeGO(typeName string) fieldDescriber {
 	return goTypeParametersBySqlType(typeName, c)
 }
 
-func (c *Column) tags() []string {
-	var tags = append([]string{c.Name}, c.Tags...)
-	if c.Schema.Value.NotNull {
-		tags = append(tags, "required")
+func (c *Column) tags(name string) (tags []string) {
+	if name == builders.TagTypeSQL {
+		tags = append([]string{c.Name}, c.Tags...)
 	} else {
-		tags = append(tags, "omitempty")
+		tagTemplate := regexp.MustCompile(fmt.Sprintf(`^%s\((\w+)\)$`, name))
+		fieldName := "-"
+		for _, tag := range c.Tags {
+			sub := tagTemplate.FindAllStringSubmatch(tag, -1)
+			if len(sub) > 0 {
+				fieldName = sub[0][1]
+			}
+		}
+		tags = append(tags, fieldName)
+	}
+	if len(tags) > 0 && tags[0] != "-" {
+		if c.Schema.Value.NotNull {
+			tags = append(tags, "required")
+		} else {
+			tags = append(tags, "omitempty")
+		}
 	}
 	return tags
 }
@@ -150,7 +165,8 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 		},
 		Type: decorator(fieldType),
 		Tag: builders.MakeTagsForField(map[string][]string{
-			"sql": c.Value.tags(),
+			builders.TagTypeSQL:  c.Value.tags(builders.TagTypeSQL),
+			builders.TagTypeJSON: c.Value.tags(builders.TagTypeJSON),
 		}),
 		Comment: builders.MakeComment([]string{c.Value.Description}),
 	}

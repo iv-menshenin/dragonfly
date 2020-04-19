@@ -3,6 +3,7 @@ package builders
 import (
 	"fmt"
 	"go/ast"
+	"sort"
 	"strings"
 )
 
@@ -14,6 +15,7 @@ func MakeTagsForField(tags map[string][]string) *ast.BasicLit {
 	for key, val := range tags {
 		arrTags = append(arrTags, fmt.Sprintf("%s:\"%s\"", key, strings.Join(val, ",")))
 	}
+	sort.Strings(arrTags)
 	return &ast.BasicLit{
 		ValuePos: 0,
 		Kind:     0,
