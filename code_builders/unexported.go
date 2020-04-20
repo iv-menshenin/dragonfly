@@ -14,6 +14,21 @@ const (
 	sqlSingletonViolationErrorName = "SingletonViolation"
 )
 
+type (
+	iOperator interface {
+		makeArrayQueryOption(string, string, string, bool, builderOptions) []ast.Stmt
+		makeUnionQueryOption(ast.Expr, []string, bool, builderOptions) []ast.Stmt
+		makeScalarQueryOption(string, string, string, bool, bool, builderOptions) []ast.Stmt
+		makeStarQueryOption(string, string, string, bool, builderOptions) []ast.Stmt
+	}
+	opRegular struct {
+		operator string
+	}
+	opInline struct {
+		operator string
+	}
+)
+
 func makeImportSpec(lPos *token.Pos, imports map[string]string) []ast.Spec {
 	var impSpec = make([]ast.Spec, 0, len(imports))
 	for packageKey, packagePath := range imports {
@@ -37,8 +52,8 @@ func makeImportSpec(lPos *token.Pos, imports map[string]string) []ast.Spec {
 	return impSpec
 }
 
-func makeArrayQueryOption(
-	optionName, fieldName, columnName, operator string,
+func (op opRegular) makeArrayQueryOption(
+	optionName, fieldName, columnName string,
 	ci bool,
 	options builderOptions,
 ) []ast.Stmt {
@@ -89,7 +104,7 @@ func makeArrayQueryOption(
 						ast.NewIdent(options.variableForColumnExpr.String()),
 						MakeCallExpression(
 							SprintfFn,
-							MakeBasicLiteralString(operator),
+							MakeBasicLiteralString(op.operator),
 							MakeBasicLiteralString(columnName),
 							MakeCallExpression(
 								StringsJoinFn,
@@ -104,10 +119,9 @@ func makeArrayQueryOption(
 	}
 }
 
-func makeUnionQueryOption(
+func (op opRegular) makeUnionQueryOption(
 	optionExpr ast.Expr,
 	columnNames []string,
-	operator string,
 	ci bool,
 	options builderOptions,
 ) []ast.Stmt {
@@ -117,9 +131,9 @@ func makeUnionQueryOption(
 		}
 		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
 	}
-	operators := make([]string, 0, len(operator))
+	operators := make([]string, 0, len(op.operator))
 	for _, _ = range columnNames {
-		operators = append(operators, operator)
+		operators = append(operators, op.operator)
 	}
 	callArgs := make([]ast.Expr, 0, len(columnNames)*2)
 	for _, c := range columnNames {
@@ -158,8 +172,8 @@ func makeUnionQueryOption(
 	}
 }
 
-func makeScalarQueryOption(
-	optionName, fieldName, columnName, operator string,
+func (op opRegular) makeScalarQueryOption(
+	optionName, fieldName, columnName string,
 	ci, ref bool,
 	options builderOptions,
 ) []ast.Stmt {
@@ -187,7 +201,7 @@ func makeScalarQueryOption(
 				ast.NewIdent(options.variableForColumnExpr.String()),
 				MakeCallExpression(
 					SprintfFn,
-					MakeBasicLiteralString(operator),
+					MakeBasicLiteralString(op.operator),
 					MakeBasicLiteralString(columnName),
 					MakeAddExpressions(
 						MakeBasicLiteralString("$"),
@@ -202,8 +216,8 @@ func makeScalarQueryOption(
 	}
 }
 
-func makeStarQueryOption(
-	optionName, fieldName, columnName, operator string,
+func (op opRegular) makeStarQueryOption(
+	optionName, fieldName, columnName string,
 	ci bool,
 	options builderOptions,
 ) []ast.Stmt {
@@ -211,7 +225,170 @@ func makeStarQueryOption(
 		&ast.IfStmt{
 			Cond: MakeNotEqualExpression(MakeSelectorExpression(optionName, fieldName), Nil),
 			Body: MakeBlockStmt(
-				makeScalarQueryOption(optionName, fieldName, columnName, operator, ci, true, options)...,
+				op.makeScalarQueryOption(optionName, fieldName, columnName, ci, true, options)...,
+			),
+		},
+	}
+}
+
+// TODO
+func (op opInline) makeArrayQueryOption(
+	optionName, fieldName, columnName string,
+	ci bool,
+	options builderOptions,
+) []ast.Stmt {
+	const (
+		localVariable = "opt"
+	)
+	var optionExpr ast.Expr = ast.NewIdent(localVariable)
+	if ci {
+		columnName = fmt.Sprintf("lower(%s)", columnName)
+		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
+	}
+	// for placeholders only
+	var arrVariableName = fmt.Sprintf("array%s", fieldName)
+	return []ast.Stmt{
+		MakeVarStatement(MakeVarType(arrVariableName, MakeArrayType(ast.NewIdent("string")))),
+		&ast.RangeStmt{
+			Key:   ast.NewIdent("_"),
+			Value: ast.NewIdent(localVariable),
+			X:     MakeSelectorExpression(optionName, fieldName),
+			Tok:   token.DEFINE,
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					MakeAssignment([]string{options.variableForColumnValues.String()}, MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
+					MakeAssignment(
+						[]string{arrVariableName},
+						MakeCallExpression(
+							AppendFn,
+							ast.NewIdent(arrVariableName),
+							MakeAddExpressions(
+								MakeBasicLiteralString("$"),
+								MakeCallExpression(
+									ConvertItoaFn,
+									MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+								),
+							),
+						),
+					),
+				},
+			},
+		},
+		&ast.IfStmt{
+			Cond: MakeNotEmptyArrayExpression(arrVariableName),
+			Body: MakeBlockStmt(
+				MakeAssignment(
+					[]string{options.variableForColumnExpr.String()},
+					MakeCallExpression(
+						AppendFn,
+						ast.NewIdent(options.variableForColumnExpr.String()),
+						MakeCallExpression(
+							SprintfFn,
+							MakeBasicLiteralString(op.operator),
+							MakeBasicLiteralString(columnName),
+							MakeCallExpression(
+								StringsJoinFn,
+								ast.NewIdent(arrVariableName),
+								MakeBasicLiteralString(", "),
+							),
+						),
+					),
+				),
+			),
+		},
+	}
+}
+
+// TODO
+func (op opInline) makeUnionQueryOption(
+	optionExpr ast.Expr,
+	columnNames []string,
+	ci bool,
+	options builderOptions,
+) []ast.Stmt {
+	if ci {
+		for i, c := range columnNames {
+			columnNames[i] = fmt.Sprintf("lower(%s)", c)
+		}
+		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
+	}
+	operators := make([]string, 0, len(op.operator))
+	for _, _ = range columnNames {
+		operators = append(operators, op.operator)
+	}
+	callArgs := make([]ast.Expr, 0, len(columnNames)*2)
+	for _, c := range columnNames {
+		callArgs = append(
+			callArgs,
+			MakeBasicLiteralString(c),
+			MakeAddExpressions(
+				MakeBasicLiteralString("$"),
+				MakeCallExpression(
+					ConvertItoaFn,
+					MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+				),
+			),
+		)
+	}
+	return []ast.Stmt{
+		MakeAssignment(
+			[]string{options.variableForColumnValues.String()},
+			MakeCallExpression(
+				AppendFn,
+				ast.NewIdent(options.variableForColumnValues.String()),
+				optionExpr,
+			),
+		),
+		MakeAssignment(
+			[]string{options.variableForColumnExpr.String()},
+			MakeCallExpression(
+				AppendFn,
+				ast.NewIdent(options.variableForColumnExpr.String()),
+				MakeCallExpression(
+					SprintfFn,
+					append([]ast.Expr{MakeBasicLiteralString(strings.Join(operators, " or "))}, callArgs...)...,
+				),
+			),
+		),
+	}
+}
+
+func (op opInline) makeScalarQueryOption(
+	optionName, fieldName, columnName string,
+	ci, ref bool,
+	options builderOptions,
+) []ast.Stmt {
+	var optionExpr = MakeSelectorExpression(optionName, fieldName)
+	if ref {
+		optionExpr = MakeStarExpression(optionExpr)
+	}
+	return []ast.Stmt{
+		MakeAssignment(
+			[]string{options.variableForColumnExpr.String()},
+			MakeCallExpression(
+				AppendFn,
+				ast.NewIdent(options.variableForColumnExpr.String()),
+				MakeCallExpression(
+					SprintfFn,
+					MakeBasicLiteralString(op.operator),
+					MakeBasicLiteralString(columnName),
+					optionExpr,
+				),
+			),
+		),
+	}
+}
+
+func (op opInline) makeStarQueryOption(
+	optionName, fieldName, columnName string,
+	ci bool,
+	options builderOptions,
+) []ast.Stmt {
+	return []ast.Stmt{
+		&ast.IfStmt{
+			Cond: MakeNotEqualExpression(MakeSelectorExpression(optionName, fieldName), Nil),
+			Body: MakeBlockStmt(
+				op.makeScalarQueryOption(optionName, fieldName, columnName, ci, true, options)...,
 			),
 		},
 	}

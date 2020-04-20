@@ -161,30 +161,29 @@ func (c SQLDataCompareOperator) IsMult() bool {
 	return false
 }
 
-func (c SQLDataCompareOperator) getRawExpression() string {
-	c.Check()
-	templates := map[SQLDataCompareOperator]string{
-		CompareEqual:     `%s = %s`,
-		CompareNotEqual:  `% != %s`,
-		CompareLike:      `%s like %s`,
-		CompareNotLike:   `%s not like %s`,
-		CompareIn:        `%s in (%s)`,
-		CompareNotIn:     `%s not in (%s)`,
-		CompareGreatThan: `%s > %s`,
-		CompareLessThan:  `%s < %s`,
-		CompareNotGreat:  `%s <= %s`,
-		CompareNotLess:   `%s >= %s`,
-		CompareStarts:    `%s starts with %s`,
-		CompareIsNull:    `%s is %s`,
+var (
+	knownOperators = map[SQLDataCompareOperator]iOperator{
+		CompareEqual:     opRegular{`%s = %s`},
+		CompareNotEqual:  opRegular{`% != %s`},
+		CompareLike:      opRegular{`%s like %s`},
+		CompareNotLike:   opRegular{`%s not like %s`},
+		CompareIn:        opRegular{`%s in (%s)`},
+		CompareNotIn:     opRegular{`%s not in (%s)`},
+		CompareGreatThan: opRegular{`%s > %s`},
+		CompareLessThan:  opRegular{`%s < %s`},
+		CompareNotGreat:  opRegular{`%s <= %s`},
+		CompareNotLess:   opRegular{`%s >= %s`},
+		CompareStarts:    opRegular{`%s starts with %s`},
+		CompareIsNull:    opInline{`%s is %s`},
 	}
-	if template, ok := templates[c]; ok {
+)
+
+func (c SQLDataCompareOperator) getBuilder() iOperator {
+	c.Check()
+	if template, ok := knownOperators[c]; ok {
 		return template
 	}
 	panic(fmt.Sprintf("cannot find template for operator '%s'", string(c)))
-}
-
-func (c SQLDataCompareOperator) GetExpression(sLeft, sRight string) string {
-	return fmt.Sprintf(c.getRawExpression(), sLeft, sRight)
 }
 
 // get a list of table columns and variable fields references for the output structure.
@@ -305,24 +304,24 @@ func BuildFindArgumentsProcessor(
 			}
 			functionBody = append(
 				functionBody,
-				makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), columns, operator.getRawExpression(), ci, options)...,
+				operator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), columns, ci, options)...,
 			)
 		} else {
 			if operator.IsMult() {
 				functionBody = append(
 					functionBody,
-					makeArrayQueryOption(funcFilterOptionName, field.Names[0].Name, colName, operator.getRawExpression(), ci, options)...,
+					operator.getBuilder().makeArrayQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, options)...,
 				)
 			} else {
 				if _, ok := field.Type.(*ast.StarExpr); ok {
 					functionBody = append(
 						functionBody,
-						makeStarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, operator.getRawExpression(), ci, options)...,
+						operator.getBuilder().makeStarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, options)...,
 					)
 				} else {
 					functionBody = append(
 						functionBody,
-						makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, operator.getRawExpression(), ci, false, options)...,
+						operator.getBuilder().makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, false, options)...,
 					)
 				}
 			}
