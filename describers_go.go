@@ -598,6 +598,7 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 
 var (
 	knownTypes = map[string]makeDescriber{
+		"isnull":      makeSimpleDescriber("IsNullValue", "", ""), // overload
 		"uuid":        makeSimpleDescriber("UUID", "", ""),
 		"smallserial": makeSimpleDescriber("int16", "", ""),
 		"serial":      makeSimpleDescriber("int32", "", ""),

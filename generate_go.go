@@ -261,10 +261,8 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 	return
 }
 
+// TODO split
 func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []*ast.Field) {
-	if c == nil {
-		return
-	}
 	findBy = make([]*ast.Field, 0, len(*c))
 	for _, option := range *c {
 		operator := option.Operator
@@ -275,6 +273,25 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 				panic("the option must contains 'one_of' or 'field' not both")
 			}
 			column := table.Columns.getColumn(option.Column)
+			if operator == builders.CompareIsNull {
+				if column.Value.Schema.Value.NotNull {
+					panic(fmt.Sprintf("cannot apply operator `isNull` to not_null column `%s`", column.Value.Name))
+				}
+				column = ColumnRef{
+					Value: Column{
+						Name: column.Value.Name,
+						Schema: ColumnSchemaRef{
+							Value: DomainSchema{
+								TypeBase: TypeBase{
+									Type: "isnull",
+								},
+								NotNull: false,
+							},
+						},
+						Tags: column.Value.Tags,
+					},
+				}
+			}
 			field := column.generateField(w, option.Required || operator.IsMult())
 			if operator.IsMult() {
 				field.Type = &ast.ArrayType{

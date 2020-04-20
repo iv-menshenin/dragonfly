@@ -53,6 +53,7 @@ const (
 	CompareNotGreat  SQLDataCompareOperator = "notGreat"
 	CompareNotLess   SQLDataCompareOperator = "notLess"
 	CompareStarts    SQLDataCompareOperator = "starts"
+	CompareIsNull    SQLDataCompareOperator = "isNull"
 )
 
 func (v variableName) String() string {
@@ -131,6 +132,7 @@ var (
 		CompareNotGreat,
 		CompareNotLess,
 		CompareStarts,
+		CompareIsNull,
 	}
 	multiCompareOperators = []SQLDataCompareOperator{
 		CompareIn,
@@ -173,6 +175,7 @@ func (c SQLDataCompareOperator) getRawExpression() string {
 		CompareNotGreat:  `%s <= %s`,
 		CompareNotLess:   `%s >= %s`,
 		CompareStarts:    `%s starts with %s`,
+		CompareIsNull:    `%s is %s`,
 	}
 	if template, ok := templates[c]; ok {
 		return template
