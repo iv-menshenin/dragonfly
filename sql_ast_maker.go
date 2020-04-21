@@ -150,17 +150,21 @@ func makeInlineConstraints(notNull bool, defaultValue interface{}, check *string
 	}
 	if defaultValue != nil {
 		var defExpr sqt.SqlExpr
-		switch v := defaultValue.(type) {
+		switch val := defaultValue.(type) {
 		case string:
-			defExpr = &sqt.String{X: v}
+			if strings.ContainsAny(val, "():-+") {
+				defExpr = &sqt.Literal{Text: val}
+			} else {
+				defExpr = &sqt.String{X: val}
+			}
 		case int:
-			defExpr = &sqt.Integer{X: v}
+			defExpr = &sqt.Integer{X: val}
 		case int16:
-			defExpr = &sqt.Integer{X: int(v)}
+			defExpr = &sqt.Integer{X: int(val)}
 		case int32:
-			defExpr = &sqt.Integer{X: int(v)}
+			defExpr = &sqt.Integer{X: int(val)}
 		case bool:
-			if v {
+			if val {
 				defExpr = &sqt.True{}
 			} else {
 				defExpr = &sqt.False{}
