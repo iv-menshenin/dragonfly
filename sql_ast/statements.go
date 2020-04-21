@@ -98,7 +98,6 @@ func (c *CreateStmt) solved() (result Dependencies) {
 		if body, ok := c.Create.(*TableBodyDescriber); ok {
 			for _, f := range body.Fields {
 				result = concatDependencies(result, dependedOn3(s, o, f.Name.GetName()))
-				f.Name.GetName()
 			}
 		}
 	}

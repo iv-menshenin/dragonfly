@@ -13,7 +13,7 @@ import (
 type (
 	ContextDB      struct{}
 	EnumValueError error
-	UUID           []byte
+	UUID           string
 	IsNullValue    string
 )
 
