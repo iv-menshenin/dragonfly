@@ -2,102 +2,47 @@ package dragonfly
 
 import (
 	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
+	"sort"
 )
 
-type (
-	depTree struct {
-		dependencies sqt.Dependencies
-		statements   []sqt.SqlStmt
-	}
-)
+type sqlDepended []sqt.SqlStmt
 
-func isSameDependencies(a, b sqt.Dependencies) bool {
-	var leftScore, rightScore = 0, 0
-	for _, leftDep := range a {
-		for _, rightDep := range b {
-			if leftDep == rightDep {
-				leftScore++
+func (p sqlDepended) Len() int {
+	return len(p)
+}
+
+// TODO
+func (p sqlDepended) Less(i, j int) bool {
+	depI := sqt.ExploreDependencies(p[i])
+	depJ := sqt.ExploreDependencies(p[j])
+	resI := sqt.ExploreResolved(p[i])
+	resJ := sqt.ExploreResolved(p[j])
+	scoreI, scoreJ := 0, 0
+	for _, dep := range depI {
+		for _, res := range resJ {
+			if dep == res {
+				scoreJ++
 			}
 		}
 	}
-	for _, rightDep := range b {
-		for _, leftDep := range a {
-			if leftDep == rightDep {
-				rightScore++
+	for _, dep := range depJ {
+		for _, res := range resI {
+			if dep == res {
+				scoreI++
 			}
 		}
 	}
-	return leftScore == len(a) && rightScore == len(b)
+	if scoreI == scoreJ {
+		return p[i].String() < p[j].String()
+	} else {
+		return scoreI > scoreJ
+	}
 }
 
-func addDepTree(t []depTree, d sqt.Dependencies, s sqt.SqlStmt) []depTree {
-	for i, dt := range t {
-		if isSameDependencies(dt.dependencies, d) {
-			t[i].statements = append(t[i].statements, s)
-			return t
-		}
-	}
-	return append(t, depTree{
-		dependencies: d,
-		statements:   []sqt.SqlStmt{s},
-	})
+func (p sqlDepended) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
 }
 
-func popResolvedFrom(t []depTree) ([]depTree, []sqt.SqlStmt) {
-	var statements = make([]sqt.SqlStmt, 0, 0)
-	var dependencies = make([]depTree, 0, len(t))
-	for _, dt := range t {
-		if len(dt.dependencies) == 0 {
-			statements = append(statements, dt.statements...)
-		} else {
-			dependencies = append(dependencies, dt)
-		}
-	}
-	return dependencies, statements
-}
-
-func resolveInto(t []depTree, resolved sqt.Dependencies) []depTree {
-	for i, dt := range t {
-		currDep := dt.dependencies
-		var newDep sqt.Dependencies
-		for _, d := range currDep {
-			var isResolved = false
-			for _, r := range resolved {
-				if r == d {
-					isResolved = true
-				}
-			}
-			if !isResolved {
-				newDep = append(newDep, d)
-			}
-		}
-		t[i].dependencies = newDep
-	}
-	return t
-}
-
-func fixTheOrderOf(heap []sqt.SqlStmt) []sqt.SqlStmt {
-	var (
-		dt         []depTree
-		statements []sqt.SqlStmt
-	)
-	for _, statement := range heap {
-		dep := sqt.ExploreDependencies(statement)
-		dt = addDepTree(dt, dep, statement)
-	}
-	for {
-		var curr []sqt.SqlStmt
-		dt, curr = popResolvedFrom(dt)
-		if len(curr) == 0 {
-			break
-		}
-		statements = append(statements, curr...)
-		for _, r := range curr {
-			dt = resolveInto(dt, sqt.ExploreResolved(r))
-		}
-	}
-	for _, deps := range dt {
-		statements = append(statements, deps.statements...)
-	}
-	return statements
+func fixTheOrderOf(heap []sqt.SqlStmt) {
+	sort.Sort(sqlDepended(heap))
 }

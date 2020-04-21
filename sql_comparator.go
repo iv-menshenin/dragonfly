@@ -535,7 +535,7 @@ func (c *SchemaRef) diffPostponed(
 		}
 		if comparator := makeUnusedTypesComparator(current, schema, customTypeName, customType); comparator != nil {
 			first, second := comparator.makeSolution(current)
-			install = append(install, first...)
+			preInstall = append(preInstall, first...)
 			afterInstall = append(afterInstall, second...)
 		}
 	}
