@@ -35,6 +35,7 @@ var (
 	SprintfFn     = makeFunc(MakeSelectorExpression("fmt", "Sprintf"), 1, true)
 	TimeNowFn     = makeFunc(MakeSelectorExpression("time", "Now"), 0, false)
 
+	// WARNING do not forget about Close
 	DbQueryFn  = makeFunc(MakeSelectorExpression("db", "Query"), 1, true)
 	RowsNextFn = makeFunc(MakeSelectorExpression("rows", "Next"), 0, false)
 	RowsErrFn  = makeFunc(MakeSelectorExpression("rows", "Err"), 0, false)
@@ -64,6 +65,21 @@ func MakeComment(comment []string) *ast.CommentGroup {
 			{
 				Text: " /* " + strings.Join(comment, "\n") + " */",
 			},
+		},
+	}
+}
+
+func MakeDeferCallStatement(fn CallFunctionDescriber, args ...ast.Expr) ast.Stmt {
+	if fn.MinimumNumberOfArguments > len(args) {
+		panic("the minimum number of arguments has not been reached")
+	}
+	if !fn.ExtensibleNumberOfArguments && len(args) > fn.MinimumNumberOfArguments {
+		panic("the maximum number of arguments exceeded")
+	}
+	return &ast.DeferStmt{
+		Call: &ast.CallExpr{
+			Fun:  fn.FunctionName,
+			Args: args,
 		},
 	}
 }

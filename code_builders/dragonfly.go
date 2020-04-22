@@ -258,6 +258,9 @@ func BuildExecutionBlockForFunction(
 				ast.NewIdent(options.variableNameForArguments.String()),
 			),
 		),
+		MakeDeferCallStatement(
+			CallFunctionDescriber{MakeSelectorExpression("rows", "Close"), 0, false},
+		),
 		scanBlock(
 			MakeVarStatement(MakeVarType(options.rowVariableName.String(), ast.NewIdent(options.rowStructTypeName.String()))),
 			MakeAssignmentWithErrChecking(
