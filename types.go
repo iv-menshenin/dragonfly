@@ -9,6 +9,7 @@ import (
 	"github.com/iv-menshenin/dragonfly/utils"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -565,6 +566,33 @@ func (c TablesContainer) tryToFind(name string) (*Table, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (c TablesContainer) getNames() []string {
+	var result = make([]string, 0, len(c))
+	for tableName := range c {
+		result = append(result, tableName)
+	}
+	sort.Sort(sort.StringSlice(result))
+	return result
+}
+
+func (c TypesContainer) getNames() []string {
+	var result = make([]string, 0, len(c))
+	for tableName := range c {
+		result = append(result, tableName)
+	}
+	sort.Sort(sort.StringSlice(result))
+	return result
+}
+
+func (c DomainsContainer) getNames() []string {
+	var result = make([]string, 0, len(c))
+	for tableName := range c {
+		result = append(result, tableName)
+	}
+	sort.Sort(sort.StringSlice(result))
+	return result
 }
 
 func (c ColumnsContainer) exists(name string) bool {

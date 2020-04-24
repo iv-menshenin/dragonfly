@@ -422,13 +422,15 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 }
 
 func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
-	for typeName, typeSchema := range c.Value.Types {
+	for _, typeName := range c.Value.Types.getNames() {
+		typeSchema := c.Value.Types[typeName]
 		typeName = c.Value.Name + "." + typeName
 		if err := mergeCodeBase(w, typeSchema.generateType(schemaName, typeName)); err != nil {
 			panic(err)
 		}
 	}
-	for tableName, table := range c.Value.Tables {
+	for _, tableName := range c.Value.Tables.getNames() {
+		table := c.Value.Tables[tableName]
 		var (
 			structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
 			resultFields = table.generateFields(w)
