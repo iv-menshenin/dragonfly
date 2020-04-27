@@ -453,3 +453,112 @@ func insertOneBuilder(
 		},
 	}
 }
+
+func upsertBuilder(
+	fullTableName, functionName, rowStructName string,
+	optionFields, mutableFields, rowFields []*ast.Field,
+) AstDataChain {
+	const (
+		sqlTextName = "sqlText"
+	)
+	resultExpr := ast.NewIdent(rowStructName)
+	scanBlockWrapper := builders.WrapperFindOne
+	lastReturn := builders.MakeReturn(
+		ast.NewIdent("result"),
+		ast.NewIdent(sqlEmptyResultErrorName),
+	)
+	var (
+		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
+		_, uniqueColumns         = builders.ExtractDestinationFieldRefsFromStruct("", optionFields)
+	)
+	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) on conflict (%s) do update set %%s returning %s", fullTableName, strings.Join(uniqueColumns, ","), strings.Join(outColumnList, ", "))
+	functionBody, functionTypes, functionAttrs := builders.BuildInputValuesProcessor(
+		"record",
+		makeExportedName(functionName+"Values"),
+		mutableFields,
+		builders.InsertBuilderOptions,
+	)
+	functionBody = append(
+		functionBody,
+		builders.MakeDefinition(
+			[]string{"update"},
+			builders.MakeCallExpression(
+				builders.MakeFn,
+				builders.MakeArrayType(ast.NewIdent("string")),
+				builders.MakeBasicLiteralInteger(0),
+				builders.MakeCallExpression(builders.LengthFn, ast.NewIdent(builders.FieldsVariable.String())),
+			),
+		),
+		builders.MakeRangeStatement(
+			"i", "", ast.NewIdent(builders.FieldsVariable.String()),
+			builders.MakeBlockStmt(
+				builders.MakeAssignment(
+					[]string{"update"},
+					builders.MakeCallExpression(
+						builders.AppendFn,
+						ast.NewIdent("update"),
+						builders.MakeCallExpression(
+							builders.SprintfFn,
+							builders.MakeBasicLiteralString("%s = %s"),
+							builders.MakeIndexExpression(ast.NewIdent(builders.FieldsVariable.String()), ast.NewIdent("i")),
+							builders.MakeIndexExpression(ast.NewIdent(builders.ValuesVariable.String()), ast.NewIdent("i")),
+						),
+					),
+				),
+			),
+		),
+		builders.MakeAssignment(
+			[]string{sqlTextName},
+			builders.MakeCallExpression(
+				builders.SprintfFn,
+				ast.NewIdent(sqlTextName),
+				builders.MakeCallExpression(
+					builders.StringsJoinFn,
+					ast.NewIdent(builders.FieldsVariable.String()),
+					builders.MakeBasicLiteralString(", "),
+				),
+				builders.MakeCallExpression(
+					builders.StringsJoinFn,
+					ast.NewIdent(builders.ValuesVariable.String()),
+					builders.MakeBasicLiteralString(", "),
+				),
+				builders.MakeCallExpression(
+					builders.StringsJoinFn,
+					ast.NewIdent("update"),
+					builders.MakeBasicLiteralString(", "),
+				),
+			),
+		),
+	)
+	functionBody = append(
+		append(
+			functionBody,
+			builders.BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, builders.MakeExecutionOption(rowStructName, sqlTextName))...,
+		),
+		lastReturn,
+	)
+	functionBody = addVariablesToFunctionBody(
+		functionBody,
+		sqlTextName,
+		sqlQuery,
+		builders.MakeVarValue(
+			builders.ArgsVariable.String(),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+		),
+		builders.MakeVarValue(
+			builders.FieldsVariable.String(),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+		),
+		builders.MakeVarValue(
+			builders.ValuesVariable.String(),
+			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+		),
+	)
+	return AstDataChain{
+		Types:     functionTypes,
+		Constants: nil,
+		Implementations: map[string]*ast.FuncDecl{
+			functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
+		},
+	}
+}

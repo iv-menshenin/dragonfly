@@ -129,7 +129,7 @@ type (
 	ApiFindOption struct {
 		Column   string                          `yaml:"column,omitempty" json:"column,omitempty"`
 		Required bool                            `yaml:"required,omitempty" json:"required,omitempty"`
-		OneOf    []ApiFindOption                 `yaml:"one_of,omitempty" json:"one_of,omitempty"`
+		OneOf    []string                        `yaml:"one_of,omitempty" json:"one_of,omitempty"`
 		Operator builders.SQLDataCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 	}
 	ApiFindOptions []ApiFindOption

@@ -117,8 +117,9 @@ func MakeEmptyRoot() Root {
 	}
 }
 
-func RegisterApiBuilder(typeName string, builderFunc ApiFuncBuilder) {
-	funcTemplates[typeName] = builderFunc
+func RegisterApiBuilder(typeName string, operation ApiDbOperation, builderFunc ApiFuncBuilder) {
+	apiTypeIsOperation[ApiType(typeName)] = operation
+	funcTemplates[ApiType(typeName)] = builderFunc
 }
 
 func (c *Diff) Print(w io.Writer) {

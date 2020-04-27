@@ -111,6 +111,15 @@ func MakeCallExpressionEllipsis(fn CallFunctionDescriber, args ...ast.Expr) *ast
 	}
 }
 
+func MakeIndexExpression(x, index ast.Expr) ast.Expr {
+	return &ast.IndexExpr{
+		X:      x,
+		Lbrack: 1,
+		Index:  index,
+		Rbrack: 2,
+	}
+}
+
 func MakeBlockStmt(statements ...ast.Stmt) *ast.BlockStmt {
 	return &ast.BlockStmt{
 		List: statements,
@@ -200,5 +209,24 @@ func MakeDefinition(lhs []string, rhs ...ast.Expr) ast.Stmt {
 		Lhs: lhsExpr,
 		Tok: token.DEFINE,
 		Rhs: rhs,
+	}
+}
+
+func MakeRangeStatement(key, value string, x ast.Expr, body *ast.BlockStmt) ast.Stmt {
+	var k, v ast.Expr = nil, nil
+	if key != "" {
+		k = ast.NewIdent(key)
+	}
+	if value != "" {
+		v = ast.NewIdent(value)
+	}
+	return &ast.RangeStmt{
+		For:    1,
+		Key:    k,
+		Value:  v,
+		TokPos: 2,
+		Tok:    token.DEFINE,
+		X:      x,
+		Body:   body,
 	}
 }

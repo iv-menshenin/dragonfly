@@ -31,6 +31,7 @@ const (
 	ApiOperationUpdate
 	ApiOperationSelect
 	ApiOperationDelete
+	ApiOperationUpsert
 
 	tagNoInsert     = "noInsert"
 	tagNoUpdate     = "noUpdate"
@@ -39,8 +40,10 @@ const (
 	tagIdentifier   = "identifier"
 
 	apiTypeInsertOne ApiType = "insertOne"
+	apiTypeUpsertOne ApiType = "upsertOne"
 	apiTypeUpdateOne ApiType = "updateOne"
 	apiTypeDeleteOne ApiType = "deleteOne"
+	apiTypeDeleteAll ApiType = "deleteAll"
 	apiTypeFindOne   ApiType = "findOne"
 	apiTypeFindAll   ApiType = "findAll"
 	apiTypeLookUp    ApiType = "lookUp"
@@ -51,21 +54,45 @@ func (c ApiType) String() string {
 }
 
 func (c ApiType) HasFindOption() bool {
-	return c != apiTypeInsertOne
+	op, ok := apiTypeIsOperation[c]
+	if !ok {
+		return true
+	}
+	switch op {
+	case ApiOperationInsert:
+		return false
+	default:
+		return true
+	}
 }
 
 func (c ApiType) HasInputOption() bool {
-	return c != apiTypeDeleteOne && c != apiTypeFindOne && c != apiTypeFindAll && c != apiTypeLookUp
+	op, ok := apiTypeIsOperation[c]
+	if !ok {
+		return true
+	}
+	switch op {
+	case ApiOperationUpdate, ApiOperationInsert, ApiOperationUpsert:
+		return true
+	default:
+		return false
+	}
 }
 
+var (
+	apiTypeIsOperation = map[ApiType]ApiDbOperation{
+		apiTypeInsertOne: ApiOperationInsert,
+		apiTypeUpsertOne: ApiOperationUpsert,
+		apiTypeUpdateOne: ApiOperationUpdate,
+		apiTypeDeleteOne: ApiOperationDelete,
+		apiTypeDeleteAll: ApiOperationDelete,
+	}
+)
+
 func (c ApiType) Operation() ApiDbOperation {
-	switch c {
-	case apiTypeInsertOne:
-		return ApiOperationInsert
-	case apiTypeUpdateOne:
-		return ApiOperationUpdate
-	case apiTypeDeleteOne:
-		return ApiOperationDelete
+	op, ok := apiTypeIsOperation[c]
+	if ok {
+		return op
 	}
 	return ApiOperationSelect
 }
@@ -203,6 +230,18 @@ func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Fiel
 	return
 }
 
+func (c *TableApi) generateMutableOrInsertable(table *Table, w *AstData) (fields []*ast.Field) {
+	fields = make([]*ast.Field, 0, len(table.Columns))
+	for _, column := range table.Columns {
+		// TODO tagNoUpdate + tagNoInsert ?
+		if !(utils.ArrayContains(column.Value.Tags, tagNoUpdate) && utils.ArrayContains(column.Value.Tags, tagNoInsert)) {
+			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
+			fields = append(fields, &field)
+		}
+	}
+	return
+}
+
 // TODO split this function
 func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
@@ -314,18 +353,12 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			// TODO move to new function
 			unionColumns := make([]string, 0, len(option.OneOf))
 			for _, oneOf := range option.OneOf {
-				unionColumns = append(unionColumns, oneOf.Column)
-				if oneOf.Column == "" {
-					panic("each of 'one_of' must contains 'column'")
-				}
-				if len(oneOf.OneOf) > 0 {
-					panic("nested 'one_of' does not supported")
-				}
+				unionColumns = append(unionColumns, oneOf)
 			}
-			firstColumn := table.Columns.getColumn(option.OneOf[0].Column)
+			firstColumn := table.Columns.getColumn(option.OneOf[0])
 			baseType := firstColumn.generateField(w, true)
 			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := table.Columns.getColumn(oneOf.Column)
+				nextColumn := table.Columns.getColumn(oneOf)
 				nextType := nextColumn.generateField(w, true).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
 					panic("each of 'one_of' must have same type of data")
@@ -384,6 +417,9 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 			if c.Type.Operation() == ApiOperationUpdate {
 				mutable = c.generateMutable(table, w)
 			}
+			if c.Type.Operation() == ApiOperationUpsert {
+				mutable = c.generateMutableOrInsertable(table, w)
+			}
 		}
 	} else {
 		if len(c.ModifyColumns) > 0 {
@@ -402,7 +438,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 		ok     bool
 		tplSet ApiFuncBuilder
 	)
-	if tplSet, ok = funcTemplates[c.Type.String()]; !ok {
+	if tplSet, ok = funcTemplates[c.Type]; !ok {
 		panic(fmt.Sprintf("cannot find template `%s`", c.Type))
 	}
 	return func(

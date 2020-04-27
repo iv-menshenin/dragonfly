@@ -246,13 +246,14 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 }
 
 var (
-	funcTemplates = map[string]ApiFuncBuilder{
-		"findAll":   makeFindFunction(findVariantAll),
-		"findOne":   makeFindFunction(findVariantOnce),
-		"lookUp":    makeFindFunction(findVariantOnce),
-		"insertOne": insertOneBuilder,
-		"updateOne": updateOneBuilder,
-		"deleteOne": makeDeleteFunction(findVariantOnce),
-		"deleteAll": makeDeleteFunction(findVariantAll),
+	funcTemplates = map[ApiType]ApiFuncBuilder{
+		apiTypeFindAll:   makeFindFunction(findVariantAll),
+		apiTypeFindOne:   makeFindFunction(findVariantOnce),
+		apiTypeLookUp:    makeFindFunction(findVariantOnce),
+		apiTypeInsertOne: insertOneBuilder,
+		apiTypeUpdateOne: updateOneBuilder,
+		apiTypeUpsertOne: upsertBuilder,
+		apiTypeDeleteOne: makeDeleteFunction(findVariantOnce),
+		apiTypeDeleteAll: makeDeleteFunction(findVariantAll),
 	}
 )
