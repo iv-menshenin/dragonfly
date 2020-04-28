@@ -19,11 +19,14 @@ type (
 		makeArrayQueryOption(string, string, string, bool, builderOptions) []ast.Stmt
 		makeUnionQueryOption(ast.Expr, []string, bool, builderOptions) []ast.Stmt
 		makeScalarQueryOption(string, string, string, bool, bool, builderOptions) []ast.Stmt
-		makeStarQueryOption(string, string, string, bool, builderOptions) []ast.Stmt
 	}
+	// the usual type of filter makes `where` statements using placeholders
+	// filter values ​​are passed as request arguments in a safe manner
 	opRegular struct {
 		operator string
 	}
+	// use this if you want to create a statement without using placeholders
+	// then the argument values ​​will be embedded directly into the sql query text
 	opInline struct {
 		operator string
 	}
@@ -216,21 +219,6 @@ func (op opRegular) makeScalarQueryOption(
 	}
 }
 
-func (op opRegular) makeStarQueryOption(
-	optionName, fieldName, columnName string,
-	ci bool,
-	options builderOptions,
-) []ast.Stmt {
-	return []ast.Stmt{
-		&ast.IfStmt{
-			Cond: MakeNotEqualExpression(MakeSelectorExpression(optionName, fieldName), Nil),
-			Body: MakeBlockStmt(
-				op.makeScalarQueryOption(optionName, fieldName, columnName, ci, true, options)...,
-			),
-		},
-	}
-}
-
 // TODO
 func (op opInline) makeArrayQueryOption(
 	optionName, fieldName, columnName string,
@@ -299,58 +287,16 @@ func (op opInline) makeArrayQueryOption(
 	}
 }
 
-// TODO
+// it is not advisable to use inline expressions in the sql query text
+// one of the few examples for proper application is isNull or isNotNull
+// given this, the implementation of union expressions failed
 func (op opInline) makeUnionQueryOption(
 	optionExpr ast.Expr,
 	columnNames []string,
 	ci bool,
 	options builderOptions,
 ) []ast.Stmt {
-	if ci {
-		for i, c := range columnNames {
-			columnNames[i] = fmt.Sprintf("lower(%s)", c)
-		}
-		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
-	}
-	operators := make([]string, 0, len(op.operator))
-	for _, _ = range columnNames {
-		operators = append(operators, op.operator)
-	}
-	callArgs := make([]ast.Expr, 0, len(columnNames)*2)
-	for _, c := range columnNames {
-		callArgs = append(
-			callArgs,
-			MakeBasicLiteralString(c),
-			MakeAddExpressions(
-				MakeBasicLiteralString("$"),
-				MakeCallExpression(
-					ConvertItoaFn,
-					MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
-				),
-			),
-		)
-	}
-	return []ast.Stmt{
-		MakeAssignment(
-			[]string{options.variableForColumnValues.String()},
-			MakeCallExpression(
-				AppendFn,
-				ast.NewIdent(options.variableForColumnValues.String()),
-				optionExpr,
-			),
-		),
-		MakeAssignment(
-			[]string{options.variableForColumnExpr.String()},
-			MakeCallExpression(
-				AppendFn,
-				ast.NewIdent(options.variableForColumnExpr.String()),
-				MakeCallExpression(
-					SprintfFn,
-					append([]ast.Expr{MakeBasicLiteralString(strings.Join(operators, " or "))}, callArgs...)...,
-				),
-			),
-		),
-	}
+	panic("not implemented")
 }
 
 func (op opInline) makeScalarQueryOption(
@@ -376,21 +322,6 @@ func (op opInline) makeScalarQueryOption(
 				),
 			),
 		),
-	}
-}
-
-func (op opInline) makeStarQueryOption(
-	optionName, fieldName, columnName string,
-	ci bool,
-	options builderOptions,
-) []ast.Stmt {
-	return []ast.Stmt{
-		&ast.IfStmt{
-			Cond: MakeNotEqualExpression(MakeSelectorExpression(optionName, fieldName), Nil),
-			Body: MakeBlockStmt(
-				op.makeScalarQueryOption(optionName, fieldName, columnName, ci, true, options)...,
-			),
-		},
 	}
 }
 

@@ -305,10 +305,20 @@ func BuildFindArgumentsProcessor(
 			if operator.IsMult() {
 				panic(fmt.Sprintf("joins cannot be used in multiple expressions, for example '%s' in the expression '%s'", field.Names[0].Name, opTagValue[0]))
 			}
-			functionBody = append(
-				functionBody,
-				operator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), columns, ci, options)...,
-			)
+			if _, ok := field.Type.(*ast.StarExpr); ok {
+				functionBody = append(
+					functionBody,
+					MakeSimpleIfStatement(
+						MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), Nil),
+						operator.getBuilder().makeUnionQueryOption(MakeStarExpression(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name)), columns, ci, options)...,
+					),
+				)
+			} else {
+				functionBody = append(
+					functionBody,
+					operator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), columns, ci, options)...,
+				)
+			}
 		} else {
 			if operator.IsMult() {
 				functionBody = append(
@@ -319,7 +329,10 @@ func BuildFindArgumentsProcessor(
 				if _, ok := field.Type.(*ast.StarExpr); ok {
 					functionBody = append(
 						functionBody,
-						operator.getBuilder().makeStarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, options)...,
+						MakeSimpleIfStatement(
+							MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), Nil),
+							operator.getBuilder().makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, true, options)...,
+						),
 					)
 				} else {
 					functionBody = append(
@@ -376,10 +389,7 @@ func BuildInputValuesProcessor(
 		if _, ok := field.Type.(*ast.StarExpr); !isOmittedField && ok {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				return []ast.Stmt{
-					&ast.IfStmt{
-						Cond: MakeNotNullExpression(fieldName),
-						Body: MakeBlockStmt(stmts...),
-					},
+					MakeSimpleIfStatement(MakeNotNullExpression(fieldName), stmts...),
 				}
 			}
 		}
