@@ -367,15 +367,18 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			baseType.Names = []*ast.Ident{
 				ast.NewIdent(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
 			}
-			var (
-				ok      bool
-				sqlTags = []string{"-", builders.TagTypeUnion}
-			)
+			var sqlTags = []string{"-", builders.TagTypeUnion}
 			if baseType.Tag != nil {
-				if sqlTags, ok = utils.FieldTagToMap(baseType.Tag.Value)[builders.TagTypeSQL]; ok {
-					sqlTags[0] = "-"
-					sqlTags = append(sqlTags, builders.TagTypeUnion)
+				if baseSqlTags, ok := utils.FieldTagToMap(baseType.Tag.Value)[builders.TagTypeSQL]; ok {
+					for _, tag := range baseSqlTags[1:] {
+						if tag != "required" {
+							sqlTags = append(sqlTags, tag)
+						}
+					}
 				}
+			}
+			if option.Required {
+				sqlTags = append(sqlTags, "required")
 			}
 			baseType.Tag = builders.MakeTagsForField(map[string][]string{
 				builders.TagTypeSQL:   sqlTags,
