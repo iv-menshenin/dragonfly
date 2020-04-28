@@ -212,6 +212,23 @@ func MakeDefinition(lhs []string, rhs ...ast.Expr) ast.Stmt {
 	}
 }
 
+func MakeSimpleIfStatement(condition ast.Expr, body ...ast.Stmt) ast.Stmt {
+	return &ast.IfStmt{
+		If:   1,
+		Cond: condition,
+		Body: MakeBlockStmt(body...),
+	}
+}
+
+func MakeInitialIfStatement(initiation ast.Stmt, condition ast.Expr, body ...ast.Stmt) ast.Stmt {
+	return &ast.IfStmt{
+		If:   1,
+		Init: initiation,
+		Cond: condition,
+		Body: MakeBlockStmt(body...),
+	}
+}
+
 func MakeRangeStatement(key, value string, x ast.Expr, body *ast.BlockStmt) ast.Stmt {
 	var k, v ast.Expr = nil, nil
 	if key != "" {

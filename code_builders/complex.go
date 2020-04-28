@@ -28,26 +28,16 @@ func MakeAssignmentWithErrChecking(varName string, callExpr *ast.CallExpr, body 
 		body = []ast.Stmt{MakeEmptyReturn()}
 	}
 	if varName != "" {
-		return &ast.IfStmt{
-			Init: MakeAssignment(
-				[]string{varName, "err"},
-				callExpr,
-			),
-			Cond: MakeNotEqualExpression(ast.NewIdent("err"), Nil),
-			Body: &ast.BlockStmt{
-				List: body,
-			},
-		}
+		return MakeInitialIfStatement(
+			MakeAssignment([]string{varName, "err"}, callExpr),
+			MakeNotEqualExpression(ast.NewIdent("err"), Nil),
+			body...,
+		)
 	} else {
-		return &ast.IfStmt{
-			Init: MakeAssignment(
-				[]string{"err"},
-				callExpr,
-			),
-			Cond: MakeNotEqualExpression(ast.NewIdent("err"), Nil),
-			Body: &ast.BlockStmt{
-				List: body,
-			},
-		}
+		return MakeInitialIfStatement(
+			MakeAssignment([]string{"err"}, callExpr),
+			MakeNotEqualExpression(ast.NewIdent("err"), Nil),
+			body...,
+		)
 	}
 }
