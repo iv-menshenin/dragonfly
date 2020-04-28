@@ -356,7 +356,7 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 				unionColumns = append(unionColumns, oneOf)
 			}
 			firstColumn := table.Columns.getColumn(option.OneOf[0])
-			baseType := firstColumn.generateField(w, true)
+			baseType := firstColumn.generateField(w, option.Required)
 			for _, oneOf := range option.OneOf[1:] {
 				nextColumn := table.Columns.getColumn(oneOf)
 				nextType := nextColumn.generateField(w, true).Type
