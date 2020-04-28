@@ -97,28 +97,26 @@ func (op opRegular) makeArrayQueryOption(
 				},
 			},
 		},
-		&ast.IfStmt{
-			Cond: MakeNotEmptyArrayExpression(arrVariableName),
-			Body: MakeBlockStmt(
-				MakeAssignment(
-					[]string{options.variableForColumnExpr.String()},
+		MakeSimpleIfStatement(
+			MakeNotEmptyArrayExpression(arrVariableName),
+			MakeAssignment(
+				[]string{options.variableForColumnExpr.String()},
+				MakeCallExpression(
+					AppendFn,
+					ast.NewIdent(options.variableForColumnExpr.String()),
 					MakeCallExpression(
-						AppendFn,
-						ast.NewIdent(options.variableForColumnExpr.String()),
+						SprintfFn,
+						MakeBasicLiteralString(op.operator),
+						MakeBasicLiteralString(columnName),
 						MakeCallExpression(
-							SprintfFn,
-							MakeBasicLiteralString(op.operator),
-							MakeBasicLiteralString(columnName),
-							MakeCallExpression(
-								StringsJoinFn,
-								ast.NewIdent(arrVariableName),
-								MakeBasicLiteralString(", "),
-							),
+							StringsJoinFn,
+							ast.NewIdent(arrVariableName),
+							MakeBasicLiteralString(", "),
 						),
 					),
 				),
 			),
-		},
+		),
 	}
 }
 
@@ -242,48 +240,44 @@ func (op opInline) makeArrayQueryOption(
 			Value: ast.NewIdent(localVariable),
 			X:     MakeSelectorExpression(optionName, fieldName),
 			Tok:   token.DEFINE,
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					MakeAssignment([]string{options.variableForColumnValues.String()}, MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
-					MakeAssignment(
-						[]string{arrVariableName},
-						MakeCallExpression(
-							AppendFn,
-							ast.NewIdent(arrVariableName),
-							MakeAddExpressions(
-								MakeBasicLiteralString("$"),
-								MakeCallExpression(
-									ConvertItoaFn,
-									MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
-								),
-							),
-						),
-					),
-				},
-			},
-		},
-		&ast.IfStmt{
-			Cond: MakeNotEmptyArrayExpression(arrVariableName),
 			Body: MakeBlockStmt(
+				MakeAssignment([]string{options.variableForColumnValues.String()}, MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
 				MakeAssignment(
-					[]string{options.variableForColumnExpr.String()},
+					[]string{arrVariableName},
 					MakeCallExpression(
 						AppendFn,
-						ast.NewIdent(options.variableForColumnExpr.String()),
-						MakeCallExpression(
-							SprintfFn,
-							MakeBasicLiteralString(op.operator),
-							MakeBasicLiteralString(columnName),
+						ast.NewIdent(arrVariableName),
+						MakeAddExpressions(
+							MakeBasicLiteralString("$"),
 							MakeCallExpression(
-								StringsJoinFn,
-								ast.NewIdent(arrVariableName),
-								MakeBasicLiteralString(", "),
+								ConvertItoaFn,
+								MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 							),
 						),
 					),
 				),
 			),
 		},
+		MakeSimpleIfStatement(
+			MakeNotEmptyArrayExpression(arrVariableName),
+			MakeAssignment(
+				[]string{options.variableForColumnExpr.String()},
+				MakeCallExpression(
+					AppendFn,
+					ast.NewIdent(options.variableForColumnExpr.String()),
+					MakeCallExpression(
+						SprintfFn,
+						MakeBasicLiteralString(op.operator),
+						MakeBasicLiteralString(columnName),
+						MakeCallExpression(
+							StringsJoinFn,
+							ast.NewIdent(arrVariableName),
+							MakeBasicLiteralString(", "),
+						),
+					),
+				),
+			),
+		),
 	}
 }
 
@@ -424,37 +418,35 @@ func processValueWrapper(
 }
 
 func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
-	return &ast.IfStmt{
-		Cond: MakeCallExpression(RowsNextFn),
-		Body: MakeBlockStmt(
+	return MakeSimpleIfStatement(
+		MakeCallExpression(RowsNextFn),
+		append(
 			append(
-				append(
-					[]ast.Stmt{
-						MakeAssignmentWithErrChecking(
-							"",
-							MakeCallExpression(
-								RowsErrFn,
-							),
+				[]ast.Stmt{
+					MakeAssignmentWithErrChecking(
+						"",
+						MakeCallExpression(
+							RowsErrFn,
 						),
-					},
-					stmts...,
-				),
-				&ast.IfStmt{
-					Cond: MakeCallExpression(RowsNextFn),
-					Body: MakeBlockStmt(
-						MakeReturn(
-							ast.NewIdent("row"),
-							ast.NewIdent(sqlSingletonViolationErrorName),
-						),
-					),
-					Else: MakeReturn(
-						ast.NewIdent("row"),
-						Nil,
 					),
 				},
-			)...,
-		),
-	}
+				stmts...,
+			),
+			&ast.IfStmt{
+				Cond: MakeCallExpression(RowsNextFn),
+				Body: MakeBlockStmt(
+					MakeReturn(
+						ast.NewIdent("row"),
+						ast.NewIdent(sqlSingletonViolationErrorName),
+					),
+				),
+				Else: MakeReturn(
+					ast.NewIdent("row"),
+					Nil,
+				),
+			},
+		)...,
+	)
 }
 
 func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
