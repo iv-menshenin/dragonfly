@@ -359,7 +359,7 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			baseType := firstColumn.generateField(w, option.Required)
 			for _, oneOf := range option.OneOf[1:] {
 				nextColumn := table.Columns.getColumn(oneOf)
-				nextType := nextColumn.generateField(w, true).Type
+				nextType := nextColumn.generateField(w, option.Required).Type
 				if !reflect.DeepEqual(baseType.Type, nextType) {
 					panic("each of 'one_of' must have same type of data")
 				}
