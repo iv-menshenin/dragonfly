@@ -276,10 +276,20 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 	}
 	for _, f := range c.domain.Fields {
 		intDesc := f.Value.describeGO()
-		objFields = append(objFields, &ast.Field{
-			Names: []*ast.Ident{ast.NewIdent(makeExportedName(f.Value.Name))},
-			Type:  intDesc.fieldTypeExpr(),
-		})
+		tags := []string{f.Value.Name}
+		if f.Value.Schema.Value.NotNull {
+			tags = append(tags, "required")
+		} else {
+			tags = append(tags, "omitempty")
+		}
+		objFields = append(objFields, builders.MakeField(
+			makeExportedName(f.Value.Name),
+			&ast.BasicLit{
+				Kind:  token.STRING,
+				Value: fmt.Sprintf("`json:\"%s\"`", strings.Join(tags, ",")),
+			},
+			intDesc.fieldTypeExpr(),
+		))
 		if fmtLiter, ok := formatTypes[f.Value.Schema.Value.Type]; ok {
 			formatLiters = append(formatLiters, fmtLiter)
 		} else {
@@ -463,10 +473,20 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 	}
 	for _, f := range c.domain.Fields {
 		intDesc := f.Value.describeGO()
-		objFields = append(objFields, &ast.Field{
-			Names: []*ast.Ident{ast.NewIdent(f.Value.Name)},
-			Type:  intDesc.fieldTypeExpr(),
-		})
+		tags := []string{f.Value.Name}
+		if f.Value.Schema.Value.NotNull {
+			tags = append(tags, "required")
+		} else {
+			tags = append(tags, "omitempty")
+		}
+		objFields = append(objFields, builders.MakeField(
+			makeExportedName(f.Value.Name),
+			&ast.BasicLit{
+				Kind:  token.STRING,
+				Value: fmt.Sprintf("`json:\"%s\"`", strings.Join(tags, ",")),
+			},
+			intDesc.fieldTypeExpr(),
+		))
 	}
 	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
