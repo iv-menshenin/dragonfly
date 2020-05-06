@@ -33,6 +33,8 @@ var (
 	ToLowerFn     = makeFunc(MakeSelectorExpression("strings", "ToLower"), 1, false)
 	StringsJoinFn = makeFunc(MakeSelectorExpression("strings", "Join"), 2, false)
 	SprintfFn     = makeFunc(MakeSelectorExpression("fmt", "Sprintf"), 1, true)
+	JsonUnmarshal = makeFunc(MakeSelectorExpression("json", "Unmarshal"), 2, false)
+	JsonMarshal   = makeFunc(MakeSelectorExpression("json", "Marshal"), 1, false)
 	TimeNowFn     = makeFunc(MakeSelectorExpression("time", "Now"), 0, false)
 
 	// WARNING do not forget about Close
@@ -141,11 +143,21 @@ func MakeImportDecl(lPos *token.Pos, imports map[string]string) ast.Decl {
 }
 
 func MakeField(name string, tag *ast.BasicLit, fieldType ast.Expr, comment ...string) *ast.Field {
+	var names = make([]*ast.Ident, 0, 1)
+	if name != "" {
+		names = []*ast.Ident{ast.NewIdent(name)}
+	}
 	return &ast.Field{
-		Names:   []*ast.Ident{ast.NewIdent(name)},
+		Names:   names,
 		Type:    fieldType,
 		Tag:     tag,
 		Comment: MakeComment(comment),
+	}
+}
+
+func MakeFieldList(fields ...*ast.Field) *ast.FieldList {
+	return &ast.FieldList{
+		List: fields,
 	}
 }
 

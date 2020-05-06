@@ -56,8 +56,14 @@ type (
 */
 
 func makeSimpleDescriber(t, p, x string) makeDescriber {
-	return func(string, *DomainSchema) fieldDescriber {
-		return simpleTypeDescriber{t, p, x}
+	return func(n string, c *DomainSchema) fieldDescriber {
+		if c.IsArray {
+			return sliceTypeDescriber{
+				simpleTypeDescriber{t, p, x},
+			}
+		} else {
+			return simpleTypeDescriber{t, p, x}
+		}
 	}
 }
 
@@ -501,114 +507,58 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 		Implementations: funcDeclsToMap(
 			[]*ast.FuncDecl{
 				{
-					Recv: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Names: []*ast.Ident{
-									{
-										Name: "c",
-										Obj: &ast.Object{
-											Kind: ast.Var,
-											Name: "c",
-										},
-									},
-								},
-								Type: &ast.StarExpr{
-									X: &ast.Ident{
-										Name: c.typeName,
-									},
-								},
-							},
-						},
-					},
-					Name: &ast.Ident{
-						Name: "Scan",
-					},
+					Recv: builders.MakeFieldList(
+						builders.MakeField("c", nil, builders.MakeStarExpression(ast.NewIdent(c.typeName))),
+					),
+					Name: ast.NewIdent("Scan"),
 					Type: &ast.FuncType{
-						Params: &ast.FieldList{
-							List: []*ast.Field{
-								{
-									Names: []*ast.Ident{
-										{
-											Name: "value",
-											Obj: &ast.Object{
-												Kind: ast.Var,
-												Name: "value",
-											},
-										},
-									},
-									Type: &ast.InterfaceType{
-										Methods:    &ast.FieldList{},
-										Incomplete: false,
-									},
-								},
-							},
-						},
-						Results: &ast.FieldList{
-							List: []*ast.Field{
-								{
-									Type: &ast.Ident{
-										Name: "error",
-									},
-								},
-							},
-						},
+						Params: builders.MakeFieldList(
+							builders.MakeField("value", nil, builders.MakeEmptyInterface()),
+						),
+						Results: builders.MakeFieldList(
+							builders.MakeField("", nil, ast.NewIdent("error")),
+						),
 					},
-					Body: &ast.BlockStmt{
-						List: []ast.Stmt{
-							&ast.IfStmt{
-								Cond: &ast.BinaryExpr{
-									X: &ast.Ident{
-										Name: "value",
-									},
-									Op: token.EQL,
-									Y: &ast.Ident{
-										Name: "nil",
-									},
+					Body: builders.MakeBlockStmt(
+						builders.MakeSimpleIfStatement(
+							builders.MakeIsNullExpression(ast.NewIdent("value")),
+							builders.MakeReturn(builders.Nil),
+						),
+						builders.MakeReturn(
+							builders.MakeCallExpression(
+								builders.JsonUnmarshal,
+								&ast.TypeAssertExpr{
+									X:    ast.NewIdent("value"),
+									Type: builders.MakeArrayType(ast.NewIdent("uint8")),
 								},
-								Body: &ast.BlockStmt{
-									List: []ast.Stmt{
-										&ast.ReturnStmt{
-											Results: []ast.Expr{
-												&ast.Ident{
-													Name: "nil",
-												},
-											},
-										},
-									},
-								},
-							},
-							&ast.ReturnStmt{
-								Results: []ast.Expr{
-									&ast.CallExpr{
-										Fun: &ast.SelectorExpr{
-											X: &ast.Ident{
-												Name: "json",
-											},
-											Sel: &ast.Ident{
-												Name: "Unmarshal",
-											},
-										},
-										Args: []ast.Expr{
-											&ast.TypeAssertExpr{
-												X: &ast.Ident{
-													Name: "value",
-												},
-												Type: &ast.ArrayType{
-													Elt: &ast.Ident{
-														Name: "uint8",
-													},
-												},
-											},
-											&ast.Ident{
-												Name: "c",
-											},
-										},
-									},
-								},
-							},
-						},
+								ast.NewIdent("c"),
+							),
+						),
+					),
+				},
+				{
+					Recv: builders.MakeFieldList(
+						builders.MakeField("c", nil, builders.MakeStarExpression(ast.NewIdent(c.typeName))),
+					),
+					Name: ast.NewIdent("Value"),
+					Type: &ast.FuncType{
+						Results: builders.MakeFieldList(
+							builders.MakeField("", nil, builders.MakeSelectorExpression("driver", "Value")),
+							builders.MakeField("", nil, ast.NewIdent("error")),
+						),
 					},
+					Body: builders.MakeBlockStmt(
+						builders.MakeSimpleIfStatement(
+							builders.MakeIsNullExpression(ast.NewIdent("c")),
+							builders.MakeReturn(builders.Nil, builders.Nil),
+						),
+						builders.MakeReturn(
+							builders.MakeCallExpression(
+								builders.JsonMarshal,
+								ast.NewIdent("c"),
+							),
+						),
+					),
 				},
 			},
 		),

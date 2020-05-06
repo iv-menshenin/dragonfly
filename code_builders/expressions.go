@@ -124,3 +124,19 @@ func MakeNotNullExpression(variable ast.Expr) ast.Expr {
 		Y:  Nil,
 	}
 }
+
+func MakeIsNullExpression(variable ast.Expr) ast.Expr {
+	return &ast.BinaryExpr{
+		X:  variable,
+		Op: token.EQL,
+		Y:  Nil,
+	}
+}
+
+func MakeIdentComparator(left, right string) ast.Expr {
+	return &ast.BinaryExpr{
+		X:  ast.NewIdent(left),
+		Op: token.EQL,
+		Y:  ast.NewIdent(right),
+	}
+}

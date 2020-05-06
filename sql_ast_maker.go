@@ -247,7 +247,7 @@ func makeType(schema, typeName string, typeSchema TypeSchema) sqt.SqlStmt {
 		create = &sqt.EnumDescription{
 			Values: sqlValues,
 		}
-	} else if strings.EqualFold(typeSchema.Type, "map") {
+	} else if strings.EqualFold(typeSchema.Type, "map") || strings.EqualFold(typeSchema.Type, "json") {
 		values := make([]string, len(typeSchema.Enum))
 		for i, f := range typeSchema.Enum {
 			values[i] = f.Value
