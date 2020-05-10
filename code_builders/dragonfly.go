@@ -114,6 +114,7 @@ var (
 
 const (
 	TagTypeSQL   = "sql"
+	TagMaybeVal  = "maybe"
 	TagTypeJSON  = "json"
 	TagTypeUnion = "union"    // TODO internal, remove from export
 	TagTypeOp    = "operator" // TODO internal, remove from export
@@ -377,15 +378,40 @@ func BuildInputValuesProcessor(
 	)
 	for _, field := range optionFields {
 		var (
-			tags      = utils.FieldTagToMap(field.Tag.Value)
-			colName   = tags[TagTypeSQL][0]
-			fieldName = MakeSelectorExpression(funcInputOptionName, field.Names[0].Name)
+			tags         = utils.FieldTagToMap(field.Tag.Value)
+			colName      = tags[TagTypeSQL][0] // `sql` tags required
+			_, maybeTags = tags[TagMaybeVal]
+			fieldName    = MakeSelectorExpression(funcInputOptionName, field.Names[0].Name)
 		)
+		/* isOmittedField - value will never be requested from the user */
 		valueExpr, isOmittedField := makeValuePicker(tags[TagTypeSQL][1:], fieldName)
 		if !isOmittedField {
 			optionStructFields = append(optionStructFields, field)
 		}
+		/* test wrappers
+		if !value.omitted { ... }
+		*/
 		wrapFunc := func(stmts []ast.Stmt) []ast.Stmt { return stmts }
+		if maybeTags {
+			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
+				fncName := &ast.SelectorExpr{
+					X:   fieldName,
+					Sel: ast.NewIdent("IsOmitted"),
+				}
+				return []ast.Stmt{
+					MakeSimpleIfStatement(
+						MakeNotExpression(MakeCallExpression(
+							CallFunctionDescriber{
+								FunctionName:                fncName,
+								MinimumNumberOfArguments:    0,
+								ExtensibleNumberOfArguments: false,
+							},
+						)),
+						stmts...,
+					),
+				}
+			}
+		}
 		if _, ok := field.Type.(*ast.StarExpr); !isOmittedField && ok {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				return []ast.Stmt{

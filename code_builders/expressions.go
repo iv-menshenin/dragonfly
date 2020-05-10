@@ -125,6 +125,14 @@ func MakeNotNullExpression(variable ast.Expr) ast.Expr {
 	}
 }
 
+func MakeNotExpression(expr ast.Expr) ast.Expr {
+	return &ast.UnaryExpr{
+		X:     expr,
+		Op:    token.NOT,
+		OpPos: 1,
+	}
+}
+
 func MakeIsNullExpression(variable ast.Expr) ast.Expr {
 	return &ast.BinaryExpr{
 		X:  variable,

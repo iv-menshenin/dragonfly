@@ -6,6 +6,7 @@ import (
 	"github.com/iv-menshenin/dragonfly/code_builders"
 	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
+	"go/token"
 	"io"
 	"reflect"
 	"regexp"
@@ -452,8 +453,12 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 		// TODO move out to separate function
 		if apiTypeIsOperation[c.Type] == ApiOperationUpdate {
 			for i, mut := range mutable {
-				var rawTypeName string
+				var (
+					rawTypeName string
+					nullableTag string
+				)
 				if star, ok := mut.Type.(*ast.StarExpr); ok {
+					nullableTag = ",nullable"
 					if t, ok := star.X.(*ast.Ident); ok {
 						rawTypeName = t.String()
 					} else if t, ok := star.X.(*ast.SelectorExpr); ok {
@@ -466,6 +471,14 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 				}
 				if newType := tryMakeMaybeType(rawTypeName); newType != nil {
 					mutable[i].Type = newType
+					currentTags := mutable[i].Tag.Value
+					if currentTags != "" {
+						currentTags = currentTags[1 : len(currentTags)-1]
+					}
+					mutable[i].Tag = &ast.BasicLit{
+						Value: fmt.Sprintf("`%s maybe:\"%s%s\"`", currentTags, rawTypeName, nullableTag),
+						Kind:  token.STRING,
+					}
 				}
 			}
 		}
