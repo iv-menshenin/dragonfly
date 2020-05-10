@@ -6,7 +6,6 @@ import (
 	"github.com/iv-menshenin/dragonfly/code_builders"
 	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
-	"go/printer"
 	"io"
 	"reflect"
 	"regexp"
@@ -516,31 +515,6 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 				}
 			}
 		}
-	}
-}
-
-func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
-	// we must allow to use type `schema.domain` as known type
-	for _, schema := range db.Schemas {
-		for domainName, domain := range schema.Value.Domains {
-			if domainType, ok := knownTypes[domain.Type]; ok {
-				knownTypes[fmt.Sprintf("%s.%s", schema.Value.Name, domainName)] = domainType
-			}
-		}
-	}
-	var astData AstData
-	for _, schema := range db.Schemas {
-		if schemaName == "" || schemaName == schema.Value.Name {
-			schema.generateGO(schema.Value.Name, &astData)
-		}
-	}
-	file, fset := astData.makeAstFile(packageName)
-	filePrinter := printer.Config{
-		Mode:     printer.UseSpaces | printer.TabIndent,
-		Tabwidth: 8,
-	}
-	if err := filePrinter.Fprint(w, fset, file); err != nil {
-		panic(err)
 	}
 }
 

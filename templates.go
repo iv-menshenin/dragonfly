@@ -5,6 +5,7 @@ import (
 	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
 	"go/token"
+	"sort"
 )
 
 type (
@@ -21,6 +22,66 @@ type (
 		optionsFields, mutableFields, resultFields []*ast.Field,
 	) AstDataChain
 )
+
+func sortedDataChainTypes(source map[string]*ast.TypeSpec) []ast.Spec {
+	var (
+		result = make([]ast.Spec, 0, len(source))
+		names  = make([]string, 0, len(source))
+	)
+	for key := range source {
+		names = append(names, key)
+	}
+	sort.StringSlice(names).Sort()
+	for _, typeName := range names {
+		if typeDecl, ok := source[typeName]; ok && typeDecl != nil {
+			typeDecl.Name.NamePos = 1
+			result = append(result, typeDecl)
+		}
+	}
+	return result
+}
+
+func sortedDataChainConstants(source map[string]*ast.ValueSpec) []ast.Spec {
+	var (
+		result = make([]ast.Spec, 0, len(source))
+		names  = make([]string, 0, len(source))
+	)
+	for key := range source {
+		names = append(names, key)
+	}
+	sort.StringSlice(names).Sort()
+	for _, constName := range names {
+		if constDecl, ok := source[constName]; ok && constDecl != nil {
+			for i := range constDecl.Names {
+				constDecl.Names[i].NamePos = 1
+			}
+			result = append(result, constDecl)
+		}
+	}
+	return result
+}
+
+func sortedDataChainImplementations(source map[string]*ast.FuncDecl) []ast.Decl {
+	var (
+		result = make([]ast.Decl, 0, len(source))
+		names  = make([]string, 0, len(source))
+	)
+	for key := range source {
+		names = append(names, key)
+	}
+	sort.StringSlice(names).Sort()
+	for _, funcName := range names {
+		if funcDecl, ok := source[funcName]; ok && funcDecl != nil {
+			funcDecl.Type.Func = 1
+			if funcDecl.Type.Params != nil {
+				funcDecl.Type.Params.Opening = 1
+			}
+			funcDecl.Name.NamePos = 1
+			result = append(result, funcDecl)
+		}
+	}
+	return result
+}
 
 func getPackagePath(pack string) string {
 	packs := map[string]string{
@@ -186,48 +247,20 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 	var lPos token.Pos = 1
 	for _, chain := range c.Chains {
 		imports = utils.MergeStringMap(imports, chain.extractImports())
-		typeSpecs := make([]ast.Spec, 0, len(chain.Types))
-		for _, typeDecl := range chain.Types {
-			if typeDecl != nil {
-				typeDecl.Name.NamePos = lPos
-				lPos++
-				typeSpecs = append(typeSpecs, typeDecl)
-			}
-		}
-		if len(typeSpecs) > 0 {
+		if typeSpecs := sortedDataChainTypes(chain.Types); len(typeSpecs) > 0 {
 			file.Decls = append(file.Decls, &ast.GenDecl{
 				Tok:   token.TYPE,
 				Specs: typeSpecs,
 			})
 		}
-		constSpecs := make([]ast.Spec, 0, len(chain.Constants))
-		for _, constDecl := range chain.Constants {
-			if constDecl != nil {
-				for i := range constDecl.Names {
-					constDecl.Names[i].NamePos = lPos
-					lPos++
-				}
-				constSpecs = append(constSpecs, constDecl)
-			}
-		}
+		constSpecs := sortedDataChainConstants(chain.Constants)
 		if len(constSpecs) > 0 {
 			file.Decls = append(file.Decls, &ast.GenDecl{
 				Tok:   token.CONST,
 				Specs: constSpecs,
 			})
 		}
-		funcSpecs := make([]ast.Decl, 0, len(chain.Implementations))
-		for _, funcDecl := range chain.Implementations {
-			if funcDecl != nil {
-				funcDecl.Type.Func = lPos
-				if funcDecl.Type.Params != nil {
-					funcDecl.Type.Params.Opening = lPos
-				}
-				funcDecl.Name.NamePos = lPos
-				lPos++
-				funcSpecs = append(funcSpecs, funcDecl)
-			}
-		}
+		funcSpecs := sortedDataChainImplementations(chain.Implementations)
 		if len(funcSpecs) > 0 {
 			file.Decls = append(file.Decls, funcSpecs...)
 		}
