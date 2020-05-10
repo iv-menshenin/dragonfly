@@ -626,7 +626,39 @@ type (
 		TypeStruct TypeStructComparator
 	}
 	TypesComparator []TypeComparator
+
+	migrationAction int8
 )
+
+const (
+	matchedElement migrationAction = iota
+	alterElement
+	createElement
+	dropElement
+)
+
+func compareDefault(old, new interface{}) migrationAction {
+	if old == nil && new == nil {
+		return matchedElement
+	}
+	if old == nil && new != nil {
+		return createElement
+	}
+	if old != nil && new == nil {
+		return dropElement
+	}
+	oldV, newV := reflect.ValueOf(old), reflect.ValueOf(new)
+	if old != nil && oldV.Kind() == reflect.Ptr {
+		oldV = oldV.Elem()
+	}
+	if new != nil && newV.Kind() == reflect.Ptr {
+		newV = newV.Elem()
+	}
+	if fmt.Sprintf("%T:%v", oldV, oldV) == fmt.Sprintf("%T:%v", newV, newV) {
+		return matchedElement
+	}
+	return alterElement
+}
 
 /*
 	pre-install: create domain, alter domain (except 'set not null')
@@ -654,11 +686,13 @@ func (c DomainComparator) makeSolution() (preInstall []sqt.SqlStmt, postInstall 
 	} else if !c.DomainStruct.NewStructure.NotNull && c.DomainStruct.OldStructure.NotNull {
 		preInstall = append(preInstall, makeDomainSetNotNull(c.Schema.New, c.Name.New, false))
 	}
-	if !(c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default == nil) &&
-		((c.DomainStruct.NewStructure.Default == nil && c.DomainStruct.OldStructure.Default != nil) ||
-			(c.DomainStruct.NewStructure.Default != nil && c.DomainStruct.OldStructure.Default == nil) ||
-			!reflect.DeepEqual(c.DomainStruct.NewStructure.Default, c.DomainStruct.OldStructure.Default)) {
+	switch compareDefault(c.DomainStruct.NewStructure.Default, c.DomainStruct.OldStructure.Default) {
+	case alterElement:
 		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, defaultToSQL(c.DomainStruct.NewStructure.Default)))
+	case createElement:
+		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, defaultToSQL(c.DomainStruct.NewStructure.Default)))
+	case dropElement:
+		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, nil))
 	}
 	return
 }

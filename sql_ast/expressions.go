@@ -261,6 +261,9 @@ type (
 )
 
 func (c *Default) String() string {
+	if c.Default == nil {
+		return "default"
+	}
 	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Default.String())
 }
 

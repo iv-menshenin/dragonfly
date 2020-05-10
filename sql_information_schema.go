@@ -245,17 +245,20 @@ func (c *rawTypeStruct) toColumn() Column {
 }
 
 func (c *rawDomainStruct) toDomainSchema() DomainSchema {
-	return DomainSchema{
+	var domain = DomainSchema{
 		TypeBase: TypeBase{
 			Type:      c.Type,
 			Length:    c.Max,
 			Precision: c.Precision,
 		},
 		NotNull: !c.Nullable,
-		Default: c.Default,
 		Check:   nil, // TODO
 		used:    utils.RefBool(false),
 	}
+	if c.Default != nil {
+		domain.Default = *c.Default
+	}
+	return domain
 }
 
 func (c *rawColumnStruct) toColumnRef() ColumnRef {

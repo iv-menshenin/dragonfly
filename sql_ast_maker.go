@@ -125,7 +125,7 @@ func makeDomainSetDefault(schema, domain string, defaultValue *string) sqt.SqlSt
 				Name:      domain,
 				Container: schema,
 			},
-			Alter: makeSetDropExpr(false, &sqt.Literal{Text: "default"}),
+			Alter: makeSetDropExpr(false, &sqt.Default{}),
 		}
 	} else {
 		return &sqt.AlterStmt{
