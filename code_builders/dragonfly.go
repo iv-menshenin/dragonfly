@@ -392,7 +392,7 @@ func BuildInputValuesProcessor(
 		if !value.omitted { ... }
 		*/
 		wrapFunc := func(stmts []ast.Stmt) []ast.Stmt { return stmts }
-		if maybeTags {
+		if !isOmittedField && maybeTags {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				fncName := &ast.SelectorExpr{
 					X:   fieldName,
