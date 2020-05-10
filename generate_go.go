@@ -390,6 +390,33 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 	return
 }
 
+var (
+	canonTypesToMaybe = map[string]string{
+		"time.Time": "MaybeTime",
+		"string":    "MaybeString",
+		"bool":      "MaybeBool",
+		"int":       "MaybeInt",
+		"int8":      "MaybeInt8",
+		"int16":     "MaybeInt16",
+		"int32":     "MaybeInt32",
+		"int64":     "MaybeInt64",
+		"uint":      "MaybeUInt",
+		"uint8":     "MaybeUInt8",
+		"uint16":    "MaybeUInt16",
+		"uint32":    "MaybeUInt32",
+		"uint64":    "MaybeUInt64",
+		"float32":   "MaybeFloat32",
+		"float64":   "MaybeFloat64",
+	}
+)
+
+func tryMakeMaybeType(rawTypeName string) ast.Expr {
+	if newType, ok := canonTypesToMaybe[rawTypeName]; ok {
+		return ast.NewIdent(newType)
+	}
+	return nil
+}
+
 func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []*ast.Field) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
@@ -419,6 +446,27 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 			}
 			if c.Type.Operation() == ApiOperationUpsert {
 				mutable = c.generateMutableOrInsertable(table, w)
+			}
+		}
+
+		// TODO move out to separate function
+		if apiTypeIsOperation[c.Type] == ApiOperationUpdate {
+			for i, mut := range mutable {
+				var rawTypeName string
+				if star, ok := mut.Type.(*ast.StarExpr); ok {
+					if t, ok := star.X.(*ast.Ident); ok {
+						rawTypeName = t.String()
+					} else if t, ok := star.X.(*ast.SelectorExpr); ok {
+						rawTypeName = fmt.Sprintf("%s.%s", t.X, t.Sel)
+					}
+				} else if t, ok := mut.Type.(*ast.Ident); ok {
+					rawTypeName = t.String()
+				} else if t, ok := mut.Type.(*ast.SelectorExpr); ok {
+					rawTypeName = fmt.Sprintf("%s.%s", t.X, t.Sel)
+				}
+				if newType := tryMakeMaybeType(rawTypeName); newType != nil {
+					mutable[i].Type = newType
+				}
 			}
 		}
 	} else {
