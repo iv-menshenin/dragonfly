@@ -1,4 +1,4 @@
-package likepay_pg
+package generated
 
 import (
 	"database/sql/driver"
@@ -19,63 +19,63 @@ type (
 	}
 	MaybeTime struct {
 		MaybeBase
-		value   time.Time
+		value time.Time
 	}
 	MaybeString struct {
 		MaybeBase
-		value   string
+		value string
 	}
 	MaybeBool struct {
 		MaybeBase
-		value   bool
+		value bool
 	}
 	MaybeInt struct {
 		MaybeBase
-		value   int
+		value int
 	}
 	MaybeInt8 struct {
 		MaybeBase
-		value   int8
+		value int8
 	}
 	MaybeInt16 struct {
 		MaybeBase
-		value   int16
+		value int16
 	}
 	MaybeInt32 struct {
 		MaybeBase
-		value   int32
+		value int32
 	}
 	MaybeInt64 struct {
 		MaybeBase
-		value   int64
+		value int64
 	}
 	MaybeUInt struct {
 		MaybeBase
-		value   uint
+		value uint
 	}
 	MaybeUInt8 struct {
 		MaybeBase
-		value   uint8
+		value uint8
 	}
 	MaybeUInt16 struct {
 		MaybeBase
-		value   uint16
+		value uint16
 	}
 	MaybeUInt32 struct {
 		MaybeBase
-		value   uint32
+		value uint32
 	}
 	MaybeUInt64 struct {
 		MaybeBase
-		value   uint64
+		value uint64
 	}
 	MaybeFloat32 struct {
 		MaybeBase
-		value   float32
+		value float32
 	}
 	MaybeFloat64 struct {
 		MaybeBase
-		value   float64
+		value float64
 	}
 )
 
@@ -213,10 +213,10 @@ var (
 		set:   true,
 	} /* for valid value */
 	/* and defaults that do not need an explicit declaration
-		omitMaybe = MaybeBase{
-			valid: false,
-			set:   false,
-		}
+	omitMaybe = MaybeBase{
+		valid: false,
+		set:   false,
+	}
 	*/
 )
 
@@ -224,6 +224,14 @@ func MaybeTimeSet(t time.Time) MaybeTime {
 	return MaybeTime{
 		MaybeBase: setMaybe,
 		value:     t,
+	}
+}
+
+func MaybeTimeSetRef(t *time.Time) MaybeTime {
+	if t == nil {
+		return MaybeTimeNull()
+	} else {
+		return MaybeTimeSet(*t)
 	}
 }
 
@@ -240,6 +248,14 @@ func MaybeStringSet(s string) MaybeString {
 	}
 }
 
+func MaybeStringSetRef(s *string) MaybeString {
+	if s == nil {
+		return MaybeStringNull()
+	} else {
+		return MaybeStringSet(*s)
+	}
+}
+
 func MaybeStringNull() MaybeString {
 	return MaybeString{
 		MaybeBase: nullMaybe,
@@ -250,6 +266,14 @@ func MaybeBoolSet(b bool) MaybeBool {
 	return MaybeBool{
 		MaybeBase: setMaybe,
 		value:     b,
+	}
+}
+
+func MaybeBoolSetRef(b *bool) MaybeBool {
+	if b == nil {
+		return MaybeBoolNull()
+	} else {
+		return MaybeBoolSet(*b)
 	}
 }
 
@@ -266,6 +290,14 @@ func MaybeIntSet(i int) MaybeInt {
 	}
 }
 
+func MaybeIntSetRef(i *int) MaybeInt {
+	if i == nil {
+		return MaybeIntNull()
+	} else {
+		return MaybeIntSet(*i)
+	}
+}
+
 func MaybeIntNull() MaybeInt {
 	return MaybeInt{
 		MaybeBase: nullMaybe,
@@ -276,6 +308,14 @@ func MaybeInt8Set(i int8) MaybeInt8 {
 	return MaybeInt8{
 		MaybeBase: setMaybe,
 		value:     i,
+	}
+}
+
+func MaybeInt8SetRef(i *int8) MaybeInt8 {
+	if i == nil {
+		return MaybeInt8Null()
+	} else {
+		return MaybeInt8Set(*i)
 	}
 }
 
@@ -292,6 +332,14 @@ func MaybeInt16Set(i int16) MaybeInt16 {
 	}
 }
 
+func MaybeInt16SetRef(i *int16) MaybeInt16 {
+	if i == nil {
+		return MaybeInt16Null()
+	} else {
+		return MaybeInt16Set(*i)
+	}
+}
+
 func MaybeInt16Null() MaybeInt16 {
 	return MaybeInt16{
 		MaybeBase: nullMaybe,
@@ -302,6 +350,14 @@ func MaybeInt32Set(i int32) MaybeInt32 {
 	return MaybeInt32{
 		MaybeBase: setMaybe,
 		value:     i,
+	}
+}
+
+func MaybeInt32SetRef(i *int32) MaybeInt32 {
+	if i == nil {
+		return MaybeInt32Null()
+	} else {
+		return MaybeInt32Set(*i)
 	}
 }
 
@@ -318,6 +374,14 @@ func MaybeInt64Set(i int64) MaybeInt64 {
 	}
 }
 
+func MaybeInt64SetRef(i *int64) MaybeInt64 {
+	if i == nil {
+		return MaybeInt64Null()
+	} else {
+		return MaybeInt64Set(*i)
+	}
+}
+
 func MaybeInt64Null() MaybeInt64 {
 	return MaybeInt64{
 		MaybeBase: nullMaybe,
@@ -328,6 +392,14 @@ func MaybeUIntSet(i uint) MaybeUInt {
 	return MaybeUInt{
 		MaybeBase: setMaybe,
 		value:     i,
+	}
+}
+
+func MaybeUIntSetRef(i *uint) MaybeUInt {
+	if i == nil {
+		return MaybeUIntNull()
+	} else {
+		return MaybeUIntSet(*i)
 	}
 }
 
@@ -344,6 +416,14 @@ func MaybeUInt8Set(i uint8) MaybeUInt8 {
 	}
 }
 
+func MaybeUInt8SetRef(i *uint8) MaybeUInt8 {
+	if i == nil {
+		return MaybeUInt8Null()
+	} else {
+		return MaybeUInt8Set(*i)
+	}
+}
+
 func MaybeUInt8Null() MaybeUInt8 {
 	return MaybeUInt8{
 		MaybeBase: nullMaybe,
@@ -354,6 +434,14 @@ func MaybeUInt16Set(i uint16) MaybeUInt16 {
 	return MaybeUInt16{
 		MaybeBase: setMaybe,
 		value:     i,
+	}
+}
+
+func MaybeUInt16SetRef(i *uint16) MaybeUInt16 {
+	if i == nil {
+		return MaybeUInt16Null()
+	} else {
+		return MaybeUInt16Set(*i)
 	}
 }
 
@@ -370,6 +458,14 @@ func MaybeUInt32Set(i uint32) MaybeUInt32 {
 	}
 }
 
+func MaybeUInt32SetRef(i *uint32) MaybeUInt32 {
+	if i == nil {
+		return MaybeUInt32Null()
+	} else {
+		return MaybeUInt32Set(*i)
+	}
+}
+
 func MaybeUInt32Null() MaybeUInt32 {
 	return MaybeUInt32{
 		MaybeBase: nullMaybe,
@@ -383,16 +479,32 @@ func MaybeUInt64Set(i uint64) MaybeUInt64 {
 	}
 }
 
+func MaybeUInt64SetRef(i *uint64) MaybeUInt64 {
+	if i == nil {
+		return MaybeUInt64Null()
+	} else {
+		return MaybeUInt64Set(*i)
+	}
+}
+
 func MaybeUInt64Null() MaybeUInt64 {
 	return MaybeUInt64{
 		MaybeBase: nullMaybe,
 	}
 }
 
-func MaybeFloat32Set(i float32) MaybeFloat32 {
+func MaybeFloat32Set(f float32) MaybeFloat32 {
 	return MaybeFloat32{
 		MaybeBase: setMaybe,
-		value:     i,
+		value:     f,
+	}
+}
+
+func MaybeFloat32SetRef(f *float32) MaybeFloat32 {
+	if f == nil {
+		return MaybeFloat32Null()
+	} else {
+		return MaybeFloat32Set(*f)
 	}
 }
 
@@ -402,10 +514,18 @@ func MaybeFloat32Null() MaybeFloat32 {
 	}
 }
 
-func MaybeFloat64Set(i float64) MaybeFloat64 {
+func MaybeFloat64Set(f float64) MaybeFloat64 {
 	return MaybeFloat64{
 		MaybeBase: setMaybe,
-		value:     i,
+		value:     f,
+	}
+}
+
+func MaybeFloat64SetRef(f *float64) MaybeFloat64 {
+	if f == nil {
+		return MaybeFloat64Null()
+	} else {
+		return MaybeFloat64Set(*f)
 	}
 }
 
