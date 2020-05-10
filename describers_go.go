@@ -242,6 +242,67 @@ func makeMapDescriberDirectly(typeName string, domain *TypeSchema) fieldDescribe
 	}
 }
 
+func makeJsonScanSimpleFunction(typeName string) map[string]*ast.FuncDecl {
+	return funcDeclsToMap(
+		[]*ast.FuncDecl{
+			{
+				Recv: builders.MakeFieldList(
+					builders.MakeField("c", nil, builders.MakeStarExpression(ast.NewIdent(typeName))),
+				),
+				Name: ast.NewIdent("Scan"),
+				Type: &ast.FuncType{
+					Params: builders.MakeFieldList(
+						builders.MakeField("value", nil, builders.MakeEmptyInterface()),
+					),
+					Results: builders.MakeFieldList(
+						builders.MakeField("", nil, ast.NewIdent("error")),
+					),
+				},
+				Body: builders.MakeBlockStmt(
+					builders.MakeSimpleIfStatement(
+						builders.MakeIsNullExpression(ast.NewIdent("value")),
+						builders.MakeReturn(builders.Nil),
+					),
+					builders.MakeReturn(
+						builders.MakeCallExpression(
+							builders.JsonUnmarshal,
+							&ast.TypeAssertExpr{
+								X:    ast.NewIdent("value"),
+								Type: builders.MakeArrayType(ast.NewIdent("uint8")),
+							},
+							ast.NewIdent("c"),
+						),
+					),
+				),
+			},
+			{
+				Recv: builders.MakeFieldList(
+					builders.MakeField("c", nil, builders.MakeStarExpression(ast.NewIdent(typeName))),
+				),
+				Name: ast.NewIdent("Value"),
+				Type: &ast.FuncType{
+					Results: builders.MakeFieldList(
+						builders.MakeField("", nil, builders.MakeSelectorExpression("driver", "Value")),
+						builders.MakeField("", nil, ast.NewIdent("error")),
+					),
+				},
+				Body: builders.MakeBlockStmt(
+					builders.MakeSimpleIfStatement(
+						builders.MakeIsNullExpression(ast.NewIdent("c")),
+						builders.MakeReturn(builders.Nil, builders.Nil),
+					),
+					builders.MakeReturn(
+						builders.MakeCallExpression(
+							builders.JsonMarshal,
+							ast.NewIdent("c"),
+						),
+					),
+				),
+			},
+		},
+	)
+}
+
 func (c mapTypeDescriber) getFile() []AstDataChain {
 	return []AstDataChain{
 		{
@@ -254,6 +315,7 @@ func (c mapTypeDescriber) getFile() []AstDataChain {
 					},
 				},
 			},
+			Implementations: makeJsonScanSimpleFunction(c.typeName),
 		},
 	}
 }
@@ -503,65 +565,8 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 				},
 			},
 		},
-		Constants: nil,
-		Implementations: funcDeclsToMap(
-			[]*ast.FuncDecl{
-				{
-					Recv: builders.MakeFieldList(
-						builders.MakeField("c", nil, builders.MakeStarExpression(ast.NewIdent(c.typeName))),
-					),
-					Name: ast.NewIdent("Scan"),
-					Type: &ast.FuncType{
-						Params: builders.MakeFieldList(
-							builders.MakeField("value", nil, builders.MakeEmptyInterface()),
-						),
-						Results: builders.MakeFieldList(
-							builders.MakeField("", nil, ast.NewIdent("error")),
-						),
-					},
-					Body: builders.MakeBlockStmt(
-						builders.MakeSimpleIfStatement(
-							builders.MakeIsNullExpression(ast.NewIdent("value")),
-							builders.MakeReturn(builders.Nil),
-						),
-						builders.MakeReturn(
-							builders.MakeCallExpression(
-								builders.JsonUnmarshal,
-								&ast.TypeAssertExpr{
-									X:    ast.NewIdent("value"),
-									Type: builders.MakeArrayType(ast.NewIdent("uint8")),
-								},
-								ast.NewIdent("c"),
-							),
-						),
-					),
-				},
-				{
-					Recv: builders.MakeFieldList(
-						builders.MakeField("c", nil, builders.MakeStarExpression(ast.NewIdent(c.typeName))),
-					),
-					Name: ast.NewIdent("Value"),
-					Type: &ast.FuncType{
-						Results: builders.MakeFieldList(
-							builders.MakeField("", nil, builders.MakeSelectorExpression("driver", "Value")),
-							builders.MakeField("", nil, ast.NewIdent("error")),
-						),
-					},
-					Body: builders.MakeBlockStmt(
-						builders.MakeSimpleIfStatement(
-							builders.MakeIsNullExpression(ast.NewIdent("c")),
-							builders.MakeReturn(builders.Nil, builders.Nil),
-						),
-						builders.MakeReturn(
-							builders.MakeCallExpression(
-								builders.JsonMarshal,
-								ast.NewIdent("c"),
-							),
-						),
-					),
-				},
-			},
-		),
+		Constants:       nil,
+		Implementations: makeJsonScanSimpleFunction(c.typeName),
 	}
 	return append(c.simpleTypeDescriber.getFile(), main)
 }
