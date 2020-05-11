@@ -182,7 +182,14 @@ func (c *DropExpr) dependedOn() Dependencies {
 }
 
 func (c *AlterExpr) String() string {
-	return utils.NonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name, c.Alter)
+	var subTarget = ""
+	if _, ok := c.Alter.(*DataTypeExpr); ok {
+		subTarget = "type"
+	}
+	if _, ok := c.Alter.(*Default); ok {
+		subTarget = "default"
+	}
+	return utils.NonEmptyStringsConcatSpaceSeparated("alter", c.Target, c.Name, subTarget, c.Alter)
 }
 
 func (c *AlterExpr) expression() int { return 0 }
@@ -262,9 +269,9 @@ type (
 
 func (c *Default) String() string {
 	if c.Default == nil {
-		return "default"
+		return ""
 	}
-	return utils.NonEmptyStringsConcatSpaceSeparated("default", c.Default.String())
+	return c.Default.String()
 }
 
 func (c *Default) expression() int { return 0 }

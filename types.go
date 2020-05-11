@@ -32,6 +32,7 @@ const (
 	schema = "schema"
 
 	pathToDomainTemplate = "#/schemas/%s/domains/%s"
+	pathToTypeTemplate   = "#/schemas/%s/types/%s"
 )
 
 var (
@@ -400,7 +401,7 @@ func processRef(db *Root, ref string, i interface{}) {
 	}
 	if ref[0] == '#' {
 		chains := strings.Split(ref, "/")[1:]
-		if !db.follow(db, chains, i) {
+		if !db.follow(chains, i) {
 			panic(errors.New("cannot resolve $ref: '" + ref + "'"))
 		}
 	}
@@ -828,7 +829,7 @@ func (c *TypeSchema) follow(db *Root, path []string, i interface{}) (ok bool) {
 	return false
 }
 
-func (c *Root) follow(db *Root, path []string, i interface{}) (ok bool) {
+func (c *Root) follow(path []string, i interface{}) (ok bool) {
 	defer func() {
 		err := recover()
 		if err != nil {
@@ -845,7 +846,7 @@ func (c *Root) follow(db *Root, path []string, i interface{}) (ok bool) {
 	case schemas:
 		for _, schema := range c.Schemas {
 			if path[1] == schema.Value.Name {
-				return schema.follow(db, path[2:], i)
+				return schema.follow(c, path[2:], i)
 			}
 		}
 	case components:
@@ -855,11 +856,11 @@ func (c *Root) follow(db *Root, path []string, i interface{}) (ok bool) {
 		switch path[1] {
 		case columns:
 			if column, ok := c.getComponentColumn(path[2]); ok {
-				return column.follow(db, path[3:], i)
+				return column.follow(c, path[3:], i)
 			}
 		case classes:
 			if class, ok := c.getComponentClass(nil, "", path[2]); ok {
-				return class.follow(db, path[3:], i)
+				return class.follow(c, path[3:], i)
 			}
 		}
 	}

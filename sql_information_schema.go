@@ -15,7 +15,7 @@ where schema_name not in ('information_schema','pg_catalog')
   and lower(catalog_name) = $1;`
 
 	sqlGetAllTableColumns = `
-select table_schema, table_name, ordinal_position, column_name, data_type, character_maximum_length, column_default, is_nullable != 'NO', numeric_precision, numeric_precision_radix, numeric_scale, domain_schema, domain_name, udt_name
+select table_schema, table_name, ordinal_position, column_name, data_type, character_maximum_length, column_default, is_nullable != 'NO', numeric_precision, numeric_precision_radix, numeric_scale, domain_schema, domain_name, udt_schema, udt_name
 from information_schema.columns
 where table_schema not in ('information_schema','pg_catalog')
   and lower(table_catalog) = $1;`
@@ -143,6 +143,7 @@ type (
 		Scale        *int
 		DomainSchema *string
 		Domain       *string
+		UdtSchema    string
 		UdtName      string
 	}
 	actualConstraint struct {
@@ -245,15 +246,18 @@ func (c *rawTypeStruct) toColumn() Column {
 }
 
 func (c *rawDomainStruct) toDomainSchema() DomainSchema {
+	var baseType = TypeBase{Type: c.Type}
+	if c.Scale != nil {
+		baseType.Length = c.Precision
+		baseType.Precision = c.Scale
+	} else {
+		baseType.Length = c.Max
+	}
 	var domain = DomainSchema{
-		TypeBase: TypeBase{
-			Type:      c.Type,
-			Length:    c.Max,
-			Precision: c.Precision,
-		},
-		NotNull: !c.Nullable,
-		Check:   nil, // TODO
-		used:    utils.RefBool(false),
+		TypeBase: baseType,
+		NotNull:  !c.Nullable,
+		Check:    nil, // TODO
+		used:     utils.RefBool(false),
 	}
 	if c.Default != nil {
 		domain.Default = *c.Default
@@ -262,26 +266,40 @@ func (c *rawDomainStruct) toDomainSchema() DomainSchema {
 }
 
 func (c *rawColumnStruct) toColumnRef() ColumnRef {
-	var columnSchemaRef *string = nil
-	if c.DomainSchema != nil && c.Domain != nil {
-		columnSchemaRef = utils.StringToRef(fmt.Sprintf(pathToDomainTemplate, *c.DomainSchema, *c.Domain))
+	var (
+		typeName                = c.UdtName
+		columnSchemaRef *string = nil
+	)
+	if c.UdtSchema != "pg_catalog" && c.UdtSchema != "" {
+		typeName = fmt.Sprintf("%s.%s", c.UdtSchema, c.UdtName)
+		columnSchemaRef = utils.StringToRef(fmt.Sprintf(pathToTypeTemplate, c.UdtSchema, c.UdtName))
+	} else {
+		if c.DomainSchema != nil && c.Domain != nil {
+			columnSchemaRef = utils.StringToRef(fmt.Sprintf(pathToDomainTemplate, *c.DomainSchema, *c.Domain))
+		}
+	}
+	var baseType = TypeBase{Type: typeName}
+	if c.Scale != nil {
+		baseType.Length = c.Precision
+		baseType.Precision = c.Scale
+	} else {
+		baseType.Length = c.Max
+	}
+	var domainSchema = DomainSchema{
+		TypeBase: baseType,
+		NotNull:  !c.Nullable,
+		Check:    nil, // TODO
+		used:     utils.RefBool(false),
+	}
+	if c.Default != nil {
+		domainSchema.Default = c.Default
 	}
 	return ColumnRef{
 		Value: Column{
 			Name: c.Column,
 			Schema: ColumnSchemaRef{
-				Value: DomainSchema{
-					TypeBase: TypeBase{
-						Type:      c.Type,
-						Length:    c.Max,
-						Precision: c.Precision,
-					},
-					NotNull: !c.Nullable,
-					Default: c.Default,
-					Check:   nil, // TODO
-					used:    utils.RefBool(false),
-				},
-				Ref: columnSchemaRef,
+				Value: domainSchema,
+				Ref:   columnSchemaRef,
 			},
 			Constraints: nil,
 			Tags:        nil,
@@ -593,6 +611,7 @@ func getAllTables(db *sql.DB, catalog string) (columns []rawColumnStruct, err er
 				&column.Scale,
 				&column.DomainSchema,
 				&column.Domain,
+				&column.UdtSchema,
 				&column.UdtName,
 			); err != nil {
 				return
@@ -817,13 +836,23 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 			schemaTypes[typeName] = enumType.toEnumSchema()
 		}
 		schemaColumns := make(map[string]ColumnsContainer)
-		for i, columnStruct := range allTables {
+		for _, columnStruct := range allTables {
 			if strings.EqualFold(columnStruct.TableSchema, actualSchemaName) {
 				tableName := columnStruct.TableName
+				// TODO debug
+				if tableName == "protected_endpoints" && columnStruct.Column == "id" {
+					tableName = "protected_endpoints"
+				}
+				if columnStruct.Default != nil {
+					if serial, ok := extractSerialType(columnStruct); ok {
+						columnStruct.UdtName = serial
+						columnStruct.Default = nil
+					}
+				}
 				if _, ok := schemaColumns[strings.ToLower(tableName)]; !ok {
 					schemaColumns[strings.ToLower(tableName)] = make(ColumnsContainer, 0, 20)
 				}
-				schemaColumns[strings.ToLower(tableName)] = append(schemaColumns[strings.ToLower(tableName)], allTables[i].toColumnRef())
+				schemaColumns[strings.ToLower(tableName)] = append(schemaColumns[strings.ToLower(tableName)], columnStruct.toColumnRef())
 			}
 		}
 		schemaTables := make(TablesContainer)
@@ -847,4 +876,20 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 		info.Schemas = append(info.Schemas, schema)
 	}
 	return
+}
+
+func extractSerialType(columnStruct rawColumnStruct) (string, bool) {
+	if (*columnStruct.Default)[:7] == "nextval" {
+		switch columnStruct.UdtName {
+		case "int2":
+			return "smallserial", true
+		case "int4":
+			return "serial", true
+		case "int8":
+			return "bigserial", true
+		default:
+			return "serial", true
+		}
+	}
+	return "", false
 }

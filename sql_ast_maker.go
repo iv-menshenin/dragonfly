@@ -360,6 +360,16 @@ func makeAlterColumnSetNotNull(schema, table, column string, notNull bool) sqt.S
 }
 
 func makeAlterColumnSetType(schema, table, column string, domainSchema DomainSchema) sqt.SqlStmt {
+	// TODO
+	var columnType = domainSchema.Type
+	switch domainSchema.Type {
+	case "smallserial":
+		columnType = "int2"
+	case "serial":
+		columnType = "int4"
+	case "bigserial":
+		columnType = "int8"
+	}
 	return &sqt.AlterStmt{
 		Target: sqt.TargetTable,
 		Name: &sqt.Selector{
@@ -370,7 +380,7 @@ func makeAlterColumnSetType(schema, table, column string, domainSchema DomainSch
 			Target: sqt.TargetColumn,
 			Name:   &sqt.Literal{Text: column},
 			Alter: &sqt.DataTypeExpr{
-				DataType:  domainSchema.Type,
+				DataType:  columnType,
 				IsArray:   domainSchema.IsArray,
 				Length:    domainSchema.Length,
 				Precision: domainSchema.Precision,

@@ -52,7 +52,7 @@ func makeUnusedDomainsComparator(
 			usages := current.getDomainUsages(domainSchemaName, actualDomainName)
 			for _, usage := range usages {
 				var column Column
-				if new.follow(new, []string{
+				if new.follow([]string{
 					"schemas",
 					usage.TableSchema,
 					"tables",
@@ -278,7 +278,7 @@ func makeUnusedTypesComparator(
 }
 
 func makeTablesComparator(
-	current *Root,
+	current, new *Root,
 	schema string,
 	tables map[string]Table,
 ) (
@@ -307,7 +307,7 @@ func makeTablesComparator(
 					OldStructure: oldStruct,
 					NewStructure: &newStruct,
 				},
-				ColumnsComparator: makeColumnsComparator(current, schema, tableName, tableStruct, *oldStruct),
+				ColumnsComparator: makeColumnsComparator(current, new, schema, tableName, tableStruct, *oldStruct),
 			})
 		} else {
 			// new tables
@@ -331,7 +331,7 @@ func (c *Table) getAllColumnConstraints(columnName string) []Constraint {
 }
 
 func makeColumnsComparator(
-	current *Root,
+	current, new *Root,
 	schemaName, tableName string,
 	table Table,
 	currTable Table,
@@ -344,6 +344,15 @@ func makeColumnsComparator(
 			comparator ColumnComparator
 			oldColumn  = current.getUnusedColumnAndSetItAsUsed(schemaName, tableName, column.Value.Name)
 		)
+		if t := strings.Split(column.Value.Schema.Value.Type, "."); len(t) == 2 {
+			var colType TypeSchema
+			if new.follow([]string{"schemas", t[0], "types", t[1]}, &colType) {
+				if strings.EqualFold(colType.Type, "json") || strings.EqualFold(colType.Type, "map") {
+					// JSON normalization
+					table.Columns[ci].Value.Schema.Value.Type = "json"
+				}
+			}
+		}
 		comparator.TableName = tableName
 		comparator.SchemaName = schemaName
 		comparator.Name.New = column.Value.Name
@@ -483,7 +492,7 @@ func (c *SchemaRef) diffKnown(
 		afterInstall = append(afterInstall, second...)
 	}
 
-	tables, tablesPostponed := makeTablesComparator(current, schema, c.Value.Tables)
+	tables, tablesPostponed := makeTablesComparator(current, new, schema, c.Value.Tables)
 	postponed.tables = tablesPostponed
 	for _, table := range tables {
 		first, second := table.makeSolution(current)
@@ -834,8 +843,20 @@ func (c ColumnComparator) makeSolution(current *Root) (install []sqt.SqlStmt, af
 	if !strings.EqualFold(c.Name.Actual, c.Name.New) {
 		install = append(install, makeColumnRename(c.SchemaName, c.TableName, c.Name))
 	}
+	// TODO debug
+	if c.TableName == "posts" && c.Name.New == "publication_id" {
+		c.Name.New = "publication_id"
+	}
 	if typeSchema, typeName, ok := c.NewStruct.Value.Schema.makeCustomType(); ok {
-		install = append(install, makeAlterColumnSetDomain(c.SchemaName, c.TableName, c.Name.New, fmt.Sprintf("%s.%s", typeSchema, typeName)))
+		if _, oldTypeName, ok := c.ActualStruct.Value.Schema.makeCustomType(); ok {
+			// strings.EqualFold(typeSchema, oldTypeSchema) &&
+			// TODO need to resolve schema changes?
+			if !strings.EqualFold(typeName, oldTypeName) {
+				install = append(install, makeAlterColumnSetDomain(c.SchemaName, c.TableName, c.Name.New, fmt.Sprintf("%s.%s", typeSchema, typeName)))
+			}
+		} else {
+			install = append(install, makeAlterColumnSetDomain(c.SchemaName, c.TableName, c.Name.New, fmt.Sprintf("%s.%s", typeSchema, typeName)))
+		}
 	} else {
 		if !isMatchedTypes(c.NewStruct.Value.Schema.Value.TypeBase, c.ActualStruct.Value.Schema.Value.TypeBase) {
 			install = append(install, makeAlterColumnSetType(c.SchemaName, c.TableName, c.Name.New, c.NewStruct.Value.Schema.Value))
