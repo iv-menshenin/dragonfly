@@ -697,9 +697,9 @@ func (c DomainComparator) makeSolution() (preInstall []sqt.SqlStmt, postInstall 
 	}
 	switch compareDefault(c.DomainStruct.NewStructure.Default, c.DomainStruct.OldStructure.Default) {
 	case alterElement:
-		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, defaultToSQL(c.DomainStruct.NewStructure.Default)))
+		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.Default))
 	case createElement:
-		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, defaultToSQL(c.DomainStruct.NewStructure.Default)))
+		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, c.DomainStruct.NewStructure.Default))
 	case dropElement:
 		preInstall = append(preInstall, makeDomainSetDefault(c.Schema.New, c.Name.New, nil))
 	}
@@ -814,25 +814,16 @@ func (c ColumnComparator) makeSolution(current *Root) (install []sqt.SqlStmt, af
 	install = make([]sqt.SqlStmt, 0, 0)
 	afterInstall = make([]sqt.SqlStmt, 0, 0)
 	if c.Name.Actual == "" {
-		customSchema, customType, isCustom := c.NewStruct.Value.Schema.makeCustomType()
-		makeValidateNotNull := false
-		if c.NewStruct.Value.Schema.Value.NotNull && c.NewStruct.Value.Schema.Value.Default == nil {
-			if isCustom {
-				install = append(install, makeDomainSetNotNull(customSchema, customType, false))
-			} else {
-				c.NewStruct.Value.Schema.Value.NotNull = false
-			}
-			makeValidateNotNull = true
-		}
 		install = append(install, makeColumnAdd(c.SchemaName, c.TableName, *c.NewStruct))
-		if makeValidateNotNull {
-			install = append(install, fixEmptyColumn(current, c.SchemaName, c.TableName, *c.NewStruct)...)
-			if isCustom {
-				install = append(install, makeDomainSetNotNull(customSchema, customType, true))
-			} else {
-				c.NewStruct.Value.Schema.Value.NotNull = false
-				install = append(install, makeAlterColumnSetNotNull(customSchema, customType, c.NewStruct.Value.Name, true))
+		// TODO not for domains
+		if c.NewStruct.Value.Schema.Value.Default != nil {
+			install = append(install, makeAlterColumnSetDefault(c.SchemaName, c.TableName, c.Name.New, c.NewStruct.Value.Schema.Value.Default))
+		}
+		if c.NewStruct.Value.Schema.Value.NotNull {
+			if c.NewStruct.Value.Schema.Value.Default != nil {
+				install = append(install, makeUpdateWholeColumnStatement(c.SchemaName, c.TableName, c.Name.New, c.NewStruct.Value.Schema.Value.Default))
 			}
+			install = append(install, makeAlterColumnSetNotNull(c.SchemaName, c.TableName, c.Name.New, true))
 		}
 		return
 	}
@@ -844,8 +835,8 @@ func (c ColumnComparator) makeSolution(current *Root) (install []sqt.SqlStmt, af
 		install = append(install, makeColumnRename(c.SchemaName, c.TableName, c.Name))
 	}
 	// TODO debug
-	if c.TableName == "posts" && c.Name.New == "publication_id" {
-		c.Name.New = "publication_id"
+	if c.TableName == "places" && c.Name.New == "country" {
+		c.Name.New = "country"
 	}
 	if typeSchema, typeName, ok := c.NewStruct.Value.Schema.makeCustomType(); ok {
 		if _, oldTypeName, ok := c.ActualStruct.Value.Schema.makeCustomType(); ok {

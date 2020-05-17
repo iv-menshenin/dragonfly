@@ -271,7 +271,7 @@ func (c *Default) String() string {
 	if c.Default == nil {
 		return ""
 	}
-	return c.Default.String()
+	return fmt.Sprintf("default %s", c.Default)
 }
 
 func (c *Default) expression() int { return 0 }

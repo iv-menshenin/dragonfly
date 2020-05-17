@@ -89,7 +89,7 @@ func initFlags() ProgramParams {
 		OutputFile:  fsDiff.String("output", os.Stdout.Name(), "file to output"),
 		PackageName: fsDiff.String("package", "generated", "go package name"),
 		Schema:      fsDiff.String("schema", "", "generate code for schema"),
-		Connection:  fsDiff.String("connection", os.Stdout.Name(), "connection string"),
+		Connection:  fsDiff.String("connection", "", "connection string"),
 	}
 	flagSets[ToDoDiff] = fsDiff
 

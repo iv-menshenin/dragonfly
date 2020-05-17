@@ -3,6 +3,7 @@ package dragonfly
 import (
 	"fmt"
 	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
+	"go/token"
 	"strings"
 )
 
@@ -117,25 +118,18 @@ func makeDomainSetNotNull(schema, domain string, notNull bool) sqt.SqlStmt {
 	}
 }
 
-func makeDomainSetDefault(schema, domain string, defaultValue *string) sqt.SqlStmt {
-	if defaultValue == nil {
-		return &sqt.AlterStmt{
-			Target: sqt.TargetDomain,
-			Name: &sqt.Selector{
-				Name:      domain,
-				Container: schema,
-			},
-			Alter: makeSetDropExpr(false, &sqt.Default{}),
-		}
-	} else {
-		return &sqt.AlterStmt{
-			Target: sqt.TargetDomain,
-			Name: &sqt.Selector{
-				Name:      domain,
-				Container: schema,
-			},
-			Alter: makeSetDropExpr(true, &sqt.Default{Default: &sqt.Literal{Text: *defaultValue}}),
-		}
+func makeDomainSetDefault(schema, domain string, defaultValue interface{}) sqt.SqlStmt {
+	var setDefault = makeSetDropExpr(false, &sqt.Default{})
+	if defaultValue != nil {
+		setDefault = makeSetDropExpr(true, &sqt.Default{Default: &sqt.Literal{Text: *defaultToSQL(defaultValue)}})
+	}
+	return &sqt.AlterStmt{
+		Target: sqt.TargetDomain,
+		Name: &sqt.Selector{
+			Name:      domain,
+			Container: schema,
+		},
+		Alter: setDefault,
 	}
 }
 
@@ -359,6 +353,25 @@ func makeAlterColumnSetNotNull(schema, table, column string, notNull bool) sqt.S
 	}
 }
 
+func makeAlterColumnSetDefault(schema, table, column string, defaultValue interface{}) sqt.SqlStmt {
+	var setDefault = makeSetDropExpr(false, &sqt.Default{})
+	if defaultValue != nil {
+		setDefault = makeSetDropExpr(true, &sqt.Default{Default: &sqt.Literal{Text: *defaultToSQL(defaultValue)}})
+	}
+	return &sqt.AlterStmt{
+		Target: sqt.TargetTable,
+		Name: &sqt.Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &sqt.AlterExpr{
+			Target: sqt.TargetColumn,
+			Name:   &sqt.Literal{Text: column},
+			Alter:  setDefault,
+		},
+	}
+}
+
 func makeAlterColumnSetType(schema, table, column string, domainSchema DomainSchema) sqt.SqlStmt {
 	// TODO
 	var columnType = domainSchema.Type
@@ -404,6 +417,27 @@ func makeAlterColumnSetDomain(schema, table, column, domainName string) sqt.SqlS
 				DataType: domainName,
 			},
 		},
+	}
+}
+
+/* UPDATE */
+func makeUpdateWholeColumnStatement(schema, table, column string, value interface{}) sqt.SqlStmt {
+	return &sqt.UpdateStmt{
+		Table: sqt.TableDesc{
+			Table: &sqt.Selector{
+				Name:      table,
+				Container: schema,
+			},
+			Alias: "",
+		},
+		Set: []sqt.SqlExpr{
+			&sqt.BinaryExpr{
+				Left:  &sqt.Literal{Text: column},
+				Right: &sqt.Literal{Text: *defaultToSQL(value)},
+				Op:    token.ASSIGN,
+			},
+		},
+		Where: nil,
 	}
 }
 
