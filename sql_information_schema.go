@@ -879,16 +879,20 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 }
 
 func extractSerialType(columnStruct rawColumnStruct) (string, bool) {
-	if (*columnStruct.Default)[:7] == "nextval" {
-		switch columnStruct.UdtName {
-		case "int2":
-			return "smallserial", true
-		case "int4":
-			return "serial", true
-		case "int8":
-			return "bigserial", true
-		default:
-			return "serial", true
+	if columnStruct.Default != nil {
+		if len(*columnStruct.Default) > 7 {
+			if (*columnStruct.Default)[:7] == "nextval" {
+				switch columnStruct.UdtName {
+				case "int2":
+					return "smallserial", true
+				case "int4":
+					return "serial", true
+				case "int8":
+					return "bigserial", true
+				default:
+					return "serial", true
+				}
+			}
 		}
 	}
 	return "", false
