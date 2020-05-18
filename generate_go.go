@@ -309,6 +309,10 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			if len(option.OneOf) > 0 {
 				panic("the option must contains 'one_of' or 'field' not both")
 			}
+			var operTags = []string{string(operator)}
+			if option.Constant != "" {
+				operTags = append(operTags, option.Constant)
+			}
 			column := table.Columns.getColumn(option.Column)
 			if operator == builders.CompareIsNull {
 				if column.Value.Schema.Value.NotNull {
@@ -340,7 +344,7 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 					sqlTags = utils.ArrayRemove(sqlTags, "required")
 					field.Tag = builders.MakeTagsForField(map[string][]string{
 						builders.TagTypeSQL: sqlTags,
-						builders.TagTypeOp:  {string(operator)},
+						builders.TagTypeOp:  operTags,
 					})
 				}
 			}

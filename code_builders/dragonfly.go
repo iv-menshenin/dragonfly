@@ -33,7 +33,6 @@ const (
 	ScanDestVariable variableName = "row"
 
 	// functions
-	generateFunctionNow    = "now"
 	generateFunctionHex    = "H"
 	generateFunctionAlpha  = "A"
 	generateFunctionDigits = "0"
@@ -290,7 +289,8 @@ func BuildFindArgumentsProcessor(
 	optionsFuncField []*ast.Field, // TODO get rid
 ) {
 	var (
-		functionBody = make([]ast.Stmt, 0, len(optionFields)*3)
+		functionBody     = make([]ast.Stmt, 0, len(optionFields)*3)
+		optionsFieldList = make([]*ast.Field, 0, len(optionFields))
 	)
 	for _, field := range optionFields {
 		tags := utils.FieldTagToMap(field.Tag.Value)
@@ -320,6 +320,7 @@ func BuildFindArgumentsProcessor(
 					operator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), columns, ci, options)...,
 				)
 			}
+			optionsFieldList = append(optionsFieldList, field)
 		} else {
 			if operator.IsMult() {
 				functionBody = append(
@@ -327,7 +328,28 @@ func BuildFindArgumentsProcessor(
 					operator.getBuilder().makeArrayQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, options)...,
 				)
 			} else {
-				if _, ok := field.Type.(*ast.StarExpr); ok {
+				if len(opTagValue) > 1 {
+					// TODO move to external function
+					var (
+						constantValue = opTagValue[1]
+						operatorValue = "/* %s */ %s"
+						tmpOperator   = operator.getBuilder()
+					)
+					if o, ok := tmpOperator.(opInline); ok {
+						operatorValue = o.operator
+					} else if o, ok := tmpOperator.(opRegular); ok {
+						operatorValue = o.operator
+					}
+					var newOperator = opConstant{
+						opInline: opInline{
+							operator: operatorValue,
+						},
+					}
+					functionBody = append(
+						functionBody,
+						newOperator.makeScalarQueryOption(funcFilterOptionName, constantValue, colName, ci, false, options)...,
+					)
+				} else if _, ok := field.Type.(*ast.StarExpr); ok {
 					functionBody = append(
 						functionBody,
 						MakeSimpleIfStatement(
@@ -335,11 +357,13 @@ func BuildFindArgumentsProcessor(
 							operator.getBuilder().makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, true, options)...,
 						),
 					)
+					optionsFieldList = append(optionsFieldList, field)
 				} else {
 					functionBody = append(
 						functionBody,
 						operator.getBuilder().makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, false, options)...,
 					)
+					optionsFieldList = append(optionsFieldList, field)
 				}
 			}
 		}
@@ -349,7 +373,7 @@ func BuildFindArgumentsProcessor(
 			funcFilterOptionTypeName: {
 				Name: ast.NewIdent(funcFilterOptionTypeName),
 				Type: &ast.StructType{
-					Fields:     &ast.FieldList{List: optionFields},
+					Fields:     &ast.FieldList{List: optionsFieldList},
 					Incomplete: false,
 				},
 			},

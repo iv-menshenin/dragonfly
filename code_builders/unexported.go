@@ -30,6 +30,10 @@ type (
 	opInline struct {
 		operator string
 	}
+	// use this option if the filter value is always fixed and not user selectable
+	opConstant struct {
+		opInline
+	}
 )
 
 func makeImportSpec(lPos *token.Pos, imports map[string]string) []ast.Spec {
@@ -319,14 +323,40 @@ func (op opInline) makeScalarQueryOption(
 	}
 }
 
+func (op *opConstant) makeScalarQueryOption(
+	optionName, constantValue, columnName string,
+	ci, ref bool,
+	options builderOptions,
+) []ast.Stmt {
+	return []ast.Stmt{
+		MakeAssignment(
+			[]string{options.variableForColumnExpr.String()},
+			MakeCallExpression(
+				AppendFn,
+				ast.NewIdent(options.variableForColumnExpr.String()),
+				MakeCallExpression(
+					SprintfFn,
+					MakeBasicLiteralString(op.operator),
+					MakeBasicLiteralString(columnName),
+					MakeBasicLiteralString(constantValue),
+				),
+			),
+		),
+	}
+}
+
 func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 	switch funcName {
 	case tagGenerate:
 		if len(funcArgs) == 0 {
 			panic("tag contains 'generate' function without any argument")
 		}
-		if strings.EqualFold(funcArgs[0], generateFunctionNow) {
-			return MakeCallExpression(TimeNowFn)
+		if userDefinedFunction, ok := registeredGenerators[funcArgs[0]]; ok {
+			var args = make([]ast.Expr, 0, len(funcArgs)-1)
+			for _, arg := range funcArgs[1:] {
+				args = append(args, ast.NewIdent(arg))
+			}
+			return MakeCallExpression(userDefinedFunction, args...)
 		}
 		// functions with 'len' argument
 		if utils.ArrayContains([]string{

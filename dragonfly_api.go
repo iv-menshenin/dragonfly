@@ -3,8 +3,10 @@ package dragonfly
 import (
 	"database/sql"
 	"fmt"
+	builders "github.com/iv-menshenin/dragonfly/code_builders"
 	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
 	"github.com/iv-menshenin/dragonfly/utils"
+	"go/ast"
 	"go/printer"
 	"io"
 	"net/url"
@@ -146,6 +148,15 @@ func GenerateGO(db *Root, schemaName, packageName string, w io.Writer) {
 func RegisterApiBuilder(typeName string, operation ApiDbOperation, builderFunc ApiFuncBuilder) {
 	apiTypeIsOperation[ApiType(typeName)] = operation
 	funcTemplates[ApiType(typeName)] = builderFunc
+}
+
+func RegisterFieldValueGenerator(alias, funcName string, minimumArgumentsCount int, isExtensible bool) {
+	newFunction := builders.CallFunctionDescriber{
+		FunctionName:                ast.NewIdent(funcName),
+		MinimumNumberOfArguments:    minimumArgumentsCount,
+		ExtensibleNumberOfArguments: isExtensible,
+	}
+	builders.AddNewGenerator(alias, newFunction)
 }
 
 func (c *Diff) Print(w io.Writer) {

@@ -1,0 +1,32 @@
+
+schemas:
+  - name: test
+    tables:
+      test_table:
+        columns:
+          - name: uuid
+            schema: { type: uuid }
+            tags: [ generate(uuid) ]
+          - name: someOther
+            schema: { type: varchar, length: 20 }
+          - name: created
+            schema: { type: timestamp }
+            tags: [ noInsert, generate(now) ]
+          - name: deleted
+            schema: { type: timestamp }
+            tags: [ noInsert, noUpdate, generate(now) ]
+
+        api:
+          - type: insertOne
+          - type: updateOne
+          - name: deleteRecord
+            type: updateOne
+            modify: [ deleted ]
+          - type: lookUp
+          - name: findRecords
+            type: findAll
+            find_by:
+              - column: someOther
+              - column: deleted
+                operator: isNull
+                constant: "null"
