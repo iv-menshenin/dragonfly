@@ -288,6 +288,7 @@ func BuildFindArgumentsProcessor(
 	declarations map[string]*ast.TypeSpec,
 	optionsFuncField []*ast.Field, // TODO get rid
 ) {
+	// TODO simplify this function
 	var (
 		functionBody     = make([]ast.Stmt, 0, len(optionFields)*3)
 		optionsFieldList = make([]*ast.Field, 0, len(optionFields))
@@ -327,6 +328,7 @@ func BuildFindArgumentsProcessor(
 					functionBody,
 					operator.getBuilder().makeArrayQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, options)...,
 				)
+				optionsFieldList = append(optionsFieldList, field)
 			} else {
 				if len(opTagValue) > 1 {
 					// TODO move to external function
