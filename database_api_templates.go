@@ -239,6 +239,12 @@ func (c AstDataChain) extractImports() map[string]string {
 				imports[pack] = getPackagePath(pack)
 			}
 		}
+		if f.Type.Results != nil {
+			packages, scopes = extractPackagesFromFieldList(*f.Type.Results, scopes)
+			for _, pack := range packages {
+				imports[pack] = getPackagePath(pack)
+			}
+		}
 		if f.Body != nil {
 			for _, pack := range extractPackagesFromBlock(*f.Body, scopes) {
 				imports[pack] = getPackagePath(pack)
