@@ -85,9 +85,10 @@ func sortedDataChainImplementations(source map[string]*ast.FuncDecl) []ast.Decl 
 
 func getPackagePath(pack string) string {
 	packs := map[string]string{
-		"rand": "math/rand",
-		"sql":  "database/sql",
-		"json": "encoding/json",
+		"rand":   "math/rand",
+		"sql":    "database/sql",
+		"json":   "encoding/json",
+		"driver": "database/sql/driver",
 	}
 	if path, ok := packs[pack]; ok {
 		return path
@@ -113,6 +114,13 @@ func extractPackagesFromBlock(t ast.BlockStmt, scopes []string) []string {
 		case *ast.BlockStmt:
 			packages = extractPackagesFromBlock(*s, scopes)
 			imp = inScopePackageAppend(scopes, imp, packages...)
+		case *ast.ReturnStmt:
+			if r, ok := stmt.(*ast.ReturnStmt); ok {
+				for _, expr := range r.Results {
+					packages, scopes = extractPackagesFromExpression(expr, scopes)
+					imp = inScopePackageAppend(scopes, imp, packages...)
+				}
+			}
 		case *ast.AssignStmt:
 			for _, expr := range s.Rhs {
 				packages, scopes = extractPackagesFromExpression(expr, scopes)
