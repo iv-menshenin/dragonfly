@@ -42,6 +42,7 @@ const (
 	apiTypeInsertOne ApiType = "insertOne"
 	apiTypeUpsertOne ApiType = "upsertOne"
 	apiTypeUpdateOne ApiType = "updateOne"
+	apiTypeUpdateAll ApiType = "updateAll"
 	apiTypeDeleteOne ApiType = "deleteOne"
 	apiTypeDeleteAll ApiType = "deleteAll"
 	apiTypeFindOne   ApiType = "findOne"
