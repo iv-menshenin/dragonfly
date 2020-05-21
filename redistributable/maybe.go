@@ -80,106 +80,108 @@ type (
 )
 
 /* sql/driver.Valuer interface implementations */
+/* valid []byte, bool, float64, int64, string, time.Time only
+*/
 
-func (c *MaybeTime) Value() (driver.Value, error) {
+func (c MaybeTime) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
 	return c.value, nil
 }
 
-func (c *MaybeString) Value() (driver.Value, error) {
+func (c MaybeString) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
 	return c.value, nil
 }
 
-func (c *MaybeBool) Value() (driver.Value, error) {
+func (c MaybeBool) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
 	return c.value, nil
 }
 
-func (c *MaybeInt) Value() (driver.Value, error) {
+func (c MaybeInt) Value() (driver.Value, error) {
+	if !c.valid {
+		return nil, nil
+	}
+	return int64(c.value), nil
+}
+
+func (c MaybeInt8) Value() (driver.Value, error) {
+	if !c.valid {
+		return nil, nil
+	}
+	return int64(c.value), nil
+}
+
+func (c MaybeInt16) Value() (driver.Value, error) {
+	if !c.valid {
+		return nil, nil
+	}
+	return int64(c.value), nil
+}
+
+func (c MaybeInt32) Value() (driver.Value, error) {
+	if !c.valid {
+		return nil, nil
+	}
+	return int64(c.value), nil
+}
+
+func (c MaybeInt64) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
 	return c.value, nil
 }
 
-func (c *MaybeInt8) Value() (driver.Value, error) {
+func (c MaybeUInt) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
-	return c.value, nil
+	return int64(c.value), nil
 }
 
-func (c *MaybeInt16) Value() (driver.Value, error) {
+func (c MaybeUInt8) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
-	return c.value, nil
+	return int64(c.value), nil
 }
 
-func (c *MaybeInt32) Value() (driver.Value, error) {
+func (c MaybeUInt16) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
-	return c.value, nil
+	return int64(c.value), nil
 }
 
-func (c *MaybeInt64) Value() (driver.Value, error) {
+func (c MaybeUInt32) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
-	return c.value, nil
+	return int64(c.value), nil
 }
 
-func (c *MaybeUInt) Value() (driver.Value, error) {
+func (c MaybeUInt64) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
-	return c.value, nil
+	return int64(c.value), nil
 }
 
-func (c *MaybeUInt8) Value() (driver.Value, error) {
+func (c MaybeFloat32) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
-	return c.value, nil
+	return float64(c.value), nil
 }
 
-func (c *MaybeUInt16) Value() (driver.Value, error) {
-	if !c.valid {
-		return nil, nil
-	}
-	return c.value, nil
-}
-
-func (c *MaybeUInt32) Value() (driver.Value, error) {
-	if !c.valid {
-		return nil, nil
-	}
-	return c.value, nil
-}
-
-func (c *MaybeUInt64) Value() (driver.Value, error) {
-	if !c.valid {
-		return nil, nil
-	}
-	return c.value, nil
-}
-
-func (c *MaybeFloat32) Value() (driver.Value, error) {
-	if !c.valid {
-		return nil, nil
-	}
-	return c.value, nil
-}
-
-func (c *MaybeFloat64) Value() (driver.Value, error) {
+func (c MaybeFloat64) Value() (driver.Value, error) {
 	if !c.valid {
 		return nil, nil
 	}
