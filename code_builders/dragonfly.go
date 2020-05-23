@@ -165,8 +165,8 @@ var (
 	knownOperators = map[SQLDataCompareOperator]iOperator{
 		CompareEqual:     opRegular{`%s = %s`},
 		CompareNotEqual:  opRegular{`% != %s`},
-		CompareLike:      opRegular{`%s like %s`},
-		CompareNotLike:   opRegular{`%s not like %s`},
+		CompareLike:      opRegular{`%s like '%%'||%s||'%%'`},
+		CompareNotLike:   opRegular{`%s not like '%%'||%s||'%%'`},
 		CompareIn:        opRegular{`%s in (%s)`},
 		CompareNotIn:     opRegular{`%s not in (%s)`},
 		CompareGreatThan: opRegular{`%s > %s`},
