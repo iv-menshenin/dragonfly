@@ -96,7 +96,7 @@ func makeSliceDescriber(t, p, x string) makeDescriber {
 }
 
 func (c sliceTypeDescriber) fieldTypeExpr() ast.Expr {
-	return &ast.ArrayType{Elt: c.simpleTypeDescriber.fieldTypeExpr()}
+	return builders.MakeSqlFieldArrayType(c.simpleTypeDescriber.fieldTypeExpr())
 }
 
 /*
