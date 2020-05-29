@@ -93,6 +93,21 @@ var (
 	}
 )
 
+var makeEncryptPasswordCallCustom func(valueForEncrypt ast.Expr) *ast.CallExpr = nil
+func makeEncryptPasswordCall(valueForEncrypt ast.Expr) *ast.CallExpr {
+	if makeEncryptPasswordCallCustom != nil {
+		return makeEncryptPasswordCallCustom(valueForEncrypt)
+	}
+	return MakeCallExpression(
+		CallFunctionDescriber{
+			FunctionName:                ast.NewIdent("encryptPassword"),
+			MinimumNumberOfArguments:    1,
+			ExtensibleNumberOfArguments: false,
+		},
+		valueForEncrypt,
+	)
+}
+
 func MakeExecutionOption(rowStructName, sqlVariableName string) executionBlockOptions {
 	return executionBlockOptions{
 		rowVariableName:          ScanDestVariable,
@@ -446,21 +461,10 @@ func BuildInputValuesProcessor(
 			}
 		}
 		if utils.ArrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
-			encryptPasswordFn := CallFunctionDescriber{
-				FunctionName:                ast.NewIdent("encryptPassword"),
-				MinimumNumberOfArguments:    1,
-				ExtensibleNumberOfArguments: false,
-			}
 			if _, star := field.Type.(*ast.StarExpr); star {
-				valueExpr = MakeCallExpression(
-					encryptPasswordFn,
-					MakeStarExpression(valueExpr),
-				)
+				valueExpr = makeEncryptPasswordCall(MakeStarExpression(valueExpr))
 			} else {
-				valueExpr = MakeCallExpression(
-					encryptPasswordFn,
-					valueExpr,
-				)
+				valueExpr = makeEncryptPasswordCall(valueExpr)
 			}
 		}
 		functionBody = append(

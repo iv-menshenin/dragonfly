@@ -159,6 +159,10 @@ func RegisterFieldValueGenerator(alias, funcName string, minimumArgumentsCount i
 	builders.AddNewGenerator(alias, newFunction)
 }
 
+func RegisterSqlFieldEncryptFunction(encryptFn func(valueForEncrypt ast.Expr) *ast.CallExpr) {
+	builders.RegisterSqlFieldEncryptFunction(encryptFn)
+}
+
 func (c *Diff) Print(w io.Writer) {
 	utils.WriteWrapper(w, "\n/* SECTION BEFORE INSTALL %s */", strings.Repeat("=", 58))
 	for _, stmt := range c.preInstall {
