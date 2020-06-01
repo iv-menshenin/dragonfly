@@ -138,6 +138,7 @@ type (
 	TableApi       struct {
 		Type          ApiType        `yaml:"type" json:"type"`
 		Name          string         `yaml:"name" json:"name"`
+		Key           string         `yaml:"key,omitempty" json:"key,omitempty"`
 		FindOptions   ApiFindOptions `yaml:"find_by,omitempty" json:"find_by,omitempty"`
 		ModifyColumns []string       `yaml:"modify,omitempty" json:"modify,omitempty"`
 	}

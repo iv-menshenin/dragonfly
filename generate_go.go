@@ -241,60 +241,79 @@ func (c *TableApi) generateMutableOrInsertable(table *Table, w *AstData) (fields
 	return
 }
 
-// TODO split this function
+func (c *Table) extractColumnsByConstraintName(keyName string) (columns []ColumnRef) {
+	if constraint, ok := c.Constraints.tryToFind(keyName); ok {
+		columns = make([]ColumnRef, 0, len(constraint.Columns))
+		for _, colName := range constraint.Columns {
+			column, ok := c.Columns.tryToFind(colName)
+			if !ok {
+				panic(fmt.Sprintf("unexpected column name `%s` in key `%s`", colName, keyName))
+			}
+			columns = append(columns, *column)
+		}
+		return
+	} else {
+		panic(fmt.Sprintf("cannot find key `%s`", keyName))
+	}
+}
+
+func (c *Table) extractColumnsByTags(tagName string) (columns []ColumnRef) {
+	columns = make([]ColumnRef, 0, len(c.Columns))
+	for _, column := range c.Columns {
+		if utils.ArrayContains(column.Value.Tags, tagName) {
+			columns = append(columns, column)
+		}
+	}
+	return
+}
+
+func (c *Table) extractColumnsByUniqueKeyType(keyType ConstraintType) (columns []ColumnRef) {
+	for _, column := range c.Columns {
+		for _, constraint := range column.Value.Constraints {
+			if constraint.Type == keyType {
+				// by column allowed only once key describing
+				return []ColumnRef{column}
+			}
+		}
+	}
+	for _, constraint := range c.Constraints {
+		if constraint.Constraint.Type == keyType {
+			return c.extractColumnsByConstraintName(constraint.Constraint.Name)
+		}
+	}
+	return
+}
+
+func (c *Table) extractPrimaryKeyColumns() (columns []ColumnRef) {
+	return c.extractColumnsByUniqueKeyType(ConstraintPrimaryKey)
+}
+
+func (c *Table) extractUniqueKeyColumns() (columns []ColumnRef) {
+	return c.extractColumnsByUniqueKeyType(ConstraintUniqueKey)
+}
+
 func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(table.Columns))
-	for _, column := range table.Columns {
-		if utils.ArrayContains(column.Value.Tags, tagIdentifier) {
-			field := column.generateField(w, column.Value.Schema.Value.NotNull)
-			fields = append(fields, &field)
-		}
-	}
-	if len(fields) > 0 {
-		return
-	}
-	for _, column := range table.Columns {
-		for _, constraint := range column.Value.Constraints {
-			if constraint.Type == ConstraintPrimaryKey {
-				field := column.generateField(w, column.Value.Schema.Value.NotNull)
-				fields = append(fields, &field)
+	var columns []ColumnRef
+	if c.Key != "" {
+		columns = table.extractColumnsByConstraintName(c.Key)
+	} else {
+		for {
+			if columns = table.extractColumnsByTags(tagIdentifier); len(columns) > 0 {
+				break
 			}
-		}
-	}
-	if len(fields) > 0 {
-		return
-	}
-	for _, constraint := range table.Constraints {
-		if constraint.Constraint.Type == ConstraintPrimaryKey {
-			for _, columnName := range constraint.Columns {
-				column := table.Columns.getColumn(columnName)
-				field := column.generateField(w, column.Value.Schema.Value.NotNull)
-				fields = append(fields, &field)
+			if columns = table.extractPrimaryKeyColumns(); len(columns) > 0 {
+				break
 			}
-		}
-	}
-	if len(fields) > 0 {
-		return
-	}
-	for _, constraint := range table.Constraints {
-		if constraint.Constraint.Type == ConstraintUniqueKey {
-			for _, columnName := range constraint.Columns {
-				column := table.Columns.getColumn(columnName)
-				field := column.generateField(w, column.Value.Schema.Value.NotNull)
-				fields = append(fields, &field)
+			if columns = table.extractUniqueKeyColumns(); len(columns) > 0 {
+				break
 			}
+			panic("cannot extract unique columns for " + c.Name)
 		}
 	}
-	if len(fields) > 0 {
-		return
-	}
-	for _, column := range table.Columns {
-		for _, constraint := range column.Value.Constraints {
-			if constraint.Type == ConstraintUniqueKey {
-				field := column.generateField(w, column.Value.Schema.Value.NotNull)
-				fields = append(fields, &field)
-			}
-		}
+	fields = make([]*ast.Field, 0, len(columns))
+	for _, column := range columns {
+		field := column.generateField(w, column.Value.Schema.Value.NotNull)
+		fields = append(fields, &field)
 	}
 	return
 }
