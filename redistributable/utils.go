@@ -12,6 +12,7 @@ import (
 
 type (
 	ContextDB      struct{}
+	ContextTX      struct{}
 	EnumValueError error
 	UUID           string
 	IsNullValue    string
@@ -51,6 +52,37 @@ func getDatabase(ctx context.Context) (*sql.DB, error) {
 		return db, nil
 	}
 	return nil, errors.New("cannot get connection from context")
+}
+
+func getTransaction(ctx context.Context) (*sql.Tx, error) {
+	if ctx == nil {
+		return nil, errors.New("context is nil")
+	}
+	if tx, ok := ctx.Value(ContextTX{}).(*sql.Tx); ok {
+		return tx, nil
+	}
+	return nil, nil
+}
+
+type(
+	queryExecInterface struct {
+		Query func(query string, args ...interface{}) (*sql.Rows, error)
+	}
+)
+
+func getQueryExecPoint(ctx context.Context) (queryExecInterface, error) {
+	if tx, err := getTransaction(ctx); err != nil {
+		return queryExecInterface{}, err
+	} else {
+		if tx != nil {
+			return queryExecInterface{Query: tx.Query}, nil
+		}
+		if db, err := getDatabase(ctx); err != nil {
+			return queryExecInterface{}, err
+		} else {
+			return queryExecInterface{Query: db.Query}, nil
+		}
+	}
 }
 
 type (

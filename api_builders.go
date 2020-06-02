@@ -10,6 +10,8 @@ import (
 
 const (
 	sqlEmptyResultErrorName = "sqlEmptyResult"
+	getQueryExecPointFnName = "getQueryExecPoint"
+	queryExecInterfaceName = "queryExecInterface"
 )
 
 func exprToString(expr ast.Expr) string {
@@ -63,7 +65,7 @@ func addVariablesToFunctionBody(
 		[]ast.Stmt{
 			builders.MakeVarStatement(
 				append([]ast.Spec{
-					builders.MakeVarType("db", builders.MakeStarExpression(builders.MakeSelectorExpression("sql", "DB"))),
+					builders.MakeVarType("db", ast.NewIdent(queryExecInterfaceName)),
 					builders.MakeVarType("rows", builders.MakeStarExpression(builders.MakeSelectorExpression("sql", "Rows"))),
 					builders.MakeVarValue(sqlQueryVariableName, builders.MakeBasicLiteralString(sqlQuery)),
 				}, addition...)...,
@@ -72,7 +74,7 @@ func addVariablesToFunctionBody(
 				"db",
 				builders.MakeCallExpression(
 					builders.CallFunctionDescriber{
-						FunctionName:                ast.NewIdent("getDatabase"),
+						FunctionName:                ast.NewIdent(getQueryExecPointFnName),
 						MinimumNumberOfArguments:    1,
 						ExtensibleNumberOfArguments: false,
 					},
