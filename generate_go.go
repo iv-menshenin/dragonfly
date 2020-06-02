@@ -33,11 +33,12 @@ const (
 	ApiOperationDelete
 	ApiOperationUpsert
 
-	tagNoInsert     = "noInsert"
-	tagNoUpdate     = "noUpdate"
-	tagAlwaysUpdate = "alwaysUpdate"
-	tagDeletedFlag  = "deletedFlag"
-	tagIdentifier   = "identifier"
+	tagNoInsert       = "noInsert"
+	tagNoUpdate       = "noUpdate"
+	tagNoDefaultValue = "noDefaultValue"
+	tagAlwaysUpdate   = "alwaysUpdate"
+	tagDeletedFlag    = "deletedFlag"
+	tagIdentifier     = "identifier"
 
 	apiTypeInsertOne ApiType = "insertOne"
 	apiTypeUpsertOne ApiType = "upsertOne"
@@ -207,38 +208,33 @@ func (c *Table) generateFields(w *AstData) (fields []*ast.Field) {
 	return
 }
 
-func (c *TableApi) generateInsertable(table *Table, w *AstData) (fields []*ast.Field) {
+func (c *TableApi) generateFieldsExceptTags(table *Table, w *AstData, tags ...string) (fields []*ast.Field) {
 	fields = make([]*ast.Field, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		if !utils.ArrayContains(column.Value.Tags, tagNoInsert) {
-			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
+		var passToNext = false
+		for _, tag := range tags {
+			passToNext = passToNext || utils.ArrayContains(column.Value.Tags, tag)
+		}
+		if !passToNext {
+			// we may to allow the absence of a value only if NULL is allowed to column or the field has a default value (in this case, make sure the tagNoDefaultValue tag is missing)
+			required := column.Value.Schema.Value.NotNull && (utils.ArrayContains(column.Value.Tags, tagNoDefaultValue) || column.Value.Schema.Value.Default == nil)
+			field := column.generateField(w, required)
 			fields = append(fields, &field)
 		}
 	}
 	return
+}
+
+func (c *TableApi) generateInsertable(table *Table, w *AstData) (fields []*ast.Field) {
+	return c.generateFieldsExceptTags(table, w, tagNoInsert)
 }
 
 func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(table.Columns))
-	for _, column := range table.Columns {
-		if !utils.ArrayContains(column.Value.Tags, tagNoUpdate) {
-			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
-			fields = append(fields, &field)
-		}
-	}
-	return
+	return c.generateFieldsExceptTags(table, w, tagNoUpdate)
 }
 
 func (c *TableApi) generateMutableOrInsertable(table *Table, w *AstData) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(table.Columns))
-	for _, column := range table.Columns {
-		// TODO tagNoUpdate + tagNoInsert ?
-		if !(utils.ArrayContains(column.Value.Tags, tagNoUpdate) && utils.ArrayContains(column.Value.Tags, tagNoInsert)) {
-			field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
-			fields = append(fields, &field)
-		}
-	}
-	return
+	return c.generateFieldsExceptTags(table, w, tagNoUpdate, tagNoInsert)
 }
 
 func (c *Table) extractColumnsByConstraintName(keyName string) (columns []ColumnRef) {
@@ -318,33 +314,52 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 	return
 }
 
+func checkOption(table *Table, operator builders.SQLDataCompareOperator, option ApiFindOption, w *AstData) {
+	if option.Column != "" {
+		if len(option.OneOf) > 0 {
+			panic("the option must contains 'one_of' or 'field' not both")
+		}
+		column := table.Columns.getColumn(option.Column)
+		if operator == builders.CompareIsNull && column.Value.Schema.Value.NotNull {
+			panic(fmt.Sprintf("cannot apply operator `isNull` to not_null column `%s`", column.Value.Name))
+		}
+	} else if len(option.OneOf) > 0 {
+		var basicType ast.Expr = nil
+		for _, oneOf := range option.OneOf {
+			column := table.Columns.getColumn(oneOf)
+			colType := column.generateField(w, option.Required).Type
+			if basicType == nil {
+				basicType = colType
+			} else if !reflect.DeepEqual(basicType, colType) {
+				panic("each of 'one_of' must have same go-type of data")
+			}
+		}
+	} else {
+		panic("the option must contains 'one_of' or 'column'")
+	}
+}
+
 // TODO split
-func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []*ast.Field) {
-	findBy = make([]*ast.Field, 0, len(*c))
-	for _, option := range *c {
+func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []*ast.Field) {
+	findBy = make([]*ast.Field, 0, len(c.FindOptions))
+	for _, option := range c.FindOptions {
 		operator := option.Operator
 		operator.Check()
+		checkOption(table, operator, option, w)
 		if option.Column != "" {
-			// TODO move to new function
-			if len(option.OneOf) > 0 {
-				panic("the option must contains 'one_of' or 'field' not both")
-			}
 			var operTags = []string{string(operator)}
 			if option.Constant != "" {
 				operTags = append(operTags, option.Constant)
 			}
 			column := table.Columns.getColumn(option.Column)
 			if operator == builders.CompareIsNull {
-				if column.Value.Schema.Value.NotNull {
-					panic(fmt.Sprintf("cannot apply operator `isNull` to not_null column `%s`", column.Value.Name))
-				}
 				column = ColumnRef{
 					Value: Column{
 						Name: column.Value.Name,
 						Schema: ColumnSchemaRef{
 							Value: DomainSchema{
 								TypeBase: TypeBase{
-									Type: "isnull",
+									Type: "isnull", // TODO hack?
 								},
 								NotNull: false,
 							},
@@ -378,20 +393,13 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 				unionColumns = append(unionColumns, oneOf)
 			}
 			firstColumn := table.Columns.getColumn(option.OneOf[0])
-			baseType := firstColumn.generateField(w, option.Required)
-			for _, oneOf := range option.OneOf[1:] {
-				nextColumn := table.Columns.getColumn(oneOf)
-				nextType := nextColumn.generateField(w, option.Required).Type
-				if !reflect.DeepEqual(baseType.Type, nextType) {
-					panic("each of 'one_of' must have same type of data")
-				}
-			}
-			baseType.Names = []*ast.Ident{
+			fieldType := firstColumn.generateField(w, option.Required)
+			fieldType.Names = []*ast.Ident{
 				ast.NewIdent(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
 			}
 			var sqlTags = []string{"-", builders.TagTypeUnion}
-			if baseType.Tag != nil {
-				if baseSqlTags, ok := utils.FieldTagToMap(baseType.Tag.Value)[builders.TagTypeSQL]; ok {
+			if fieldType.Tag != nil {
+				if baseSqlTags, ok := utils.FieldTagToMap(fieldType.Tag.Value)[builders.TagTypeSQL]; ok {
 					for _, tag := range baseSqlTags[1:] {
 						if tag != "required" {
 							sqlTags = append(sqlTags, tag)
@@ -402,15 +410,14 @@ func (c *ApiFindOptions) generateFindFields(table *Table, w *AstData) (findBy []
 			if option.Required {
 				sqlTags = append(sqlTags, "required")
 			}
-			baseType.Tag = builders.MakeTagsForField(map[string][]string{
+			fieldType.Tag = builders.MakeTagsForField(map[string][]string{
 				builders.TagTypeSQL:   sqlTags,
 				builders.TagTypeUnion: unionColumns,
 				builders.TagTypeOp:    {string(operator)},
 			})
-			findBy = append(findBy, &baseType)
+			findBy = append(findBy, &fieldType)
 			continue
 		}
-		panic("the option must contains 'one_of' or 'column'")
 	}
 	return
 }
@@ -445,7 +452,7 @@ func tryMakeMaybeType(rawTypeName string) ast.Expr {
 func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []*ast.Field) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
-			findBy = c.FindOptions.generateFindFields(table, w)
+			findBy = c.generateFindFields(table, w)
 		} else {
 			findBy = c.generateIdentifierOption(table, w)
 		}

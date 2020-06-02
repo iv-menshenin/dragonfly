@@ -94,6 +94,7 @@ var (
 )
 
 var makeEncryptPasswordCallCustom func(valueForEncrypt ast.Expr) *ast.CallExpr = nil
+
 func makeEncryptPasswordCall(valueForEncrypt ast.Expr) *ast.CallExpr {
 	if makeEncryptPasswordCallCustom != nil {
 		return makeEncryptPasswordCallCustom(valueForEncrypt)
