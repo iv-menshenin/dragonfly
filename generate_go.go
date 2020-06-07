@@ -607,6 +607,35 @@ func registerStructType(typeName, comment string, fields []builders.MetaField, w
 	}
 }
 
+func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (apiResultStructName string, additionFields []builders.MetaField) {
+	additionFields = make([]builders.MetaField, 0, len(c.Extended)+1)
+	apiResultStructName = makeExportedName(c.Name + "ExRow")
+	for _, column := range c.Extended {
+		var columnRef = ColumnRef{
+			Value: Column{
+				Name:   column.Name,
+				Schema: column.Schema,
+			},
+		}
+		var field = columnRef.generateField(w, column.Schema.Value.NotNull)
+		field.Tag = builders.MakeTagsForField(map[string][]string{
+			builders.TagTypeSQL: {column.SQL},
+		})
+		additionFields = append(additionFields, builders.MetaField{
+			Field:     &field,
+			SourceSql: builders.SourceSqlExpression{Expression: column.SQL},
+		})
+	}
+	var mainStruct = builders.MetaField{
+		Field: &ast.Field{
+			Type:    ast.NewIdent(tableRowStructName),
+			Comment: builders.MakeComment(utils.StringToSlice("implemented main structure")),
+		},
+	}
+	registerStructType(apiResultStructName, c.Name, append([]builders.MetaField{mainStruct}, additionFields...), w)
+	return
+}
+
 func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 	for _, typeName := range c.Value.Types.getNames() {
 		typeSchema := c.Value.Types[typeName]
@@ -634,36 +663,14 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 						cApiType: api.Type.String(),
 					},
 				)
-				var apiResultStructName = tableRowStructName
-				// TODO move out
-				if len(api.Extended) > 0 {
-					additionFields = make([]builders.MetaField, 0, len(api.Extended)+1)
-					apiResultStructName = makeExportedName(apiName + "ExRow")
-					for _, column := range api.Extended {
-						var columnRef = ColumnRef{
-							Value: Column{
-								Name:   column.Name,
-								Schema: column.Schema,
-							},
-						}
-						var field = columnRef.generateField(w, column.Schema.Value.NotNull)
-						field.Tag = builders.MakeTagsForField(map[string][]string{
-							builders.TagTypeSQL: {column.SQL},
-						})
-						additionFields = append(additionFields, makeMetaFieldAsIs(columnRef, field))
-					}
-					var mainStruct = builders.MetaField{
-						Field: &ast.Field{
-							Type:    ast.NewIdent(tableRowStructName),
-							Comment: builders.MakeComment(utils.StringToSlice("implemented main structure")),
-						},
-					}
-					registerStructType(apiResultStructName, api.Name, append([]builders.MetaField{mainStruct}, additionFields...), w)
-				}
 				if apiName == "" {
 					panic(fmt.Sprintf("you must specify name for api #%d in '%s' schema '%s' table", i, schemaName, tableName))
 				} else {
 					apiName = makeExportedName(apiName)
+				}
+				var apiResultStructName = tableRowStructName
+				if len(api.Extended) > 0 {
+					apiResultStructName, additionFields = api.buildExtendedFields(tableRowStructName, w)
 				}
 				var (
 					optionFields, mutableFields = api.generateOptions(&table, w)
