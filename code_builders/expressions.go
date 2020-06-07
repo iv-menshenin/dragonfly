@@ -44,6 +44,15 @@ func MakeSelectorExpression(pack, name string) ast.Expr {
 	}
 }
 
+func MakeSelectorExpressionEx(pack ast.Expr, name string) ast.Expr {
+	return &ast.SelectorExpr{
+		X: pack,
+		Sel: &ast.Ident{
+			Name: name,
+		},
+	}
+}
+
 func MakeStarExpression(expr ast.Expr) ast.Expr {
 	return &ast.StarExpr{
 		Star: 0,

@@ -19,7 +19,7 @@ type (
 	}
 	ApiFuncBuilder func(
 		fullTableName, functionName, rowStructName string,
-		optionsFields, mutableFields, resultFields []*ast.Field,
+		optionsFields, mutableFields, resultFields []builders.MetaField,
 	) AstDataChain
 )
 

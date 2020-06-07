@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
+	"strings"
 )
 
 type (
@@ -22,7 +23,40 @@ type (
 		variableNameForSqlText   variableName
 		variableNameForArguments variableName
 	}
+
+	SourceSql interface {
+		sqlExpr() string
+	}
+	SourceSqlColumn struct {
+		ColumnName string
+	}
+	SourceSqlExpression struct {
+		Expression string
+	}
+	SourceSqlSomeColumns struct {
+		ColumnNames []string
+	}
+	MetaField struct {
+		Field           *ast.Field
+		SourceSql       SourceSql // sql mirror for field
+		CaseInsensitive bool
+		IsMaybeType     bool
+		CompareOperator SQLDataCompareOperator
+		Constant        string
+	}
 )
+
+func (s SourceSqlColumn) sqlExpr() string {
+	return s.ColumnName
+}
+
+func (s SourceSqlExpression) sqlExpr() string {
+	return s.Expression
+}
+
+func (s SourceSqlSomeColumns) sqlExpr() string {
+	return strings.Join(s.ColumnNames, ", ")
+}
 
 const (
 	ArgsVariable    variableName = "args"
@@ -37,9 +71,8 @@ const (
 	generateFunctionAlpha  = "A"
 	generateFunctionDigits = "0"
 	// column tags
-	tagGenerate        = "generate"
-	tagCaseInsensitive = "ci"
-	tagEncrypt         = "encrypt"
+	tagGenerate = "generate"
+	tagEncrypt  = "encrypt"
 	// sql data comparing variants
 	CompareEqual     SQLDataCompareOperator = "equal"
 	CompareNotEqual  SQLDataCompareOperator = "notEqual"
@@ -131,8 +164,7 @@ const (
 	TagTypeSQL   = "sql"
 	TagMaybeVal  = "maybe"
 	TagTypeJSON  = "json"
-	TagTypeUnion = "union"    // TODO internal, remove from export
-	TagTypeOp    = "operator" // TODO internal, remove from export
+	TagTypeUnion = "union" // TODO internal, remove from export
 )
 
 var (
@@ -206,7 +238,7 @@ func (c SQLDataCompareOperator) getBuilder() iOperator {
 // column and field positions correspond to each other
 func ExtractDestinationFieldRefsFromStruct(
 	rowVariableName string,
-	rowStructureFields []*ast.Field,
+	rowStructureFields []MetaField,
 ) (
 	destinationStructureFields []ast.Expr,
 	sourceTableColumnNames []string,
@@ -214,17 +246,9 @@ func ExtractDestinationFieldRefsFromStruct(
 	destinationStructureFields = make([]ast.Expr, 0, len(rowStructureFields))
 	sourceTableColumnNames = make([]string, 0, len(rowStructureFields))
 	for _, field := range rowStructureFields {
-		if field.Tag != nil {
-			tags := utils.FieldTagToMap(field.Tag.Value)
-			if sqlTags, ok := tags[TagTypeSQL]; ok && len(sqlTags) > 0 && sqlTags[0] != "-" {
-				for _, fName := range field.Names {
-					destinationStructureFields = append(
-						destinationStructureFields,
-						MakeRef(MakeSelectorExpression(rowVariableName, fName.Name)),
-					)
-					sourceTableColumnNames = append(sourceTableColumnNames, sqlTags[0])
-				}
-			}
+		for _, fName := range field.Field.Names {
+			destinationStructureFields = append(destinationStructureFields, MakeRef(MakeSelectorExpression(rowVariableName, fName.Name)))
+			sourceTableColumnNames = append(sourceTableColumnNames, field.SourceSql.sqlExpr())
 		}
 	}
 	return
@@ -290,6 +314,66 @@ func BuildExecutionBlockForFunction(
 	}
 }
 
+func makeFindProcessorForUnion(
+	funcFilterOptionName, fieldName string,
+	union []string,
+	field MetaField,
+	options builderOptions,
+) []ast.Stmt {
+	if field.CompareOperator.IsMult() {
+		panic(fmt.Sprintf("joins cannot be used in multiple expressions, for example '%s' in the expression '%s'", fieldName, field.CompareOperator))
+	}
+	if _, ok := field.Field.Type.(*ast.StarExpr); ok {
+		return []ast.Stmt{
+			MakeSimpleIfStatement(
+				MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, fieldName), Nil),
+				field.CompareOperator.getBuilder().makeUnionQueryOption(MakeStarExpression(MakeSelectorExpression(funcFilterOptionName, fieldName)), union, field.CaseInsensitive, options)...,
+			),
+		}
+	} else {
+		return field.CompareOperator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, fieldName), union, field.CaseInsensitive, options)
+	}
+}
+
+func makeFindProcessorForSingle(
+	funcFilterOptionName, fieldName string,
+	field MetaField,
+	options builderOptions,
+) []ast.Stmt {
+	if _, ok := field.Field.Type.(*ast.StarExpr); ok {
+		return []ast.Stmt{
+			MakeSimpleIfStatement(
+				MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, fieldName), Nil),
+				field.CompareOperator.getBuilder().makeScalarQueryOption(funcFilterOptionName, fieldName, field.SourceSql.sqlExpr(), field.CaseInsensitive, true, options)...,
+			),
+		}
+	} else {
+		return field.CompareOperator.getBuilder().makeScalarQueryOption(funcFilterOptionName, fieldName, field.SourceSql.sqlExpr(), field.CaseInsensitive, false, options)
+	}
+}
+
+func makeFindProcessorForConst(
+	funcFilterOptionName, fieldName string,
+	field MetaField,
+	options builderOptions,
+) []ast.Stmt {
+	var (
+		operatorValue = "/* %s */ %s"
+		tmpOperator   = field.CompareOperator.getBuilder()
+	)
+	if o, ok := tmpOperator.(opInline); ok {
+		operatorValue = o.operator
+	} else if o, ok := tmpOperator.(opRegular); ok {
+		operatorValue = o.operator
+	}
+	var newOperator = opConstant{
+		opInline: opInline{
+			operator: operatorValue,
+		},
+	}
+	return newOperator.makeScalarQueryOption(funcFilterOptionName, field.Constant, field.SourceSql.sqlExpr(), field.CaseInsensitive, false, options)
+}
+
 /*
 	Extracts required and optional parameters from incoming arguments, builds program code
 	Returns the body of program code, required type declarations and required input fields
@@ -297,91 +381,38 @@ func BuildExecutionBlockForFunction(
 func BuildFindArgumentsProcessor(
 	funcFilterOptionName string,
 	funcFilterOptionTypeName string,
-	optionFields []*ast.Field,
+	optionFields []MetaField,
 	options builderOptions,
 ) (
 	body []ast.Stmt,
 	declarations map[string]*ast.TypeSpec,
 	optionsFuncField []*ast.Field, // TODO get rid
 ) {
-	// TODO simplify this function
 	var (
 		functionBody     = make([]ast.Stmt, 0, len(optionFields)*3)
 		optionsFieldList = make([]*ast.Field, 0, len(optionFields))
 	)
 	for _, field := range optionFields {
-		tags := utils.FieldTagToMap(field.Tag.Value)
-		colName := tags[TagTypeSQL][0]
-		ci := utils.ArrayFind(tags[TagTypeSQL], tagCaseInsensitive) > 0
-		opTagValue, ok := tags[TagTypeOp]
-		if !ok || len(opTagValue) < 1 {
-			opTagValue = []string{string(CompareEqual)}
+		if len(field.Field.Names) != 1 {
+			panic("not supported names count")
 		}
-		operator := SQLDataCompareOperator(opTagValue[0])
-		if utils.ArrayFind(tags[TagTypeSQL], TagTypeUnion) > 0 {
-			columns := tags[TagTypeUnion]
-			if operator.IsMult() {
-				panic(fmt.Sprintf("joins cannot be used in multiple expressions, for example '%s' in the expression '%s'", field.Names[0].Name, opTagValue[0]))
-			}
-			if _, ok := field.Type.(*ast.StarExpr); ok {
-				functionBody = append(
-					functionBody,
-					MakeSimpleIfStatement(
-						MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), Nil),
-						operator.getBuilder().makeUnionQueryOption(MakeStarExpression(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name)), columns, ci, options)...,
-					),
-				)
-			} else {
-				functionBody = append(
-					functionBody,
-					operator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), columns, ci, options)...,
-				)
-			}
-			optionsFieldList = append(optionsFieldList, field)
+		var fieldName = field.Field.Names[0].Name
+		if union, ok := field.SourceSql.(SourceSqlSomeColumns); ok {
+			functionBody = append(functionBody, makeFindProcessorForUnion(funcFilterOptionName, fieldName, union.ColumnNames, field, options)...)
+			optionsFieldList = append(optionsFieldList, field.Field)
 		} else {
-			if operator.IsMult() {
+			if field.CompareOperator.IsMult() {
 				functionBody = append(
 					functionBody,
-					operator.getBuilder().makeArrayQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, options)...,
+					field.CompareOperator.getBuilder().makeArrayQueryOption(funcFilterOptionName, fieldName, field.SourceSql.sqlExpr(), field.CaseInsensitive, options)...,
 				)
-				optionsFieldList = append(optionsFieldList, field)
+				optionsFieldList = append(optionsFieldList, field.Field)
 			} else {
-				if len(opTagValue) > 1 {
-					// TODO move to external function
-					var (
-						constantValue = opTagValue[1]
-						operatorValue = "/* %s */ %s"
-						tmpOperator   = operator.getBuilder()
-					)
-					if o, ok := tmpOperator.(opInline); ok {
-						operatorValue = o.operator
-					} else if o, ok := tmpOperator.(opRegular); ok {
-						operatorValue = o.operator
-					}
-					var newOperator = opConstant{
-						opInline: opInline{
-							operator: operatorValue,
-						},
-					}
-					functionBody = append(
-						functionBody,
-						newOperator.makeScalarQueryOption(funcFilterOptionName, constantValue, colName, ci, false, options)...,
-					)
-				} else if _, ok := field.Type.(*ast.StarExpr); ok {
-					functionBody = append(
-						functionBody,
-						MakeSimpleIfStatement(
-							MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, field.Names[0].Name), Nil),
-							operator.getBuilder().makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, true, options)...,
-						),
-					)
-					optionsFieldList = append(optionsFieldList, field)
+				if field.Constant != "" {
+					functionBody = append(functionBody, makeFindProcessorForConst(funcFilterOptionName, fieldName, field, options)...)
 				} else {
-					functionBody = append(
-						functionBody,
-						operator.getBuilder().makeScalarQueryOption(funcFilterOptionName, field.Names[0].Name, colName, ci, false, options)...,
-					)
-					optionsFieldList = append(optionsFieldList, field)
+					functionBody = append(functionBody, makeFindProcessorForSingle(funcFilterOptionName, fieldName, field, options)...)
+					optionsFieldList = append(optionsFieldList, field.Field)
 				}
 			}
 		}
@@ -407,7 +438,7 @@ func BuildFindArgumentsProcessor(
 func BuildInputValuesProcessor(
 	funcInputOptionName string,
 	funcInputOptionTypeName string,
-	optionFields []*ast.Field,
+	optionFields []MetaField,
 	options builderOptions,
 ) (
 	body []ast.Stmt,
@@ -420,21 +451,20 @@ func BuildInputValuesProcessor(
 	)
 	for _, field := range optionFields {
 		var (
-			tags         = utils.FieldTagToMap(field.Tag.Value)
-			colName      = tags[TagTypeSQL][0] // `sql` tags required
-			_, maybeTags = tags[TagMaybeVal]
-			fieldName    = MakeSelectorExpression(funcInputOptionName, field.Names[0].Name)
+			tags      = utils.FieldTagToMap(field.Field.Tag.Value)
+			colName   = field.SourceSql
+			fieldName = MakeSelectorExpression(funcInputOptionName, field.Field.Names[0].Name)
 		)
 		/* isOmittedField - value will never be requested from the user */
 		valueExpr, isOmittedField := makeValuePicker(tags[TagTypeSQL][1:], fieldName)
 		if !isOmittedField {
-			optionStructFields = append(optionStructFields, field)
+			optionStructFields = append(optionStructFields, field.Field)
 		}
 		/* test wrappers
 		if !value.omitted { ... }
 		*/
 		wrapFunc := func(stmts []ast.Stmt) []ast.Stmt { return stmts }
-		if !isOmittedField && maybeTags {
+		if !isOmittedField && field.IsMaybeType {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				fncName := &ast.SelectorExpr{
 					X:   fieldName,
@@ -454,7 +484,7 @@ func BuildInputValuesProcessor(
 				}
 			}
 		}
-		if _, ok := field.Type.(*ast.StarExpr); !isOmittedField && ok {
+		if _, ok := field.Field.Type.(*ast.StarExpr); !isOmittedField && ok {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				return []ast.Stmt{
 					MakeSimpleIfStatement(MakeNotNullExpression(fieldName), stmts...),
@@ -462,16 +492,17 @@ func BuildInputValuesProcessor(
 			}
 		}
 		if utils.ArrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
-			if _, star := field.Type.(*ast.StarExpr); star {
-				valueExpr = makeEncryptPasswordCall(MakeStarExpression(valueExpr))
-			} else {
-				valueExpr = makeEncryptPasswordCall(valueExpr)
+			if _, star := field.Field.Type.(*ast.StarExpr); star {
+				valueExpr = MakeStarExpression(valueExpr)
+			} else if field.IsMaybeType {
+				valueExpr = MakeSelectorExpressionEx(valueExpr, "value")
 			}
+			valueExpr = makeEncryptPasswordCall(valueExpr)
 		}
 		functionBody = append(
 			functionBody,
 			wrapFunc(processValueWrapper(
-				colName, valueExpr, options,
+				colName.sqlExpr(), valueExpr, options,
 			))...,
 		)
 	}

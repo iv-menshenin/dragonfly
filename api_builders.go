@@ -11,7 +11,7 @@ import (
 const (
 	sqlEmptyResultErrorName = "sqlEmptyResult"
 	getQueryExecPointFnName = "getQueryExecPoint"
-	queryExecInterfaceName = "queryExecInterface"
+	queryExecInterfaceName  = "queryExecInterface"
 )
 
 func exprToString(expr ast.Expr) string {
@@ -113,7 +113,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []*ast.Field,
+		optionFields, _, rowFields []builders.MetaField,
 	) AstDataChain {
 		var (
 			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
@@ -193,7 +193,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	)
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []*ast.Field,
+		optionFields, _, rowFields []builders.MetaField,
 	) AstDataChain {
 		var (
 			scanBlockWrapper builders.ScanWrapper
@@ -313,7 +313,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, mutableFields, rowFields []*ast.Field,
+		optionFields, mutableFields, rowFields []builders.MetaField,
 	) AstDataChain {
 		var (
 			fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
@@ -398,7 +398,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 
 func insertOneBuilder(
 	fullTableName, functionName, rowStructName string,
-	_, mutableFields, rowFields []*ast.Field,
+	_, mutableFields, rowFields []builders.MetaField,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"
@@ -474,7 +474,7 @@ func insertOneBuilder(
 
 func upsertBuilder(
 	fullTableName, functionName, rowStructName string,
-	optionFields, mutableFields, rowFields []*ast.Field,
+	optionFields, mutableFields, rowFields []builders.MetaField,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"

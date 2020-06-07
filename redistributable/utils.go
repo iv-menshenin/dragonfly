@@ -64,7 +64,7 @@ func getTransaction(ctx context.Context) (*sql.Tx, error) {
 	return nil, nil
 }
 
-type(
+type (
 	queryExecInterface struct {
 		Query func(query string, args ...interface{}) (*sql.Rows, error)
 	}
@@ -109,11 +109,7 @@ func (c SqlStringArray) Value() (driver.Value, error) {
 	if len(c) == 0 {
 		return nil, nil
 	}
-	var serialized = make([]string, 0, len(c))
-	for _, v := range c {
-		serialized = append(serialized, fmt.Sprintf("'%s'", strings.Replace(v, "'", "''", -1)))
-	}
-	return fmt.Sprintf("{%s}", strings.Join(serialized, ",")), nil
+	return fmt.Sprintf("{%s}", strings.Join(c, ",")), nil
 }
 
 func (c *SqlIntegerArray) Scan(i interface{}) error {

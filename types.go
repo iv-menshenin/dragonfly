@@ -134,11 +134,17 @@ type (
 		Operator builders.SQLDataCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 		Constant string                          `yaml:"constant,omitempty" json:"constant,omitempty"`
 	}
+	ExtColumn struct {
+		Schema ColumnSchemaRef `yaml:"schema" json:"schema"`
+		Name   string          `yaml:"name" json:"name"`
+		SQL    string          `yaml:"sql" json:"sql"`
+	}
 	ApiFindOptions []ApiFindOption
 	TableApi       struct {
 		Type          ApiType        `yaml:"type" json:"type"`
 		Name          string         `yaml:"name" json:"name"`
 		Key           string         `yaml:"key,omitempty" json:"key,omitempty"`
+		Extended      []ExtColumn    `yaml:"extended,omitempty" json:"extended,omitempty"`
 		FindOptions   ApiFindOptions `yaml:"find_by,omitempty" json:"find_by,omitempty"`
 		ModifyColumns []string       `yaml:"modify,omitempty" json:"modify,omitempty"`
 	}

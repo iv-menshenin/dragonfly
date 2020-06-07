@@ -6,7 +6,6 @@ import (
 	"github.com/iv-menshenin/dragonfly/code_builders"
 	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
-	"go/token"
 	"io"
 	"reflect"
 	"regexp"
@@ -33,12 +32,16 @@ const (
 	ApiOperationDelete
 	ApiOperationUpsert
 
+	// generation tags
 	tagNoInsert       = "noInsert"
 	tagNoUpdate       = "noUpdate"
 	tagNoDefaultValue = "noDefaultValue"
 	tagAlwaysUpdate   = "alwaysUpdate"
 	tagDeletedFlag    = "deletedFlag"
 	tagIdentifier     = "identifier"
+
+	// value tags
+	tagCaseInsensitive = "ci"
 
 	apiTypeInsertOne ApiType = "insertOne"
 	apiTypeUpsertOne ApiType = "upsertOne"
@@ -199,17 +202,17 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 	}
 }
 
-func (c *Table) generateFields(w *AstData) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(c.Columns))
+func (c *Table) generateFields(w *AstData) (fields []builders.MetaField) {
+	fields = make([]builders.MetaField, 0, len(c.Columns))
 	for _, column := range c.Columns {
 		field := column.generateField(w, column.Value.Schema.Value.NotNull)
-		fields = append(fields, &field)
+		fields = append(fields, makeMetaFieldAsIs(column, field))
 	}
 	return
 }
 
-func (c *TableApi) generateFieldsExceptTags(table *Table, w *AstData, tags ...string) (fields []*ast.Field) {
-	fields = make([]*ast.Field, 0, len(table.Columns))
+func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w *AstData, tags ...string) (fields []builders.MetaField) {
+	fields = make([]builders.MetaField, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		var passToNext = false
 		for _, tag := range tags {
@@ -218,23 +221,22 @@ func (c *TableApi) generateFieldsExceptTags(table *Table, w *AstData, tags ...st
 		if !passToNext {
 			// we may to allow the absence of a value only if NULL is allowed to column or the field has a default value (in this case, make sure the tagNoDefaultValue tag is missing)
 			required := column.Value.Schema.Value.NotNull && (utils.ArrayContains(column.Value.Tags, tagNoDefaultValue) || column.Value.Schema.Value.Default == nil)
-			field := column.generateField(w, required)
-			fields = append(fields, &field)
+			fields = append(fields, fn(column, column.generateField(w, required)))
 		}
 	}
 	return
 }
 
-func (c *TableApi) generateInsertable(table *Table, w *AstData) (fields []*ast.Field) {
-	return c.generateFieldsExceptTags(table, w, tagNoInsert)
+func (c *TableApi) generateInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaField) {
+	return c.generateFieldsExceptTags(fn, table, w, tagNoInsert)
 }
 
-func (c *TableApi) generateMutable(table *Table, w *AstData) (fields []*ast.Field) {
-	return c.generateFieldsExceptTags(table, w, tagNoUpdate)
+func (c *TableApi) generateMutable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaField) {
+	return c.generateFieldsExceptTags(fn, table, w, tagNoUpdate)
 }
 
-func (c *TableApi) generateMutableOrInsertable(table *Table, w *AstData) (fields []*ast.Field) {
-	return c.generateFieldsExceptTags(table, w, tagNoUpdate, tagNoInsert)
+func (c *TableApi) generateMutableOrInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaField) {
+	return c.generateFieldsExceptTags(fn, table, w, tagNoUpdate, tagNoInsert)
 }
 
 func (c *Table) extractColumnsByConstraintName(keyName string) (columns []ColumnRef) {
@@ -288,7 +290,7 @@ func (c *Table) extractUniqueKeyColumns() (columns []ColumnRef) {
 	return c.extractColumnsByUniqueKeyType(ConstraintUniqueKey)
 }
 
-func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []*ast.Field) {
+func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []builders.MetaField) {
 	var columns []ColumnRef
 	if c.Key != "" {
 		columns = table.extractColumnsByConstraintName(c.Key)
@@ -306,10 +308,17 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 			panic("cannot extract unique columns for " + c.Name)
 		}
 	}
-	fields = make([]*ast.Field, 0, len(columns))
+	fields = make([]builders.MetaField, 0, len(columns))
 	for _, column := range columns {
 		field := column.generateField(w, column.Value.Schema.Value.NotNull)
-		fields = append(fields, &field)
+		fields = append(fields, builders.MetaField{
+			Field:           &field,
+			SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
+			CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+			IsMaybeType:     false,
+			CompareOperator: builders.CompareEqual,
+			Constant:        "", // not allowed here
+		})
 	}
 	return
 }
@@ -339,51 +348,54 @@ func checkOption(table *Table, operator builders.SQLDataCompareOperator, option 
 	}
 }
 
+func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) builders.MetaField {
+	column := table.Columns.getColumn(option.Column)
+	if option.Operator == builders.CompareIsNull {
+		column = ColumnRef{
+			Value: Column{
+				Name: column.Value.Name,
+				Schema: ColumnSchemaRef{
+					Value: DomainSchema{
+						TypeBase: TypeBase{
+							Type: "isnull", // TODO hack?
+						},
+						NotNull: false,
+					},
+				},
+				Tags: column.Value.Tags,
+			},
+		}
+	}
+	field := column.generateField(w, option.Required || option.Operator.IsMult())
+	if option.Operator.IsMult() {
+		field.Type = &ast.ArrayType{Elt: field.Type}
+	}
+	if field.Tag != nil { // TODO is this necessary?
+		if sqlTags, ok := utils.FieldTagToMap(field.Tag.Value)[builders.TagTypeSQL]; ok {
+			field.Tag = builders.MakeTagsForField(map[string][]string{
+				builders.TagTypeSQL: utils.ArrayRemove(sqlTags, "required"),
+			})
+		}
+	}
+	return builders.MetaField{
+		Field:           &field,
+		SourceSql:       builders.SourceSqlColumn{ColumnName: option.Column},
+		CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+		IsMaybeType:     false,
+		CompareOperator: option.Operator,
+		Constant:        option.Constant,
+	}
+}
+
 // TODO split
-func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []*ast.Field) {
-	findBy = make([]*ast.Field, 0, len(c.FindOptions))
+func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []builders.MetaField) {
+	findBy = make([]builders.MetaField, 0, len(c.FindOptions))
 	for _, option := range c.FindOptions {
 		operator := option.Operator
 		operator.Check()
 		checkOption(table, operator, option, w)
 		if option.Column != "" {
-			var operTags = []string{string(operator)}
-			if option.Constant != "" {
-				operTags = append(operTags, option.Constant)
-			}
-			column := table.Columns.getColumn(option.Column)
-			if operator == builders.CompareIsNull {
-				column = ColumnRef{
-					Value: Column{
-						Name: column.Value.Name,
-						Schema: ColumnSchemaRef{
-							Value: DomainSchema{
-								TypeBase: TypeBase{
-									Type: "isnull", // TODO hack?
-								},
-								NotNull: false,
-							},
-						},
-						Tags: column.Value.Tags,
-					},
-				}
-			}
-			field := column.generateField(w, option.Required || operator.IsMult())
-			if operator.IsMult() {
-				field.Type = &ast.ArrayType{
-					Elt: field.Type,
-				}
-			}
-			if field.Tag != nil {
-				if sqlTags, ok := utils.FieldTagToMap(field.Tag.Value)[builders.TagTypeSQL]; ok {
-					sqlTags = utils.ArrayRemove(sqlTags, "required")
-					field.Tag = builders.MakeTagsForField(map[string][]string{
-						builders.TagTypeSQL: sqlTags,
-						builders.TagTypeOp:  operTags,
-					})
-				}
-			}
-			findBy = append(findBy, &field)
+			findBy = append(findBy, option.makeMetaFieldByColumn(table, w))
 			continue
 		}
 		if len(option.OneOf) > 0 {
@@ -413,9 +425,15 @@ func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []*ast.F
 			fieldType.Tag = builders.MakeTagsForField(map[string][]string{
 				builders.TagTypeSQL:   sqlTags,
 				builders.TagTypeUnion: unionColumns,
-				builders.TagTypeOp:    {string(operator)},
 			})
-			findBy = append(findBy, &fieldType)
+			findBy = append(findBy, builders.MetaField{
+				Field:           &fieldType,
+				SourceSql:       builders.SourceSqlSomeColumns{ColumnNames: unionColumns},
+				CaseInsensitive: utils.ArrayContains(sqlTags, tagCaseInsensitive),
+				IsMaybeType:     false,
+				CompareOperator: operator,
+				Constant:        "", // not allowed here
+			})
 			continue
 		}
 	}
@@ -449,7 +467,51 @@ func tryMakeMaybeType(rawTypeName string) ast.Expr {
 	return nil
 }
 
-func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []*ast.Field) {
+type fieldConstructor func(column ColumnRef, field ast.Field) builders.MetaField
+
+func makeMetaFieldAsIs(column ColumnRef, field ast.Field) builders.MetaField {
+	return builders.MetaField{
+		Field:           &field,
+		SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
+		CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+	}
+}
+
+func makeMetaFieldMaybeType(column ColumnRef, field ast.Field) builders.MetaField {
+	var rawTypeName = fmt.Sprintf("%s", field.Type)
+	if star, ok := field.Type.(*ast.StarExpr); ok {
+		if t, ok := star.X.(*ast.Ident); ok {
+			rawTypeName = t.String()
+		} else if t, ok := star.X.(*ast.SelectorExpr); ok {
+			rawTypeName = fmt.Sprintf("%s.%s", t.X, t.Sel)
+		}
+	} else if t, ok := field.Type.(*ast.Ident); ok {
+		rawTypeName = t.String()
+	} else if t, ok := field.Type.(*ast.SelectorExpr); ok {
+		rawTypeName = fmt.Sprintf("%s.%s", t.X, t.Sel)
+	}
+	if newType := tryMakeMaybeType(rawTypeName); newType != nil {
+		field := ast.Field{
+			Names:   field.Names,
+			Type:    newType,
+			Tag:     field.Tag,
+			Comment: field.Comment,
+		}
+		return builders.MetaField{
+			Field:           &field,
+			SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
+			CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+		}
+	} else {
+		return builders.MetaField{
+			Field:           &field,
+			SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
+			CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+		}
+	}
+}
+
+func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []builders.MetaField) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
 			findBy = c.generateFindFields(table, w)
@@ -462,55 +524,26 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 		}
 	}
 	if c.Type.HasInputOption() {
+		var decorator fieldConstructor = makeMetaFieldAsIs
+		if apiTypeIsOperation[c.Type] == ApiOperationUpdate {
+			decorator = makeMetaFieldMaybeType
+		}
 		if len(c.ModifyColumns) > 0 {
-			mutable = make([]*ast.Field, 0, len(c.ModifyColumns))
+			mutable = make([]builders.MetaField, 0, len(c.ModifyColumns))
 			for _, columnName := range c.ModifyColumns {
 				column := table.Columns.getColumn(columnName)
 				field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
-				mutable = append(mutable, &field)
+				mutable = append(mutable, decorator(column, field))
 			}
 		} else {
 			if c.Type.Operation() == ApiOperationInsert {
-				mutable = c.generateInsertable(table, w)
+				mutable = c.generateInsertable(decorator, table, w)
 			}
 			if c.Type.Operation() == ApiOperationUpdate {
-				mutable = c.generateMutable(table, w)
+				mutable = c.generateMutable(decorator, table, w)
 			}
 			if c.Type.Operation() == ApiOperationUpsert {
-				mutable = c.generateMutableOrInsertable(table, w)
-			}
-		}
-
-		// TODO move out to separate function
-		if apiTypeIsOperation[c.Type] == ApiOperationUpdate {
-			for i, mut := range mutable {
-				var (
-					rawTypeName string
-					nullableTag string
-				)
-				if star, ok := mut.Type.(*ast.StarExpr); ok {
-					nullableTag = ",nullable"
-					if t, ok := star.X.(*ast.Ident); ok {
-						rawTypeName = t.String()
-					} else if t, ok := star.X.(*ast.SelectorExpr); ok {
-						rawTypeName = fmt.Sprintf("%s.%s", t.X, t.Sel)
-					}
-				} else if t, ok := mut.Type.(*ast.Ident); ok {
-					rawTypeName = t.String()
-				} else if t, ok := mut.Type.(*ast.SelectorExpr); ok {
-					rawTypeName = fmt.Sprintf("%s.%s", t.X, t.Sel)
-				}
-				if newType := tryMakeMaybeType(rawTypeName); newType != nil {
-					mutable[i].Type = newType
-					currentTags := mutable[i].Tag.Value
-					if currentTags != "" {
-						currentTags = currentTags[1 : len(currentTags)-1]
-					}
-					mutable[i].Tag = &ast.BasicLit{
-						Value: fmt.Sprintf("`%s maybe:\"%s%s\"`", currentTags, rawTypeName, nullableTag),
-						Kind:  token.STRING,
-					}
-				}
+				mutable = c.generateMutableOrInsertable(decorator, table, w)
 			}
 		}
 	} else {
@@ -522,7 +555,7 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 }
 
 type (
-	apiBuilder func(*SchemaRef, string, string, []*ast.Field, []*ast.Field, []*ast.Field) AstDataChain
+	apiBuilder func(*SchemaRef, string, string, []builders.MetaField, []builders.MetaField, []builders.MetaField) AstDataChain
 )
 
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
@@ -536,7 +569,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	return func(
 		schema *SchemaRef,
 		tableName, rowStructName string,
-		queryOptionFields, queryInputFields, queryOutputFields []*ast.Field,
+		queryOptionFields, queryInputFields, queryOutputFields []builders.MetaField,
 	) AstDataChain {
 		return tplSet(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
@@ -546,6 +579,30 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 			queryInputFields,
 			queryOutputFields,
 		)
+	}
+}
+
+func registerStructType(typeName, comment string, fields []builders.MetaField, w *AstData) {
+	var extractedFields = make([]*ast.Field, 0, len(fields))
+	for _, f := range fields {
+		extractedFields = append(extractedFields, f.Field)
+	}
+	if err := mergeCodeBase(w, []AstDataChain{
+		{
+			Types: map[string]*ast.TypeSpec{
+				typeName: {
+					Name: ast.NewIdent(typeName),
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{List: extractedFields},
+					},
+					Comment: builders.MakeComment(utils.StringToSlice(comment)),
+				},
+			},
+			Constants:       nil,
+			Implementations: nil,
+		},
+	}); err != nil {
+		panic(err)
 	}
 }
 
@@ -560,28 +617,13 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 	for _, tableName := range c.Value.Tables.getNames() {
 		table := c.Value.Tables[tableName]
 		var (
-			structName   = makeExportedName(schemaName + "-" + tableName + "-Row")
-			resultFields = table.generateFields(w)
+			tableRowStructName = makeExportedName(schemaName + "-" + tableName + "-Row")
+			resultFields       = table.generateFields(w)
 		)
-		if err := mergeCodeBase(w, []AstDataChain{
-			{
-				Types: map[string]*ast.TypeSpec{
-					structName: {
-						Name: ast.NewIdent(structName),
-						Type: &ast.StructType{
-							Fields: &ast.FieldList{List: resultFields},
-						},
-						Comment: builders.MakeComment(utils.StringToSlice(table.Description)),
-					},
-				},
-				Constants:       nil,
-				Implementations: nil,
-			},
-		}); err != nil {
-			panic(err)
-		}
+		registerStructType(tableRowStructName, table.Description, resultFields, w)
 		if len(table.Api) > 0 {
 			for i, api := range table.Api {
+				var additionFields []builders.MetaField
 				apiName := utils.EvalTemplateParameters(
 					api.Name,
 					map[string]string{
@@ -591,6 +633,32 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 						cApiType: api.Type.String(),
 					},
 				)
+				var apiResultStructName = tableRowStructName
+				// TODO move out
+				if len(api.Extended) > 0 {
+					additionFields = make([]builders.MetaField, 0, len(api.Extended)+1)
+					apiResultStructName = makeExportedName(apiName + "ExRow")
+					for _, column := range api.Extended {
+						var columnRef = ColumnRef{
+							Value: Column{
+								Name:   column.Name,
+								Schema: column.Schema,
+							},
+						}
+						var field = columnRef.generateField(w, column.Schema.Value.NotNull)
+						field.Tag = builders.MakeTagsForField(map[string][]string{
+							builders.TagTypeSQL: {column.SQL},
+						})
+						additionFields = append(additionFields, makeMetaFieldAsIs(columnRef, field))
+					}
+					var mainStruct = builders.MetaField{
+						Field: &ast.Field{
+							Type:    ast.NewIdent(tableRowStructName),
+							Comment: builders.MakeComment(utils.StringToSlice("implemented main structure")),
+						},
+					}
+					registerStructType(apiResultStructName, api.Name, append([]builders.MetaField{mainStruct}, additionFields...), w)
+				}
 				if apiName == "" {
 					panic(fmt.Sprintf("you must specify name for api #%d in '%s' schema '%s' table", i, schemaName, tableName))
 				} else {
@@ -601,7 +669,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 					builder                     = api.getApiBuilder(apiName)
 				)
 				if err := mergeCodeBase(w, []AstDataChain{
-					builder(c, tableName, structName, optionFields, mutableFields, resultFields),
+					builder(c, tableName, apiResultStructName, optionFields, mutableFields, append(resultFields, additionFields...)),
 				}); err != nil {
 					panic(err)
 				}
