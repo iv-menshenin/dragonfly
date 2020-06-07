@@ -501,6 +501,7 @@ func makeMetaFieldMaybeType(column ColumnRef, field ast.Field) builders.MetaFiel
 			Field:           &field,
 			SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
 			CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+			IsMaybeType:     true,
 		}
 	} else {
 		return builders.MetaField{
