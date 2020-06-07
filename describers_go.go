@@ -350,13 +350,17 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		} else {
 			tags = append(tags, "omitempty")
 		}
+		var basicType = intDesc.fieldTypeExpr()
+		if f.Value.Schema.Value.IsArray {
+			basicType = builders.MakeArrayType(basicType)
+		}
 		objFields = append(objFields, builders.MakeField(
 			makeExportedName(f.Value.Name),
 			&ast.BasicLit{
 				Kind:  token.STRING,
 				Value: fmt.Sprintf("`json:\"%s\"`", strings.Join(tags, ",")),
 			},
-			intDesc.fieldTypeExpr(),
+			basicType,
 		))
 		if fmtLiter, ok := formatTypes[f.Value.Schema.Value.Type]; ok {
 			formatLiters = append(formatLiters, fmtLiter)
@@ -547,13 +551,17 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 		} else {
 			tags = append(tags, "omitempty")
 		}
+		var basicType = intDesc.fieldTypeExpr()
+		if f.Value.Schema.Value.IsArray {
+			basicType = builders.MakeArrayType(basicType)
+		}
 		objFields = append(objFields, builders.MakeField(
 			makeExportedName(f.Value.Name),
 			&ast.BasicLit{
 				Kind:  token.STRING,
 				Value: fmt.Sprintf("`json:\"%s\"`", strings.Join(tags, ",")),
 			},
-			intDesc.fieldTypeExpr(),
+			basicType,
 		))
 	}
 	main := AstDataChain{
