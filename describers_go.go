@@ -26,6 +26,9 @@ type (
 		typePrefix  string // prefix [time].Time
 		packagePath string // package to be included, e.g. "net/http"
 	}
+	customTypeDescriber struct {
+		typeLit string // custom user type name
+	}
 	sliceTypeDescriber struct {
 		simpleTypeDescriber
 	}
@@ -77,6 +80,14 @@ func (c simpleTypeDescriber) fieldTypeExpr() ast.Expr {
 	} else {
 		return builders.MakeSelectorExpression(c.typePrefix, c.typeLit) // like "package.type"
 	}
+}
+
+func (c customTypeDescriber) getFile() []AstDataChain {
+	return nil
+}
+
+func (c customTypeDescriber) fieldTypeExpr() ast.Expr {
+	return ast.NewIdent(c.typeLit) // custom type
 }
 
 /*
@@ -668,11 +679,8 @@ func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber 
 		return makeFn(typeName, c)
 	}
 	if t := strings.Split(c.Type, "."); len(t) == 2 {
-		return simpleTypeDescriber{
-			typeLit:     makeExportedName(c.Type),
-			typePrefix:  "",
-			packagePath: "",
-		}
+		// custom user type
+		return customTypeDescriber{typeLit: makeExportedName(c.Type)}
 	}
 	panic(fmt.Sprintf("unknown field type '%s'", c.Type))
 }

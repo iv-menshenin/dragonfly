@@ -41,6 +41,7 @@ type (
 		SourceSql       SourceSql // sql mirror for field
 		CaseInsensitive bool
 		IsMaybeType     bool
+		IsCustomType    bool
 		CompareOperator SQLDataCompareOperator
 		Constant        string
 	}
@@ -490,6 +491,9 @@ func BuildInputValuesProcessor(
 					MakeSimpleIfStatement(MakeNotNullExpression(fieldName), stmts...),
 				}
 			}
+		}
+		if _, ok := field.Field.Type.(*ast.StarExpr); !ok && field.IsCustomType {
+			valueExpr = MakeRef(valueExpr)
 		}
 		if utils.ArrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
 			if _, star := field.Field.Type.(*ast.StarExpr); star {

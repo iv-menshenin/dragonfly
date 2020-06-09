@@ -177,19 +177,20 @@ func (c *Column) describeGO() fieldDescriber {
 	return c.Schema.Value.describeGO(typeName)
 }
 
-func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
+// returning ast.Field and "is custom type" mark
+func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 	var decorator = func(e ast.Expr) ast.Expr { return e }
 	if !required && !c.Value.Schema.Value.IsArray {
 		decorator = builders.MakeStarExpression
 	}
 	fieldDescriber := c.Value.describeGO()
+	_, isCustomType := fieldDescriber.(customTypeDescriber)
 	fieldType := fieldDescriber.fieldTypeExpr()
 	if err := mergeCodeBase(w, fieldDescriber.getFile()); err != nil {
 		panic(err)
 	}
 
 	return ast.Field{
-		Doc: nil,
 		Names: []*ast.Ident{
 			ast.NewIdent(makeExportedName(c.Value.Name)),
 		},
@@ -199,14 +200,14 @@ func (c *ColumnRef) generateField(w *AstData, required bool) ast.Field {
 			builders.TagTypeJSON: c.Value.tags(builders.TagTypeJSON),
 		}),
 		Comment: builders.MakeComment([]string{c.Value.Description}),
-	}
+	}, isCustomType
 }
 
 func (c *Table) generateFields(w *AstData) (fields []builders.MetaField) {
 	fields = make([]builders.MetaField, 0, len(c.Columns))
 	for _, column := range c.Columns {
-		field := column.generateField(w, column.Value.Schema.Value.NotNull)
-		fields = append(fields, makeMetaFieldAsIs(column, field))
+		field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull)
+		fields = append(fields, makeMetaFieldAsIs(column, field, isCustom))
 	}
 	return
 }
@@ -221,7 +222,8 @@ func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w
 		if !passToNext {
 			// we may to allow the absence of a value only if NULL is allowed to column or the field has a default value (in this case, make sure the tagNoDefaultValue tag is missing)
 			required := column.Value.Schema.Value.NotNull && (utils.ArrayContains(column.Value.Tags, tagNoDefaultValue) || column.Value.Schema.Value.Default == nil)
-			fields = append(fields, fn(column, column.generateField(w, required)))
+			field, isCustom := column.generateField(w, required)
+			fields = append(fields, fn(column, field, isCustom))
 		}
 	}
 	return
@@ -310,12 +312,13 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 	}
 	fields = make([]builders.MetaField, 0, len(columns))
 	for _, column := range columns {
-		field := column.generateField(w, column.Value.Schema.Value.NotNull)
+		field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull)
 		fields = append(fields, builders.MetaField{
 			Field:           &field,
 			SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
 			CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
 			IsMaybeType:     false,
+			IsCustomType:    isCustom,
 			CompareOperator: builders.CompareEqual,
 			Constant:        "", // not allowed here
 		})
@@ -336,11 +339,11 @@ func checkOption(table *Table, operator builders.SQLDataCompareOperator, option 
 		var basicType ast.Expr = nil
 		for _, oneOf := range option.OneOf {
 			column := table.Columns.getColumn(oneOf)
-			colType := column.generateField(w, option.Required).Type
+			colType, _ := column.generateField(w, option.Required)
 			if basicType == nil {
-				basicType = colType
-			} else if !reflect.DeepEqual(basicType, colType) {
-				panic("each of 'one_of' must have same go-type of data")
+				basicType = colType.Type
+			} else if !reflect.DeepEqual(basicType, colType.Type) {
+				panic(fmt.Sprintf("each of 'one_of' must have same go-type of data: %v", option.OneOf))
 			}
 		}
 	} else {
@@ -366,7 +369,7 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) buil
 			},
 		}
 	}
-	field := column.generateField(w, option.Required || option.Operator.IsMult())
+	field, isCustom := column.generateField(w, option.Required || option.Operator.IsMult())
 	if option.Operator.IsMult() {
 		field.Type = &ast.ArrayType{Elt: field.Type}
 	}
@@ -382,6 +385,7 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) buil
 		SourceSql:       builders.SourceSqlColumn{ColumnName: option.Column},
 		CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
 		IsMaybeType:     false,
+		IsCustomType:    isCustom,
 		CompareOperator: option.Operator,
 		Constant:        option.Constant,
 	}
@@ -405,7 +409,7 @@ func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []builde
 				unionColumns = append(unionColumns, oneOf)
 			}
 			firstColumn := table.Columns.getColumn(option.OneOf[0])
-			fieldType := firstColumn.generateField(w, option.Required)
+			fieldType, isCustom := firstColumn.generateField(w, option.Required)
 			fieldType.Names = []*ast.Ident{
 				ast.NewIdent(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
 			}
@@ -431,6 +435,7 @@ func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []builde
 				SourceSql:       builders.SourceSqlSomeColumns{ColumnNames: unionColumns},
 				CaseInsensitive: utils.ArrayContains(sqlTags, tagCaseInsensitive),
 				IsMaybeType:     false,
+				IsCustomType:    isCustom,
 				CompareOperator: operator,
 				Constant:        "", // not allowed here
 			})
@@ -467,17 +472,18 @@ func tryMakeMaybeType(rawTypeName string) ast.Expr {
 	return nil
 }
 
-type fieldConstructor func(column ColumnRef, field ast.Field) builders.MetaField
+type fieldConstructor func(column ColumnRef, field ast.Field, isCustom bool) builders.MetaField
 
-func makeMetaFieldAsIs(column ColumnRef, field ast.Field) builders.MetaField {
+func makeMetaFieldAsIs(column ColumnRef, field ast.Field, isCustom bool) builders.MetaField {
 	return builders.MetaField{
 		Field:           &field,
 		SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
 		CaseInsensitive: utils.ArrayContains(column.Value.Tags, tagCaseInsensitive),
+		IsCustomType:    isCustom,
 	}
 }
 
-func makeMetaFieldMaybeType(column ColumnRef, field ast.Field) builders.MetaField {
+func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, isCustom bool) builders.MetaField {
 	var rawTypeName = fmt.Sprintf("%s", field.Type)
 	if star, ok := field.Type.(*ast.StarExpr); ok {
 		if t, ok := star.X.(*ast.Ident); ok {
@@ -527,15 +533,15 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 	}
 	if c.Type.HasInputOption() {
 		var decorator fieldConstructor = makeMetaFieldAsIs
-		if apiTypeIsOperation[c.Type] == ApiOperationUpdate {
+		if apiTypeIsOperation[c.Type] == ApiOperationUpdate || apiTypeIsOperation[c.Type] == ApiOperationUpsert {
 			decorator = makeMetaFieldMaybeType
 		}
 		if len(c.ModifyColumns) > 0 {
 			mutable = make([]builders.MetaField, 0, len(c.ModifyColumns))
 			for _, columnName := range c.ModifyColumns {
 				column := table.Columns.getColumn(columnName)
-				field := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
-				mutable = append(mutable, decorator(column, field))
+				field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
+				mutable = append(mutable, decorator(column, field, isCustom))
 			}
 		} else {
 			if c.Type.Operation() == ApiOperationInsert {
@@ -611,6 +617,7 @@ func registerStructType(typeName, comment string, fields []builders.MetaField, w
 func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (apiResultStructName string, additionFields []builders.MetaField) {
 	additionFields = make([]builders.MetaField, 0, len(c.Extended)+1)
 	apiResultStructName = makeExportedName(c.Name + "ExRow")
+	var isCustom = false
 	for _, column := range c.Extended {
 		var columnRef = ColumnRef{
 			Value: Column{
@@ -618,7 +625,8 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 				Schema: column.Schema,
 			},
 		}
-		var field = columnRef.generateField(w, column.Schema.Value.NotNull)
+		var field ast.Field
+		field, isCustom = columnRef.generateField(w, column.Schema.Value.NotNull)
 		field.Tag = builders.MakeTagsForField(map[string][]string{
 			builders.TagTypeSQL: {column.SQL},
 		})
@@ -632,6 +640,7 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 			Type:    ast.NewIdent(tableRowStructName),
 			Comment: builders.MakeComment(utils.StringToSlice("implemented main structure")),
 		},
+		IsCustomType: isCustom,
 	}
 	registerStructType(apiResultStructName, c.Name, append([]builders.MetaField{mainStruct}, additionFields...), w)
 	return
