@@ -80,8 +80,7 @@ type (
 )
 
 /* sql/driver.Valuer interface implementations */
-/* valid []byte, bool, float64, int64, string, time.Time only
-*/
+/* valid []byte, bool, float64, int64, string, time.Time only */
 
 func (c MaybeTime) Value() (driver.Value, error) {
 	if !c.valid {

@@ -504,6 +504,7 @@ func makeMetaFieldMaybeType(column ColumnRef, field ast.Field) builders.MetaFiel
 			IsMaybeType:     true,
 		}
 	} else {
+		field.Type = &ast.StarExpr{X: field.Type}
 		return builders.MetaField{
 			Field:           &field,
 			SourceSql:       builders.SourceSqlColumn{ColumnName: column.Value.Name},
