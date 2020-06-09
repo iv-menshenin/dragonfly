@@ -483,7 +483,7 @@ func makeMetaFieldAsIs(column ColumnRef, field ast.Field, isCustom bool) builder
 	}
 }
 
-func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, isCustom bool) builders.MetaField {
+func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) builders.MetaField {
 	var rawTypeName = fmt.Sprintf("%s", field.Type)
 	if star, ok := field.Type.(*ast.StarExpr); ok {
 		if t, ok := star.X.(*ast.Ident); ok {
@@ -533,7 +533,9 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 	}
 	if c.Type.HasInputOption() {
 		var decorator fieldConstructor = makeMetaFieldAsIs
-		if apiTypeIsOperation[c.Type] == ApiOperationUpdate || apiTypeIsOperation[c.Type] == ApiOperationUpsert {
+		if apiTypeIsOperation[c.Type] == ApiOperationUpdate {
+			// NOT `apiTypeIsOperation[c.Type] == ApiOperationUpsert`
+			// because it must be a fully insertable row
 			decorator = makeMetaFieldMaybeType
 		}
 		if len(c.ModifyColumns) > 0 {
