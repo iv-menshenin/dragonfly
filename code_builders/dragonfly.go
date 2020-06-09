@@ -485,14 +485,15 @@ func BuildInputValuesProcessor(
 				}
 			}
 		}
-		if _, ok := field.Field.Type.(*ast.StarExpr); !isOmittedField && ok {
+		_, isStarExpression := field.Field.Type.(*ast.StarExpr)
+		if isStarExpression && !isOmittedField {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				return []ast.Stmt{
 					MakeSimpleIfStatement(MakeNotNullExpression(fieldName), stmts...),
 				}
 			}
 		}
-		if _, ok := field.Field.Type.(*ast.StarExpr); !ok && field.IsCustomType {
+		if !isStarExpression && field.IsCustomType {
 			valueExpr = MakeRef(valueExpr)
 		}
 		if utils.ArrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
