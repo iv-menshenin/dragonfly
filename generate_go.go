@@ -39,6 +39,7 @@ const (
 	tagAlwaysUpdate   = "alwaysUpdate"
 	tagDeletedFlag    = "deletedFlag"
 	tagIdentifier     = "identifier"
+	tagIgnore         = "ignore"
 
 	// value tags
 	tagCaseInsensitive = "ci"
@@ -206,6 +207,9 @@ func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 func (c *Table) generateFields(w *AstData) (fields []builders.MetaField) {
 	fields = make([]builders.MetaField, 0, len(c.Columns))
 	for _, column := range c.Columns {
+		if utils.ArrayContains(column.Value.Tags, tagIgnore) {
+			continue
+		}
 		field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull)
 		fields = append(fields, makeMetaFieldAsIs(column, field, isCustom))
 	}
@@ -215,16 +219,20 @@ func (c *Table) generateFields(w *AstData) (fields []builders.MetaField) {
 func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w *AstData, tags ...string) (fields []builders.MetaField) {
 	fields = make([]builders.MetaField, 0, len(table.Columns))
 	for _, column := range table.Columns {
+		if utils.ArrayContains(column.Value.Tags, tagIgnore) {
+			continue
+		}
 		var passToNext = false
 		for _, tag := range tags {
 			passToNext = passToNext || utils.ArrayContains(column.Value.Tags, tag)
 		}
-		if !passToNext {
-			// we may to allow the absence of a value only if NULL is allowed to column or the field has a default value (in this case, make sure the tagNoDefaultValue tag is missing)
-			required := column.Value.Schema.Value.NotNull && (utils.ArrayContains(column.Value.Tags, tagNoDefaultValue) || column.Value.Schema.Value.Default == nil)
-			field, isCustom := column.generateField(w, required)
-			fields = append(fields, fn(column, field, isCustom))
+		if passToNext {
+			continue
 		}
+		// we may to allow the absence of a value only if NULL is allowed to column or the field has a default value (in this case, make sure the tagNoDefaultValue tag is missing)
+		required := column.Value.Schema.Value.NotNull && (utils.ArrayContains(column.Value.Tags, tagNoDefaultValue) || column.Value.Schema.Value.Default == nil)
+		field, isCustom := column.generateField(w, required)
+		fields = append(fields, fn(column, field, isCustom))
 	}
 	return
 }

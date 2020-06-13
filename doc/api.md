@@ -149,3 +149,20 @@ and generator will make something like this:
     values = append(values, fmt.Sprintf("/* uuid */ $%d", len(args)))
     ...
 ```
+
+## STRUCTURES  
+
+### how do I hide some fields?
+
+How can we isolate some fields inside the database so that the GO code does not know anything about them?    
+Just specify the `ignore` tag for these fields.
+
+```yaml
+    ...
+  some_table:
+    columns:
+      - name: hidden_field
+        schema: { type: varchar, length: 36 }
+        tags: [ ignore ]  # HERE
+    ...
+```
