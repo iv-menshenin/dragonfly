@@ -1,0 +1,391 @@
+{
+  "id": "https://github.com/iv-menshenin/dragonfly/redistributable/schema-sm.json",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "Validation schema for dragonfly db-project (schema sm)",
+  "type": "object",
+  "definitions": {
+    "basicType": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "length": {
+          "type": "integer"
+        },
+        "precision": {
+          "type": "integer"
+        },
+        "collate": {
+          "type": "string"
+        },
+        "array": {
+          "type": "boolean"
+        }
+      },
+      "required": [ "type" ]
+    },
+    "domainSchema": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/definitions/basicType"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "not_null": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "string"
+            },
+            "check": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "constraintSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [ "primary", "primary key", "foreign", "foreign key", "unique", "unique key", "check" ]
+        },
+        "parameters": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "table": {
+                  "type": "string"
+                },
+                "column": {
+                  "type": "string"
+                },
+                "on_update": {
+                  "type": "string",
+                  "enum": [ "cascade", "nothing" ]
+                },
+                "on_delete": {
+                  "type": "string",
+                  "enum": [ "cascade", "nothing" ]
+                }
+              },
+              "required": [ "table", "column" ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "expression": {
+                  "type": "string"
+                }
+              },
+              "required": [ "expression" ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "where": {
+                  "type": "string"
+                }
+              },
+              "required": [ "where" ]
+            }
+          ]
+        }
+      },
+      "required": [ "type" ]
+    },
+    "constraintSchemaEx": {
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "constraint": {
+            "$ref": "#/definitions/constraintSchema"
+          }
+        }
+      },
+      "required": [ "columns", "constraint" ]
+    },
+    "columnSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/domainSchema"
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/constraintSchema"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [ "name", "schema" ]
+    },
+    "basicSchema": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/definitions/basicType"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "enum": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "value": {"type":  "string"},
+                  "description": {"type":  "string"}
+                }
+              }
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/columnSchema"
+              }
+            },
+            "key_type": {
+              "$ref": "#/definitions/domainSchema"
+            },
+            "value_type": {
+              "$ref": "#/definitions/domainSchema"
+            }
+          }
+        }
+      ]
+    },
+    "indexSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "function": {
+                "type": "string"
+              }
+            },
+            "required": [ "name" ]
+          }
+        },
+        "where": {
+          "type": "string"
+        }
+      },
+      "required": [ "name", "type", "columns" ]
+    },
+    "apiSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "insertOne",
+            "upsertOne",
+            "updateOne",
+            "updateAll",
+            "deleteOne",
+            "deleteAll",
+            "findOne",
+            "findAll",
+            "lookUp"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "extended": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "schema": {
+                "$ref": "#/definitions/domainSchema"
+              },
+              "name": {
+                "type": "string"
+              },
+              "sql": {
+                "type": "string"
+              }
+            },
+            "required": [ "schema", "name", "sql" ]
+          }
+        },
+        "find_by": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "operator": {
+                    "type": "string",
+                    "enum": [
+                      "equal",
+                      "notEqual",
+                      "like",
+                      "notLike",
+                      "in",
+                      "notIn",
+                      "great",
+                      "less",
+                      "notGreat",
+                      "notLess",
+                      "starts",
+                      "isNull"
+                    ]
+                  },
+                  "constant": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "column": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [ "column" ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "one_of": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [ "one_of" ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "required": [ "type" ]
+    },
+    "tableSchema": {
+      "type": "object",
+      "properties": {
+        "inherits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/columnSchema"
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/constraintSchemaEx"
+          }
+        },
+        "indices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/indexSchema"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "api": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/apiSchema"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "types": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z][a-zA-Z0-9_]*$": {
+          "$ref": "#/definitions/basicSchema"
+        }
+      }
+    },
+    "domains": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z][a-zA-Z0-9_]*$": {
+          "$ref": "#/definitions/basicSchema"
+        }
+      }
+    },
+    "tables": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z][a-zA-Z0-9_]*$": {
+          "$ref": "#/definitions/tableSchema"
+        }
+      }
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
