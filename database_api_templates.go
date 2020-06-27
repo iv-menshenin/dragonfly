@@ -5,6 +5,7 @@ import (
 	"github.com/iv-menshenin/dragonfly/utils"
 	"go/ast"
 	"go/token"
+	"math"
 	"sort"
 )
 
@@ -288,7 +289,7 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 		)
 	}
 	fset := token.NewFileSet()
-	fset.AddFile(file.Name.String(), 1, len(file.Decls))
+	fset.AddFile(file.Name.String(), 1, math.MaxInt8)
 	ast.SortImports(fset, &file)
 	return &file, fset
 }
