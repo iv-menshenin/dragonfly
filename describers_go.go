@@ -613,13 +613,13 @@ var (
 		"timestamptz": makeSimpleDescriber("Time", "time", "\"time\""),
 		"timetz":      makeSimpleDescriber("Time", "time", "\"time\""),
 		// "float": not supported, use types with explicit size, e.g. float8 or float16
-		"float4": makeSimpleDescriber("float32", "", ""),
+		"float4": makeSimpleDescriber("float64", "", ""),
 		"float8": makeSimpleDescriber("float64", "", ""),
-		// ?! "float32":  makeSimpleDescriber("float64", "", ""),
+		// translate all float to float64
 		"smallint":         makeSimpleDescriber("int16", "", ""),
-		"real":             makeSimpleDescriber("float32", "", ""),
-		"numeric":          makeSimpleDescriber("float32", "", ""),
-		"decimal":          makeSimpleDescriber("float32", "", ""),
+		"real":             makeSimpleDescriber("float64", "", ""),
+		"numeric":          makeSimpleDescriber("float64", "", ""),
+		"decimal":          makeSimpleDescriber("float64", "", ""),
 		"double precision": makeSimpleDescriber("float64", "", ""),
 	}
 	formatTypes = map[string]string{
