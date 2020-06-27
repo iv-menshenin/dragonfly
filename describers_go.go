@@ -649,10 +649,6 @@ var (
 		"real":             "%f",
 		"numeric":          "%f",
 		"decimal":          "%f",
-		// "json":   not supported
-		// "enum":   not supported
-		// "map":    not supported
-		// "record": not supported
 	}
 	typeAliases = [][]string{
 		{"bigint", "int8"},

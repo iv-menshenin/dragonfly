@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/iv-menshenin/dragonfly/code_builders"
 	"go/ast"
+	"go/token"
 	"reflect"
 	"strings"
 )
@@ -53,7 +54,27 @@ type (
 const (
 	findVariantOnce findVariant = iota
 	findVariantAll
+	findVariantPaginate
 )
+
+func simpleResultOneRecord(rowStructName string) []*ast.Field {
+	return []*ast.Field{
+		builders.MakeField("result", nil, ast.NewIdent(rowStructName)),
+	}
+}
+
+func simpleResultArray(rowStructName string) []*ast.Field {
+	return []*ast.Field{
+		builders.MakeField("result", nil, builders.MakeArrayType(ast.NewIdent(rowStructName))),
+	}
+}
+
+func resultArrayWithCounter(rowStructName string) []*ast.Field {
+	return []*ast.Field{
+		builders.MakeField("result", nil, builders.MakeArrayType(ast.NewIdent(rowStructName))),
+		builders.MakeField("rowCount", nil, ast.NewIdent("int64")),
+	}
+}
 
 func addVariablesToFunctionBody(
 	functionBody []ast.Stmt,
@@ -87,29 +108,86 @@ func addVariablesToFunctionBody(
 	)
 }
 
+// TODO simplify
 func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	const (
 		sqlTextName = "sqlText"
 	)
 	var (
-		scanBlockWrapper builders.ScanWrapper
-		resultExprFn     func(string) ast.Expr
-		lastReturn       ast.Stmt
+		scanBlockWrapper      builders.ScanWrapper
+		resultExprFn          func(string) []*ast.Field
+		optionsExprFn         = func(e []*ast.Field) []*ast.Field { return e }
+		lastReturn            ast.Stmt
+		fieldRefsWrapper      = func(e []ast.Expr) []ast.Expr { return e }
+		executionBlockBuilder func(rowStructName string, fieldRefs []ast.Expr) []ast.Stmt
 	)
 	switch variant {
 	case findVariantOnce:
 		scanBlockWrapper = builders.WrapperFindOne
-		resultExprFn = func(e string) ast.Expr { return ast.NewIdent(e) }
+		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.MakeReturn(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
 		scanBlockWrapper = builders.WrapperFindAll
-		resultExprFn = func(e string) ast.Expr { return builders.MakeArrayType(ast.NewIdent(e)) }
+		resultExprFn = simpleResultArray
 		lastReturn = builders.MakeEmptyReturn()
+	case findVariantPaginate:
+		scanBlockWrapper = builders.WrapperFindAll
+		resultExprFn = resultArrayWithCounter
+		lastReturn = builders.MakeEmptyReturn()
+		fieldRefsWrapper = func(e []ast.Expr) []ast.Expr { return append(e, builders.MakeRef(ast.NewIdent("rowCount"))) }
+		optionsExprFn = func(e []*ast.Field) []*ast.Field {
+			return append(e, builders.MakeField("page", nil, ast.NewIdent("Pagination")))
+		}
+		executionBlockBuilder = func(rowStructName string, fieldRefs []ast.Expr) []ast.Stmt {
+			return builders.BuildExecutionBlockForFunction(
+				scanBlockWrapper,
+				fieldRefsWrapper(fieldRefs),
+				builders.MakeExecutionOptionWithWrappers(
+					rowStructName,
+					sqlTextName,
+					func(sql ast.Expr) ast.Expr {
+						return builders.MakeCallExpression(
+							builders.SprintfFn,
+							&ast.BasicLit{
+								Kind:  token.STRING,
+								Value: `"with query as (%s) select query.*, (select count(*) from query) from query limit $%d offset $%d;"`,
+							},
+							sql,
+							builders.MakeAddExpressions(
+								builders.MakeCallExpression(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
+								builders.MakeBasicLiteralInteger(1),
+							),
+							builders.MakeAddExpressions(
+								builders.MakeCallExpression(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
+								builders.MakeBasicLiteralInteger(2),
+							),
+						)
+					},
+					func(e ast.Expr) ast.Expr {
+						return builders.MakeCallExpression(
+							builders.AppendFn,
+							e,
+							builders.MakeSelectorExpression("page", "Limit"),
+							builders.MakeSelectorExpression("page", "Offset"),
+						)
+					},
+				),
+			)
+		}
 	default:
 		panic("cannot resolve 'variant'")
+	}
+	if executionBlockBuilder == nil {
+		executionBlockBuilder = func(rowStructName string, fieldRefs []ast.Expr) []ast.Stmt {
+			return builders.BuildExecutionBlockForFunction(
+				scanBlockWrapper,
+				fieldRefsWrapper(fieldRefs),
+				builders.MakeExecutionOption(rowStructName, sqlTextName),
+			)
+		}
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
@@ -160,7 +238,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = append(
 			append(
 				functionBody,
-				builders.BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, builders.MakeExecutionOption(rowStructName, sqlTextName))...,
+				executionBlockBuilder(rowStructName, fieldRefs)...,
 			),
 			lastReturn,
 		)
@@ -181,7 +259,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: builders.MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, findAttrs...),
+				functionName: builders.MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, optionsExprFn(findAttrs)...),
 			},
 		}
 	}
@@ -191,30 +269,30 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	const (
 		sqlTextName = "sqlText"
 	)
+	var (
+		scanBlockWrapper builders.ScanWrapper
+		resultExprFn     func(string) []*ast.Field
+		lastReturn       ast.Stmt
+	)
+	switch variant {
+	case findVariantOnce:
+		scanBlockWrapper = builders.WrapperFindOne
+		resultExprFn = simpleResultOneRecord
+		lastReturn = builders.MakeReturn(
+			ast.NewIdent("result"),
+			ast.NewIdent(sqlEmptyResultErrorName),
+		)
+	case findVariantAll:
+		scanBlockWrapper = builders.WrapperFindAll
+		resultExprFn = simpleResultArray
+		lastReturn = builders.MakeEmptyReturn()
+	default:
+		panic("cannot resolve 'variant'")
+	}
 	return func(
 		fullTableName, functionName, rowStructName string,
 		optionFields, _, rowFields []builders.MetaField,
 	) AstDataChain {
-		var (
-			scanBlockWrapper builders.ScanWrapper
-			resultExpr       ast.Expr
-			lastReturn       ast.Stmt
-		)
-		switch variant {
-		case findVariantOnce:
-			scanBlockWrapper = builders.WrapperFindOne
-			resultExpr = ast.NewIdent(rowStructName)
-			lastReturn = builders.MakeReturn(
-				ast.NewIdent("result"),
-				ast.NewIdent(sqlEmptyResultErrorName),
-			)
-		case findVariantAll:
-			scanBlockWrapper = builders.WrapperFindAll
-			resultExpr = builders.MakeArrayType(ast.NewIdent(rowStructName))
-			lastReturn = builders.MakeEmptyReturn()
-		default:
-			panic("cannot resolve 'variant'")
-		}
 		var (
 			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
 		)
@@ -281,7 +359,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, findAttrs...),
+				functionName: builders.MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, findAttrs...),
 			},
 		}
 	}
@@ -293,20 +371,20 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	)
 	var (
 		scanBlockWrapper builders.ScanWrapper
-		resultExprFn     func(string) ast.Expr
+		resultExprFn     func(string) []*ast.Field
 		lastReturn       ast.Stmt
 	)
 	switch variant {
 	case findVariantOnce:
 		scanBlockWrapper = builders.WrapperFindOne
-		resultExprFn = func(e string) ast.Expr { return ast.NewIdent(e) }
+		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.MakeReturn(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
 		scanBlockWrapper = builders.WrapperFindAll
-		resultExprFn = func(e string) ast.Expr { return builders.MakeArrayType(ast.NewIdent(e)) }
+		resultExprFn = simpleResultArray
 		lastReturn = builders.MakeEmptyReturn()
 	default:
 		panic("cannot resolve 'variant'")
@@ -403,7 +481,6 @@ func insertOneBuilder(
 	const (
 		sqlTextName = "sqlText"
 	)
-	resultExpr := ast.NewIdent(rowStructName)
 	scanBlockWrapper := builders.WrapperFindOne
 	lastReturn := builders.MakeReturn(
 		ast.NewIdent("result"),
@@ -467,7 +544,7 @@ func insertOneBuilder(
 		Types:     functionTypes,
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
-			functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
+			functionName: builders.MakeDatabaseApiFunction(functionName, simpleResultOneRecord(rowStructName), functionBody, functionAttrs...),
 		},
 	}
 }
@@ -479,7 +556,6 @@ func upsertBuilder(
 	const (
 		sqlTextName = "sqlText"
 	)
-	resultExpr := ast.NewIdent(rowStructName)
 	scanBlockWrapper := builders.WrapperFindOne
 	lastReturn := builders.MakeReturn(
 		ast.NewIdent("result"),
@@ -576,7 +652,7 @@ func upsertBuilder(
 		Types:     functionTypes,
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
-			functionName: builders.MakeDatabaseApiFunction(functionName, resultExpr, functionBody, functionAttrs...),
+			functionName: builders.MakeDatabaseApiFunction(functionName, simpleResultOneRecord(rowStructName), functionBody, functionAttrs...),
 		},
 	}
 }

@@ -44,15 +44,16 @@ const (
 	// value tags
 	tagCaseInsensitive = "ci"
 
-	apiTypeInsertOne ApiType = "insertOne"
-	apiTypeUpsertOne ApiType = "upsertOne"
-	apiTypeUpdateOne ApiType = "updateOne"
-	apiTypeUpdateAll ApiType = "updateAll"
-	apiTypeDeleteOne ApiType = "deleteOne"
-	apiTypeDeleteAll ApiType = "deleteAll"
-	apiTypeFindOne   ApiType = "findOne"
-	apiTypeFindAll   ApiType = "findAll"
-	apiTypeLookUp    ApiType = "lookUp"
+	apiTypeInsertOne       ApiType = "insertOne"
+	apiTypeUpsertOne       ApiType = "upsertOne"
+	apiTypeUpdateOne       ApiType = "updateOne"
+	apiTypeUpdateAll       ApiType = "updateAll"
+	apiTypeDeleteOne       ApiType = "deleteOne"
+	apiTypeDeleteAll       ApiType = "deleteAll"
+	apiTypeFindOne         ApiType = "findOne"
+	apiTypeFindAll         ApiType = "findAll"
+	apiTypeFindAllPaginate ApiType = "findAllPaginate"
+	apiTypeLookUp          ApiType = "lookUp"
 )
 
 func (c ApiType) String() string {

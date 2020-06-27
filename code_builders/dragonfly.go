@@ -8,7 +8,14 @@ import (
 )
 
 type (
-	variableName           string
+	variableEngine interface {
+		makeExpr() ast.Expr
+	}
+	variableName string
+	variableWrap struct {
+		variableName variableEngine
+		wrapper      func(ast.Expr) ast.Expr
+	}
 	SQLDataCompareOperator string // TODO try to remove from export
 
 	builderOptions struct {
@@ -18,10 +25,10 @@ type (
 		variableForColumnExpr   variableName
 	}
 	executionBlockOptions struct {
-		rowVariableName          variableName
-		rowStructTypeName        variableName
-		variableNameForSqlText   variableName
-		variableNameForArguments variableName
+		rowVariableName      variableName
+		rowStructTypeName    variableName
+		variableForSqlText   variableEngine
+		variableForArguments variableEngine
 	}
 
 	SourceSql interface {
@@ -93,6 +100,14 @@ func (v variableName) String() string {
 	return string(v)
 }
 
+func (v variableName) makeExpr() ast.Expr {
+	return ast.NewIdent(v.String())
+}
+
+func (v variableWrap) makeExpr() ast.Expr {
+	return v.wrapper(v.variableName.makeExpr())
+}
+
 var (
 	fieldsVariableRef  = FieldsVariable
 	FindBuilderOptions = builderOptions{
@@ -145,10 +160,25 @@ func makeEncryptPasswordCall(valueForEncrypt ast.Expr) *ast.CallExpr {
 
 func MakeExecutionOption(rowStructName, sqlVariableName string) executionBlockOptions {
 	return executionBlockOptions{
-		rowVariableName:          ScanDestVariable,
-		rowStructTypeName:        variableName(rowStructName),
-		variableNameForSqlText:   variableName(sqlVariableName),
-		variableNameForArguments: ArgsVariable,
+		rowVariableName:      ScanDestVariable,
+		rowStructTypeName:    variableName(rowStructName),
+		variableForSqlText:   variableName(sqlVariableName),
+		variableForArguments: ArgsVariable,
+	}
+}
+
+func MakeExecutionOptionWithWrappers(rowStructName, sqlVariableName string, sqlText, sqlArgs func(ast.Expr) ast.Expr) executionBlockOptions {
+	return executionBlockOptions{
+		rowVariableName:   ScanDestVariable,
+		rowStructTypeName: variableName(rowStructName),
+		variableForSqlText: variableWrap{
+			variableName: variableName(sqlVariableName),
+			wrapper:      sqlText,
+		},
+		variableForArguments: variableWrap{
+			variableName: ArgsVariable,
+			wrapper:      sqlArgs,
+		},
 	}
 }
 
@@ -255,9 +285,16 @@ func ExtractDestinationFieldRefsFromStruct(
 	return
 }
 
+type (
+	resultPair struct {
+		n string
+		t ast.Expr
+	}
+)
+
 func MakeDatabaseApiFunction(
 	functionName string,
-	resultExpr ast.Expr,
+	resultExpr []*ast.Field,
 	functionBody []ast.Stmt,
 	functionArgs ...*ast.Field,
 ) *ast.FuncDecl {
@@ -273,10 +310,7 @@ func MakeDatabaseApiFunction(
 				),
 			},
 			Results: &ast.FieldList{
-				List: []*ast.Field{
-					MakeField("result", nil, resultExpr),
-					MakeField("err", nil, ast.NewIdent("error")),
-				},
+				List: append(resultExpr, MakeField("err", nil, ast.NewIdent("error"))),
 			},
 		},
 		Body: &ast.BlockStmt{
@@ -295,8 +329,8 @@ func BuildExecutionBlockForFunction(
 			"rows",
 			MakeCallExpressionEllipsis(
 				DbQueryFn,
-				ast.NewIdent(options.variableNameForSqlText.String()),
-				ast.NewIdent(options.variableNameForArguments.String()),
+				options.variableForSqlText.makeExpr(),
+				options.variableForArguments.makeExpr(),
 			),
 		),
 		MakeDeferCallStatement(
