@@ -288,6 +288,7 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 		)
 	}
 	fset := token.NewFileSet()
+	fset.AddFile(file.Name.String(), 1, len(file.Decls))
 	ast.SortImports(fset, &file)
 	return &file, fset
 }
