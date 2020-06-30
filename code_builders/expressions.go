@@ -4,156 +4,189 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"strconv"
 	"strings"
 )
 
-func MakeEmptyInterface() ast.Expr {
-	return &ast.InterfaceType{
-		Methods: &ast.FieldList{},
+type (
+	varValue interface {
+		Expr() ast.Expr
 	}
-}
+	StringConstant  string  // string constant e.g. "abc"
+	IntegerConstant int64   // integer constant e.g. 123
+	FloatConstant   float64 // float constant e.g. 123.45
+	VariableName    string  // any variable name
+)
 
-func MakeBasicLiteralString(s string) ast.Expr {
-	if strings.Contains(s, "\"") {
+// ast.BasicLit with token.STRING
+func (c StringConstant) Expr() ast.Expr {
+	if strings.Contains(string(c), "\"") || strings.Contains(string(c), "\n") {
 		return &ast.BasicLit{
 			Kind:  token.STRING,
-			Value: fmt.Sprintf("`%s`", s),
+			Value: fmt.Sprintf("`%s`", c),
 		}
 	} else {
 		return &ast.BasicLit{
 			Kind:  token.STRING,
-			Value: fmt.Sprintf("\"%s\"", s),
+			Value: fmt.Sprintf("\"%s\"", c),
 		}
 	}
 }
 
-func MakeBasicLiteralInteger(i int) ast.Expr {
+// ast.BasicLit with token.INT
+func (c IntegerConstant) Expr() ast.Expr {
 	return &ast.BasicLit{
-		Kind:  token.INT,
-		Value: strconv.Itoa(i),
+		ValuePos: 1,
+		Kind:     token.INT,
+		Value:    fmt.Sprintf("%d", c),
 	}
 }
 
-func MakeSelectorExpression(pack, name string) ast.Expr {
+// ast.BasicLit with token.FLOAT
+func (c FloatConstant) Expr() ast.Expr {
+	return &ast.BasicLit{
+		ValuePos: 1,
+		Kind:     token.FLOAT,
+		Value:    fmt.Sprintf("%f", c),
+	}
+}
+
+// ast.Ident with variable name
+func (c VariableName) Expr() ast.Expr {
+	return ast.NewIdent(string(c))
+}
+
+// somevar[1]
+func Index(x ast.Expr, index varValue) ast.Expr {
+	return &ast.IndexExpr{
+		X:      x,
+		Lbrack: 1,
+		Index:  index.Expr(),
+		Rbrack: 2,
+	}
+}
+
+// represents a dot notation expression like "pack.object"
+func SimpleSelector(pack, object string) ast.Expr {
+	return Selector(ast.NewIdent(pack), object)
+}
+
+// <x>.<object>
+func Selector(x ast.Expr, object string) ast.Expr {
 	return &ast.SelectorExpr{
-		X: ast.NewIdent(pack),
-		Sel: &ast.Ident{
-			Name: name,
-		},
+		X:   x,
+		Sel: ast.NewIdent(object),
 	}
 }
 
-func MakeSelectorExpressionEx(pack ast.Expr, name string) ast.Expr {
-	return &ast.SelectorExpr{
-		X: pack,
-		Sel: &ast.Ident{
-			Name: name,
-		},
+// <tok><expr> e.g. !expr
+func Unary(expr ast.Expr, tok token.Token) ast.Expr {
+	if tok == token.MUL {
+		return Star(expr)
+	}
+	return &ast.UnaryExpr{
+		OpPos: 1,
+		Op:    tok,
+		X:     expr,
 	}
 }
 
-func MakeStarExpression(expr ast.Expr) ast.Expr {
+// *<expr>
+func Star(expr ast.Expr) ast.Expr {
 	return &ast.StarExpr{
-		Star: 0,
+		Star: 1,
 		X:    expr,
 	}
 }
 
-func MakeRef(x ast.Expr) ast.Expr {
-	return &ast.UnaryExpr{
-		Op: token.AND,
-		X:  x,
-	}
+// &<expr>
+func Ref(expr ast.Expr) ast.Expr {
+	return Unary(expr, token.AND)
 }
 
-func MakeArrayType(expr ast.Expr) ast.Expr {
-	return &ast.ArrayType{
-		Elt: expr,
-	}
+// !<expr>
+func Not(expr ast.Expr) ast.Expr {
+	return Unary(expr, token.NOT)
 }
 
-func MakeSqlFieldArrayType(expr ast.Expr) ast.Expr {
-	if i, ok := expr.(*ast.Ident); ok {
-		switch i.Name {
-		case "string":
-			return ast.NewIdent("SqlStringArray")
-		case "int", "int4", "int8", "int16", "int32", "int64":
-			return ast.NewIdent("SqlIntegerArray")
-		case "uint", "uint4", "uint8", "uint16", "uint32", "uint64":
-			return ast.NewIdent("SqlUnsignedArray")
-		case "float32", "float64":
-			return ast.NewIdent("SqlFloatArray")
-		default:
-			return MakeArrayType(expr)
-		}
-	} else {
-		return MakeArrayType(expr)
+// <left> <tok> <right> e.g. left == right
+func Binary(left, right ast.Expr, tok token.Token) ast.Expr {
+	if left == nil || right == nil {
+		panic("unsupported")
 	}
-}
-
-func MakeNotEqualExpression(left, right ast.Expr) ast.Expr {
 	return &ast.BinaryExpr{
-		X:  left,
-		Op: token.NEQ,
-		Y:  right,
+		X:     left,
+		OpPos: 1,
+		Op:    tok,
+		Y:     right,
 	}
 }
 
-func MakeAddExpressions(exps ...ast.Expr) ast.Expr {
-	newNestLevel := func(left, right ast.Expr) ast.Expr {
-		if left == nil {
-			return right
-		}
-		return &ast.BinaryExpr{
-			X:  left,
-			Op: token.ADD,
-			Y:  right,
+// [<l>]<expr>
+func ArrayType(expr ast.Expr, l ...ast.Expr) ast.Expr {
+	var lenExpr ast.Expr = nil
+	if len(l) > 0 {
+		lenExpr = l[0]
+		if len(l) > 1 {
+			panic("allowed only one value")
 		}
 	}
+	return &ast.ArrayType{
+		Lbrack: 1,
+		Len:    lenExpr,
+		Elt:    expr,
+	}
+}
+
+// <left> != <right>
+func NotEqual(left, right ast.Expr) ast.Expr {
+	return Binary(left, right, token.NEQ)
+}
+
+// <left> == <right>
+func Equal(left, right ast.Expr) ast.Expr {
+	return Binary(left, right, token.EQL)
+}
+
+// <expr1> + <expr2> + <expr3>
+func Add(exps ...ast.Expr) ast.Expr {
 	var acc ast.Expr = nil
 	for _, expr := range exps {
-		acc = newNestLevel(acc, expr)
+		if acc == nil {
+			acc = expr
+		} else {
+			acc = Binary(acc, expr, token.ADD)
+		}
 	}
 	return acc
 }
 
-func MakeNotEmptyArrayExpression(arrayName string) ast.Expr {
-	return &ast.BinaryExpr{
-		X:  MakeCallExpression(LengthFn, ast.NewIdent(arrayName)),
-		Op: token.GTR,
-		Y:  MakeBasicLiteralInteger(0),
+// <expr1> - <expr2> - <expr3>
+func Sub(exps ...ast.Expr) ast.Expr {
+	var acc ast.Expr = nil
+	for _, expr := range exps {
+		if acc == nil {
+			acc = expr
+		} else {
+			acc = Binary(acc, expr, token.SUB)
+		}
 	}
+	return acc
 }
 
-func MakeNotNullExpression(variable ast.Expr) ast.Expr {
-	return &ast.BinaryExpr{
-		X:  variable,
-		Op: token.NEQ,
-		Y:  Nil,
-	}
+// <expr> != nil
+func NotNil(expr ast.Expr) ast.Expr {
+	return Binary(expr, Nil, token.NEQ)
 }
 
-func MakeNotExpression(expr ast.Expr) ast.Expr {
-	return &ast.UnaryExpr{
-		X:     expr,
-		Op:    token.NOT,
-		OpPos: 1,
-	}
+// <expr> == nil
+func IsNil(expr ast.Expr) ast.Expr {
+	return Binary(expr, Nil, token.EQL)
 }
 
-func MakeIsNullExpression(variable ast.Expr) ast.Expr {
-	return &ast.BinaryExpr{
-		X:  variable,
-		Op: token.EQL,
-		Y:  Nil,
-	}
-}
-
-func MakeIdentComparator(left, right string) ast.Expr {
-	return &ast.BinaryExpr{
-		X:  ast.NewIdent(left),
-		Op: token.EQL,
-		Y:  ast.NewIdent(right),
+// <t>(<varName>) e.g. string(varName)
+func VariableTypeAssert(varName string, t ast.Expr) ast.Expr {
+	return &ast.TypeAssertExpr{
+		X:    ast.NewIdent(varName),
+		Type: t,
 	}
 }

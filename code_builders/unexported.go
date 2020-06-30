@@ -70,30 +70,31 @@ func (op opRegular) makeArrayQueryOption(
 	var optionExpr ast.Expr = ast.NewIdent(localVariable)
 	if ci {
 		columnName = fmt.Sprintf("lower(%s)", columnName)
-		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
+		optionExpr = Call(ToLowerFn, optionExpr)
 	}
 	// for placeholders only
 	var arrVariableName = fmt.Sprintf("array%s", fieldName)
 	return []ast.Stmt{
-		MakeVarStatement(MakeVarType(arrVariableName, MakeArrayType(ast.NewIdent("string")))),
+		Var(VariableType(arrVariableName, ArrayType(ast.NewIdent("string")))),
 		&ast.RangeStmt{
 			Key:   ast.NewIdent("_"),
 			Value: ast.NewIdent(localVariable),
-			X:     MakeSelectorExpression(optionName, fieldName),
+			X:     SimpleSelector(optionName, fieldName),
 			Tok:   token.DEFINE,
 			Body: &ast.BlockStmt{
 				List: []ast.Stmt{
-					MakeAssignment([]string{options.variableForColumnValues.String()}, MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
-					MakeAssignment(
-						[]string{arrVariableName},
-						MakeCallExpression(
+					Assign(MakeVarNames(options.variableForColumnValues.String()), Assignment, Call(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
+					Assign(
+						MakeVarNames(arrVariableName),
+						Assignment,
+						Call(
 							AppendFn,
 							ast.NewIdent(arrVariableName),
-							MakeAddExpressions(
-								MakeBasicLiteralString("$"),
-								MakeCallExpression(
+							Add(
+								StringConstant("$").Expr(),
+								Call(
 									ConvertItoaFn,
-									MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+									Call(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 								),
 							),
 						),
@@ -101,21 +102,22 @@ func (op opRegular) makeArrayQueryOption(
 				},
 			},
 		},
-		MakeSimpleIfStatement(
-			MakeNotEmptyArrayExpression(arrVariableName),
-			MakeAssignment(
-				[]string{options.variableForColumnExpr.String()},
-				MakeCallExpression(
+		If(
+			MakeLenGreatThanZero(arrVariableName),
+			Assign(
+				MakeVarNames(options.variableForColumnExpr.String()),
+				Assignment,
+				Call(
 					AppendFn,
 					ast.NewIdent(options.variableForColumnExpr.String()),
-					MakeCallExpression(
+					Call(
 						SprintfFn,
-						MakeBasicLiteralString(op.operator),
-						MakeBasicLiteralString(columnName),
-						MakeCallExpression(
+						StringConstant(op.operator).Expr(),
+						StringConstant(columnName).Expr(),
+						Call(
 							StringsJoinFn,
 							ast.NewIdent(arrVariableName),
-							MakeBasicLiteralString(", "),
+							StringConstant(", ").Expr(),
 						),
 					),
 				),
@@ -134,7 +136,7 @@ func (op opRegular) makeUnionQueryOption(
 		for i, c := range columnNames {
 			columnNames[i] = fmt.Sprintf("lower(%s)", c)
 		}
-		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
+		optionExpr = Call(ToLowerFn, optionExpr)
 	}
 	operators := make([]string, 0, len(op.operator))
 	for _, _ = range columnNames {
@@ -144,33 +146,35 @@ func (op opRegular) makeUnionQueryOption(
 	for _, c := range columnNames {
 		callArgs = append(
 			callArgs,
-			MakeBasicLiteralString(c),
-			MakeAddExpressions(
-				MakeBasicLiteralString("$"),
-				MakeCallExpression(
+			StringConstant(c).Expr(),
+			Add(
+				StringConstant("$").Expr(),
+				Call(
 					ConvertItoaFn,
-					MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+					Call(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 				),
 			),
 		)
 	}
 	return []ast.Stmt{
-		MakeAssignment(
-			[]string{options.variableForColumnValues.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnValues.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnValues.String()),
 				optionExpr,
 			),
 		),
-		MakeAssignment(
-			[]string{options.variableForColumnExpr.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnExpr.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
-				MakeCallExpression(
+				Call(
 					SprintfFn,
-					append([]ast.Expr{MakeBasicLiteralString(strings.Join(operators, " or "))}, callArgs...)...,
+					append(E(StringConstant(strings.Join(operators, " or ")).Expr()), callArgs...)...,
 				),
 			),
 		),
@@ -182,37 +186,39 @@ func (op opRegular) makeScalarQueryOption(
 	ci, ref bool,
 	options builderOptions,
 ) []ast.Stmt {
-	var optionExpr = MakeSelectorExpression(optionName, fieldName)
+	var optionExpr = SimpleSelector(optionName, fieldName)
 	if ref {
-		optionExpr = MakeStarExpression(optionExpr)
+		optionExpr = Star(optionExpr)
 	}
 	if ci {
 		columnName = fmt.Sprintf("lower(%s)", columnName)
-		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
+		optionExpr = Call(ToLowerFn, optionExpr)
 	}
 	return []ast.Stmt{
-		MakeAssignment(
-			[]string{options.variableForColumnValues.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnValues.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnValues.String()),
 				optionExpr,
 			),
 		),
-		MakeAssignment(
-			[]string{options.variableForColumnExpr.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnExpr.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
-				MakeCallExpression(
+				Call(
 					SprintfFn,
-					MakeBasicLiteralString(op.operator),
-					MakeBasicLiteralString(columnName),
-					MakeAddExpressions(
-						MakeBasicLiteralString("$"),
-						MakeCallExpression(
+					StringConstant(op.operator).Expr(),
+					StringConstant(columnName).Expr(),
+					Add(
+						StringConstant("$").Expr(),
+						Call(
 							ConvertItoaFn,
-							MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+							Call(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 						),
 					),
 				),
@@ -233,50 +239,52 @@ func (op opInline) makeArrayQueryOption(
 	var optionExpr ast.Expr = ast.NewIdent(localVariable)
 	if ci {
 		columnName = fmt.Sprintf("lower(%s)", columnName)
-		optionExpr = MakeCallExpression(ToLowerFn, optionExpr)
+		optionExpr = Call(ToLowerFn, optionExpr)
 	}
 	// for placeholders only
 	var arrVariableName = fmt.Sprintf("array%s", fieldName)
 	return []ast.Stmt{
-		MakeVarStatement(MakeVarType(arrVariableName, MakeArrayType(ast.NewIdent("string")))),
+		Var(VariableType(arrVariableName, ArrayType(ast.NewIdent("string")))),
 		&ast.RangeStmt{
 			Key:   ast.NewIdent("_"),
 			Value: ast.NewIdent(localVariable),
-			X:     MakeSelectorExpression(optionName, fieldName),
+			X:     SimpleSelector(optionName, fieldName),
 			Tok:   token.DEFINE,
-			Body: MakeBlockStmt(
-				MakeAssignment([]string{options.variableForColumnValues.String()}, MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
-				MakeAssignment(
-					[]string{arrVariableName},
-					MakeCallExpression(
+			Body: Block(
+				Assign(MakeVarNames(options.variableForColumnValues.String()), Assignment, Call(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), optionExpr)),
+				Assign(
+					MakeVarNames(arrVariableName),
+					Assignment,
+					Call(
 						AppendFn,
 						ast.NewIdent(arrVariableName),
-						MakeAddExpressions(
-							MakeBasicLiteralString("$"),
-							MakeCallExpression(
+						Add(
+							StringConstant("$").Expr(),
+							Call(
 								ConvertItoaFn,
-								MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+								Call(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 							),
 						),
 					),
 				),
 			),
 		},
-		MakeSimpleIfStatement(
-			MakeNotEmptyArrayExpression(arrVariableName),
-			MakeAssignment(
-				[]string{options.variableForColumnExpr.String()},
-				MakeCallExpression(
+		If(
+			MakeLenGreatThanZero(arrVariableName),
+			Assign(
+				MakeVarNames(options.variableForColumnExpr.String()),
+				Assignment,
+				Call(
 					AppendFn,
 					ast.NewIdent(options.variableForColumnExpr.String()),
-					MakeCallExpression(
+					Call(
 						SprintfFn,
-						MakeBasicLiteralString(op.operator),
-						MakeBasicLiteralString(columnName),
-						MakeCallExpression(
+						StringConstant(op.operator).Expr(),
+						StringConstant(columnName).Expr(),
+						Call(
 							StringsJoinFn,
 							ast.NewIdent(arrVariableName),
-							MakeBasicLiteralString(", "),
+							StringConstant(", ").Expr(),
 						),
 					),
 				),
@@ -302,20 +310,21 @@ func (op opInline) makeScalarQueryOption(
 	ci, ref bool,
 	options builderOptions,
 ) []ast.Stmt {
-	var optionExpr = MakeSelectorExpression(optionName, fieldName)
+	var optionExpr = SimpleSelector(optionName, fieldName)
 	if ref {
-		optionExpr = MakeStarExpression(optionExpr)
+		optionExpr = Star(optionExpr)
 	}
 	return []ast.Stmt{
-		MakeAssignment(
-			[]string{options.variableForColumnExpr.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnExpr.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
-				MakeCallExpression(
+				Call(
 					SprintfFn,
-					MakeBasicLiteralString(op.operator),
-					MakeBasicLiteralString(columnName),
+					StringConstant(op.operator).Expr(),
+					StringConstant(columnName).Expr(),
 					optionExpr,
 				),
 			),
@@ -329,16 +338,17 @@ func (op *opConstant) makeScalarQueryOption(
 	options builderOptions,
 ) []ast.Stmt {
 	return []ast.Stmt{
-		MakeAssignment(
-			[]string{options.variableForColumnExpr.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnExpr.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
-				MakeCallExpression(
+				Call(
 					SprintfFn,
-					MakeBasicLiteralString(op.operator),
-					MakeBasicLiteralString(columnName),
-					MakeBasicLiteralString(constantValue),
+					StringConstant(op.operator).Expr(),
+					StringConstant(columnName).Expr(),
+					StringConstant(constantValue).Expr(),
 				),
 			),
 		),
@@ -356,7 +366,7 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			for _, arg := range funcArgs[1:] {
 				args = append(args, ast.NewIdent(arg))
 			}
-			return MakeCallExpression(userDefinedFunction, args...)
+			return Call(userDefinedFunction, args...)
 		}
 		// functions with 'len' argument
 		if utils.ArrayContains([]string{
@@ -383,13 +393,13 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			default:
 				panic(fmt.Sprintf("cannot resolve function name `%s`", funcArgs[0]))
 			}
-			return MakeCallExpression(
+			return Call(
 				CallFunctionDescriber{
 					FunctionName:                ast.NewIdent(goFncName),
 					MinimumNumberOfArguments:    1,
 					ExtensibleNumberOfArguments: false,
 				},
-				MakeBasicLiteralInteger(l),
+				IntegerConstant(l).Expr(),
 			)
 		}
 	}
@@ -421,26 +431,29 @@ func processValueWrapper(
 ) []ast.Stmt {
 	stmts := make([]ast.Stmt, 0, 3)
 	if options.variableForColumnNames != nil {
-		stmts = append(stmts, MakeAssignment(
-			[]string{options.variableForColumnNames.String()},
-			MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnNames.String()), MakeBasicLiteralString(colName)),
+		stmts = append(stmts, Assign(
+			MakeVarNames(options.variableForColumnNames.String()),
+			Assignment,
+			Call(AppendFn, ast.NewIdent(options.variableForColumnNames.String()), StringConstant(colName).Expr()),
 		))
 	}
 	return append(
 		stmts,
-		MakeAssignment(
-			[]string{options.variableForColumnValues.String()},
-			MakeCallExpression(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), field),
+		Assign(
+			MakeVarNames(options.variableForColumnValues.String()),
+			Assignment,
+			Call(AppendFn, ast.NewIdent(options.variableForColumnValues.String()), field),
 		),
-		MakeAssignment(
-			[]string{options.variableForColumnExpr.String()},
-			MakeCallExpression(
+		Assign(
+			MakeVarNames(options.variableForColumnExpr.String()),
+			Assignment,
+			Call(
 				AppendFn,
 				ast.NewIdent(options.variableForColumnExpr.String()),
-				MakeCallExpression(
+				Call(
 					SprintfFn,
-					MakeBasicLiteralString(fmt.Sprintf(options.appendValueFormat, colName)),
-					MakeCallExpression(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+					StringConstant(fmt.Sprintf(options.appendValueFormat, colName)).Expr(),
+					Call(LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
 				),
 			),
 		),
@@ -448,14 +461,14 @@ func processValueWrapper(
 }
 
 func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
-	return MakeSimpleIfStatement(
-		MakeCallExpression(RowsNextFn),
+	return If(
+		Call(RowsNextFn),
 		append(
 			append(
 				[]ast.Stmt{
-					MakeAssignmentWithErrChecking(
+					MakeCallWithErrChecking(
 						"",
-						MakeCallExpression(
+						Call(
 							RowsErrFn,
 						),
 					),
@@ -463,14 +476,14 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 				stmts...,
 			),
 			&ast.IfStmt{
-				Cond: MakeCallExpression(RowsNextFn),
-				Body: MakeBlockStmt(
-					MakeReturn(
+				Cond: Call(RowsNextFn),
+				Body: Block(
+					Return(
 						ast.NewIdent("row"),
 						ast.NewIdent(sqlSingletonViolationErrorName),
 					),
 				),
-				Else: MakeReturn(
+				Else: Return(
 					ast.NewIdent("row"),
 					Nil,
 				),
@@ -481,23 +494,24 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 
 func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 	return &ast.ForStmt{
-		Cond: MakeCallExpression(RowsNextFn),
-		Body: MakeBlockStmt(
+		Cond: Call(RowsNextFn),
+		Body: Block(
 			append(
 				append(
 					[]ast.Stmt{
-						MakeAssignmentWithErrChecking(
+						MakeCallWithErrChecking(
 							"",
-							MakeCallExpression(
+							Call(
 								RowsErrFn,
 							),
 						),
 					},
 					stmts...,
 				),
-				MakeAssignment(
-					[]string{"result"},
-					MakeCallExpression(
+				Assign(
+					MakeVarNames("result"),
+					Assignment,
+					Call(
 						AppendFn,
 						ast.NewIdent("result"),
 						ast.NewIdent("row"),

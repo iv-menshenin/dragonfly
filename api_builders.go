@@ -59,20 +59,20 @@ const (
 
 func simpleResultOneRecord(rowStructName string) []*ast.Field {
 	return []*ast.Field{
-		builders.MakeField("result", nil, ast.NewIdent(rowStructName)),
+		builders.Field("result", nil, ast.NewIdent(rowStructName)),
 	}
 }
 
 func simpleResultArray(rowStructName string) []*ast.Field {
 	return []*ast.Field{
-		builders.MakeField("result", nil, builders.MakeArrayType(ast.NewIdent(rowStructName))),
+		builders.Field("result", nil, builders.ArrayType(ast.NewIdent(rowStructName))),
 	}
 }
 
 func resultArrayWithCounter(rowStructName string) []*ast.Field {
 	return []*ast.Field{
-		builders.MakeField("result", nil, builders.MakeArrayType(ast.NewIdent(rowStructName))),
-		builders.MakeField("rowCount", nil, ast.NewIdent("int64")),
+		builders.Field("result", nil, builders.ArrayType(ast.NewIdent(rowStructName))),
+		builders.Field("rowCount", nil, ast.NewIdent("int64")),
 	}
 }
 
@@ -84,16 +84,16 @@ func addVariablesToFunctionBody(
 ) []ast.Stmt {
 	return append(
 		[]ast.Stmt{
-			builders.MakeVarStatement(
+			builders.Var(
 				append([]ast.Spec{
-					builders.MakeVarType("db", ast.NewIdent(queryExecInterfaceName)),
-					builders.MakeVarType("rows", builders.MakeStarExpression(builders.MakeSelectorExpression("sql", "Rows"))),
-					builders.MakeVarValue(sqlQueryVariableName, builders.MakeBasicLiteralString(sqlQuery)),
+					builders.VariableType("db", ast.NewIdent(queryExecInterfaceName)),
+					builders.VariableType("rows", builders.Star(builders.SimpleSelector("sql", "Rows"))),
+					builders.VariableValue(sqlQueryVariableName, builders.StringConstant(sqlQuery).Expr()),
 				}, addition...)...,
 			),
-			builders.MakeAssignmentWithErrChecking(
+			builders.MakeCallWithErrChecking(
 				"db",
-				builders.MakeCallExpression(
+				builders.Call(
 					builders.CallFunctionDescriber{
 						FunctionName:                ast.NewIdent(getQueryExecPointFnName),
 						MinimumNumberOfArguments:    1,
@@ -101,7 +101,7 @@ func addVariablesToFunctionBody(
 					},
 					ast.NewIdent("ctx"),
 				),
-				builders.MakeEmptyReturn(),
+				builders.ReturnEmpty(),
 			),
 		},
 		functionBody...,
@@ -125,21 +125,21 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	case findVariantOnce:
 		scanBlockWrapper = builders.WrapperFindOne
 		resultExprFn = simpleResultOneRecord
-		lastReturn = builders.MakeReturn(
+		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
 		scanBlockWrapper = builders.WrapperFindAll
 		resultExprFn = simpleResultArray
-		lastReturn = builders.MakeEmptyReturn()
+		lastReturn = builders.ReturnEmpty()
 	case findVariantPaginate:
 		scanBlockWrapper = builders.WrapperFindAll
 		resultExprFn = resultArrayWithCounter
-		lastReturn = builders.MakeEmptyReturn()
-		fieldRefsWrapper = func(e []ast.Expr) []ast.Expr { return append(e, builders.MakeRef(ast.NewIdent("rowCount"))) }
+		lastReturn = builders.ReturnEmpty()
+		fieldRefsWrapper = func(e []ast.Expr) []ast.Expr { return append(e, builders.Ref(ast.NewIdent("rowCount"))) }
 		optionsExprFn = func(e []*ast.Field) []*ast.Field {
-			return append(e, builders.MakeField("page", nil, ast.NewIdent("Pagination")))
+			return append(e, builders.Field("page", nil, ast.NewIdent("Pagination")))
 		}
 		executionBlockBuilder = func(rowStructName string, fieldRefs []ast.Expr) []ast.Stmt {
 			return builders.BuildExecutionBlockForFunction(
@@ -149,29 +149,29 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 					rowStructName,
 					sqlTextName,
 					func(sql ast.Expr) ast.Expr {
-						return builders.MakeCallExpression(
+						return builders.Call(
 							builders.SprintfFn,
 							&ast.BasicLit{
 								Kind:  token.STRING,
 								Value: `"with query as (%s) select query.*, (select count(*) from query) from query limit $%d offset $%d;"`,
 							},
 							sql,
-							builders.MakeAddExpressions(
-								builders.MakeCallExpression(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
-								builders.MakeBasicLiteralInteger(1),
+							builders.Add(
+								builders.Call(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
+								builders.IntegerConstant(1).Expr(),
 							),
-							builders.MakeAddExpressions(
-								builders.MakeCallExpression(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
-								builders.MakeBasicLiteralInteger(2),
+							builders.Add(
+								builders.Call(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
+								builders.IntegerConstant(2).Expr(),
 							),
 						)
 					},
 					func(e ast.Expr) ast.Expr {
-						return builders.MakeCallExpression(
+						return builders.Call(
 							builders.AppendFn,
 							e,
-							builders.MakeSelectorExpression("page", "Limit"),
-							builders.MakeSelectorExpression("page", "Offset"),
+							builders.SimpleSelector("page", "Limit"),
+							builders.SimpleSelector("page", "Offset"),
 						)
 					},
 				),
@@ -206,31 +206,33 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: builders.MakeNotEmptyArrayExpression(builders.FiltersVariable.String()),
-				Body: builders.MakeBlockStmt(
-					builders.MakeAssignment(
-						[]string{sqlTextName},
-						builders.MakeCallExpression(
+				Cond: builders.MakeLenGreatThanZero(builders.FiltersVariable.String()),
+				Body: builders.Block(
+					builders.Assign(
+						builders.MakeVarNames(sqlTextName),
+						builders.Assignment,
+						builders.Call(
 							builders.SprintfFn,
 							ast.NewIdent(sqlTextName),
-							builders.MakeAddExpressions(
-								builders.MakeBasicLiteralString("("),
-								builders.MakeCallExpression(
+							builders.Add(
+								builders.StringConstant("(").Expr(),
+								builders.Call(
 									builders.StringsJoinFn,
 									ast.NewIdent(builders.FiltersVariable.String()),
-									builders.MakeBasicLiteralString(") and ("),
+									builders.StringConstant(") and (").Expr(),
 								),
-								builders.MakeBasicLiteralString(")"),
+								builders.StringConstant(")").Expr(),
 							),
 						),
 					),
 				),
-				Else: builders.MakeAssignment(
-					[]string{sqlTextName},
-					builders.MakeCallExpression(
+				Else: builders.Assign(
+					builders.MakeVarNames(sqlTextName),
+					builders.Assignment,
+					builders.Call(
 						builders.SprintfFn,
 						ast.NewIdent(sqlTextName),
-						builders.MakeBasicLiteralString("1 = 1"),
+						builders.StringConstant("1 = 1").Expr(),
 					),
 				),
 			},
@@ -246,13 +248,13 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			functionBody,
 			sqlTextName,
 			sqlQuery,
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.ArgsVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.FiltersVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
 		)
 		return AstDataChain{
@@ -278,14 +280,14 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	case findVariantOnce:
 		scanBlockWrapper = builders.WrapperFindOne
 		resultExprFn = simpleResultOneRecord
-		lastReturn = builders.MakeReturn(
+		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
 		scanBlockWrapper = builders.WrapperFindAll
 		resultExprFn = simpleResultArray
-		lastReturn = builders.MakeEmptyReturn()
+		lastReturn = builders.ReturnEmpty()
 	default:
 		panic("cannot resolve 'variant'")
 	}
@@ -306,31 +308,33 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: builders.MakeNotEmptyArrayExpression(builders.FiltersVariable.String()),
-				Body: builders.MakeBlockStmt(
-					builders.MakeAssignment(
-						[]string{sqlTextName},
-						builders.MakeCallExpression(
+				Cond: builders.MakeLenGreatThanZero(builders.FiltersVariable.String()),
+				Body: builders.Block(
+					builders.Assign(
+						builders.MakeVarNames(sqlTextName),
+						builders.Assignment,
+						builders.Call(
 							builders.SprintfFn,
 							ast.NewIdent(sqlTextName),
-							builders.MakeAddExpressions(
-								builders.MakeBasicLiteralString("("),
-								builders.MakeCallExpression(
+							builders.Add(
+								builders.StringConstant("(").Expr(),
+								builders.Call(
 									builders.StringsJoinFn,
 									ast.NewIdent(builders.FiltersVariable.String()),
-									builders.MakeBasicLiteralString(") and ("),
+									builders.StringConstant(") and (").Expr(),
 								),
-								builders.MakeBasicLiteralString(")"),
+								builders.StringConstant(")").Expr(),
 							),
 						),
 					),
 				),
-				Else: builders.MakeAssignment(
-					[]string{sqlTextName},
-					builders.MakeCallExpression(
+				Else: builders.Assign(
+					builders.MakeVarNames(sqlTextName),
+					builders.Assignment,
+					builders.Call(
 						builders.SprintfFn,
 						ast.NewIdent(sqlTextName),
-						builders.MakeBasicLiteralString("/* ERROR: CANNOT DELETE ALL */ !"),
+						builders.StringConstant("/* ERROR: CANNOT DELETE ALL */ !").Expr(),
 					),
 				),
 			},
@@ -346,13 +350,13 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			functionBody,
 			sqlTextName,
 			sqlQuery,
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.ArgsVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.FiltersVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(optionFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
 		)
 		return AstDataChain{
@@ -378,14 +382,14 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	case findVariantOnce:
 		scanBlockWrapper = builders.WrapperFindOne
 		resultExprFn = simpleResultOneRecord
-		lastReturn = builders.MakeReturn(
+		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
 		scanBlockWrapper = builders.WrapperFindAll
 		resultExprFn = simpleResultArray
-		lastReturn = builders.MakeEmptyReturn()
+		lastReturn = builders.ReturnEmpty()
 	default:
 		panic("cannot resolve 'variant'")
 	}
@@ -412,24 +416,25 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = append(functionBody, findBlock...)
 		functionBody = append(
 			functionBody,
-			builders.MakeAssignment(
-				[]string{sqlTextName},
-				builders.MakeCallExpression(
+			builders.Assign(
+				builders.MakeVarNames(sqlTextName),
+				builders.Assignment,
+				builders.Call(
 					builders.SprintfFn,
 					ast.NewIdent(sqlTextName),
-					builders.MakeCallExpression(
+					builders.Call(
 						builders.StringsJoinFn,
 						ast.NewIdent(builders.FieldsVariable.String()),
-						builders.MakeBasicLiteralString(", "),
+						builders.StringConstant(", ").Expr(),
 					),
-					builders.MakeAddExpressions(
-						builders.MakeBasicLiteralString("("),
-						builders.MakeCallExpression(
+					builders.Add(
+						builders.StringConstant("(").Expr(),
+						builders.Call(
 							builders.StringsJoinFn,
 							ast.NewIdent(builders.FiltersVariable.String()),
-							builders.MakeBasicLiteralString(") and ("),
+							builders.StringConstant(") and (").Expr(),
 						),
-						builders.MakeBasicLiteralString(")"),
+						builders.StringConstant(")").Expr(),
 					),
 				),
 			),
@@ -445,17 +450,17 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 			functionBody,
 			sqlTextName,
 			sqlQuery,
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.ArgsVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 			),
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.FieldsVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 			),
-			builders.MakeVarValue(
+			builders.VariableValue(
 				builders.FiltersVariable.String(),
-				builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 			),
 		)
 		unionTypeDeclMaps := func(a, b map[string]*ast.TypeSpec) map[string]*ast.TypeSpec {
@@ -482,7 +487,7 @@ func insertOneBuilder(
 		sqlTextName = "sqlText"
 	)
 	scanBlockWrapper := builders.WrapperFindOne
-	lastReturn := builders.MakeReturn(
+	lastReturn := builders.Return(
 		ast.NewIdent("result"),
 		ast.NewIdent(sqlEmptyResultErrorName),
 	)
@@ -498,20 +503,21 @@ func insertOneBuilder(
 	)
 	functionBody = append(
 		functionBody,
-		builders.MakeAssignment(
-			[]string{sqlTextName},
-			builders.MakeCallExpression(
+		builders.Assign(
+			builders.MakeVarNames(sqlTextName),
+			builders.Assignment,
+			builders.Call(
 				builders.SprintfFn,
 				ast.NewIdent(sqlTextName),
-				builders.MakeCallExpression(
+				builders.Call(
 					builders.StringsJoinFn,
 					ast.NewIdent(builders.FieldsVariable.String()),
-					builders.MakeBasicLiteralString(", "),
+					builders.StringConstant(", ").Expr(),
 				),
-				builders.MakeCallExpression(
+				builders.Call(
 					builders.StringsJoinFn,
 					ast.NewIdent(builders.ValuesVariable.String()),
-					builders.MakeBasicLiteralString(", "),
+					builders.StringConstant(", ").Expr(),
 				),
 			),
 		),
@@ -527,17 +533,17 @@ func insertOneBuilder(
 		functionBody,
 		sqlTextName,
 		sqlQuery,
-		builders.MakeVarValue(
+		builders.VariableValue(
 			builders.ArgsVariable.String(),
-			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
-		builders.MakeVarValue(
+		builders.VariableValue(
 			builders.FieldsVariable.String(),
-			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
-		builders.MakeVarValue(
+		builders.VariableValue(
 			builders.ValuesVariable.String(),
-			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 	)
 	return AstDataChain{
@@ -557,7 +563,7 @@ func upsertBuilder(
 		sqlTextName = "sqlText"
 	)
 	scanBlockWrapper := builders.WrapperFindOne
-	lastReturn := builders.MakeReturn(
+	lastReturn := builders.Return(
 		ast.NewIdent("result"),
 		ast.NewIdent(sqlEmptyResultErrorName),
 	)
@@ -574,52 +580,55 @@ func upsertBuilder(
 	)
 	functionBody = append(
 		functionBody,
-		builders.MakeDefinition(
-			[]string{"update"},
-			builders.MakeCallExpression(
+		builders.Assign(
+			builders.MakeVarNames("update"),
+			builders.Definition,
+			builders.Call(
 				builders.MakeFn,
-				builders.MakeArrayType(ast.NewIdent("string")),
-				builders.MakeBasicLiteralInteger(0),
-				builders.MakeCallExpression(builders.LengthFn, ast.NewIdent(builders.FieldsVariable.String())),
+				builders.ArrayType(ast.NewIdent("string")),
+				builders.Zero,
+				builders.Call(builders.LengthFn, ast.NewIdent(builders.FieldsVariable.String())),
 			),
 		),
-		builders.MakeRangeStatement(
-			"i", "", ast.NewIdent(builders.FieldsVariable.String()),
-			builders.MakeBlockStmt(
-				builders.MakeAssignment(
-					[]string{"update"},
-					builders.MakeCallExpression(
+		builders.Range(
+			true, "i", "", ast.NewIdent(builders.FieldsVariable.String()),
+			builders.Block(
+				builders.Assign(
+					builders.MakeVarNames("update"),
+					builders.Assignment,
+					builders.Call(
 						builders.AppendFn,
 						ast.NewIdent("update"),
-						builders.MakeCallExpression(
+						builders.Call(
 							builders.SprintfFn,
-							builders.MakeBasicLiteralString("%s = %s"),
-							builders.MakeIndexExpression(ast.NewIdent(builders.FieldsVariable.String()), ast.NewIdent("i")),
-							builders.MakeIndexExpression(ast.NewIdent(builders.ValuesVariable.String()), ast.NewIdent("i")),
+							builders.StringConstant("%s = %s").Expr(),
+							builders.Index(ast.NewIdent(builders.FieldsVariable.String()), builders.VariableName("i")),
+							builders.Index(ast.NewIdent(builders.ValuesVariable.String()), builders.VariableName("i")),
 						),
 					),
 				),
 			),
 		),
-		builders.MakeAssignment(
-			[]string{sqlTextName},
-			builders.MakeCallExpression(
+		builders.Assign(
+			builders.MakeVarNames(sqlTextName),
+			builders.Assignment,
+			builders.Call(
 				builders.SprintfFn,
 				ast.NewIdent(sqlTextName),
-				builders.MakeCallExpression(
+				builders.Call(
 					builders.StringsJoinFn,
 					ast.NewIdent(builders.FieldsVariable.String()),
-					builders.MakeBasicLiteralString(", "),
+					builders.StringConstant(", ").Expr(),
 				),
-				builders.MakeCallExpression(
+				builders.Call(
 					builders.StringsJoinFn,
 					ast.NewIdent(builders.ValuesVariable.String()),
-					builders.MakeBasicLiteralString(", "),
+					builders.StringConstant(", ").Expr(),
 				),
-				builders.MakeCallExpression(
+				builders.Call(
 					builders.StringsJoinFn,
 					ast.NewIdent("update"),
-					builders.MakeBasicLiteralString(", "),
+					builders.StringConstant(", ").Expr(),
 				),
 			),
 		),
@@ -635,17 +644,17 @@ func upsertBuilder(
 		functionBody,
 		sqlTextName,
 		sqlQuery,
-		builders.MakeVarValue(
+		builders.VariableValue(
 			builders.ArgsVariable.String(),
-			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(builders.MakeEmptyInterface()), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
-		builders.MakeVarValue(
+		builders.VariableValue(
 			builders.FieldsVariable.String(),
-			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
-		builders.MakeVarValue(
+		builders.VariableValue(
 			builders.ValuesVariable.String(),
-			builders.MakeCallExpression(builders.MakeFn, builders.MakeArrayType(ast.NewIdent("string")), builders.MakeBasicLiteralInteger(0), builders.MakeBasicLiteralInteger(len(mutableFields))),
+			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 	)
 	return AstDataChain{

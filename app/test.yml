@@ -27,6 +27,7 @@ schemas:
             type: findAll
             find_by:
               - column: someOther
+                operator: in
               - column: deleted
                 operator: isNull
                 constant: "null"

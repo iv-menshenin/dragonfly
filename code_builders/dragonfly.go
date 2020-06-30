@@ -7,6 +7,24 @@ import (
 	"strings"
 )
 
+var (
+	registeredGenerators = map[string]CallFunctionDescriber{
+		"now": TimeNowFn,
+	}
+)
+
+func AddNewGenerator(name string, descr CallFunctionDescriber) {
+	registeredGenerators[name] = descr
+}
+
+func RegisterSqlFieldEncryptFunction(encryptFn func(valueForEncrypt ast.Expr) *ast.CallExpr) {
+	if makeEncryptPasswordCallCustom == nil {
+		makeEncryptPasswordCallCustom = encryptFn
+	} else {
+		panic("custom function already registered")
+	}
+}
+
 type (
 	variableEngine interface {
 		makeExpr() ast.Expr
@@ -148,7 +166,7 @@ func makeEncryptPasswordCall(valueForEncrypt ast.Expr) *ast.CallExpr {
 	if makeEncryptPasswordCallCustom != nil {
 		return makeEncryptPasswordCallCustom(valueForEncrypt)
 	}
-	return MakeCallExpression(
+	return Call(
 		CallFunctionDescriber{
 			FunctionName:                ast.NewIdent("encryptPassword"),
 			MinimumNumberOfArguments:    1,
@@ -193,7 +211,6 @@ var (
 
 const (
 	TagTypeSQL   = "sql"
-	TagMaybeVal  = "maybe"
 	TagTypeJSON  = "json"
 	TagTypeUnion = "union" // TODO internal, remove from export
 )
@@ -278,7 +295,7 @@ func ExtractDestinationFieldRefsFromStruct(
 	sourceTableColumnNames = make([]string, 0, len(rowStructureFields))
 	for _, field := range rowStructureFields {
 		for _, fName := range field.Field.Names {
-			destinationStructureFields = append(destinationStructureFields, MakeRef(MakeSelectorExpression(rowVariableName, fName.Name)))
+			destinationStructureFields = append(destinationStructureFields, Ref(SimpleSelector(rowVariableName, fName.Name)))
 			sourceTableColumnNames = append(sourceTableColumnNames, field.SourceSql.sqlExpr())
 		}
 	}
@@ -304,13 +321,13 @@ func MakeDatabaseApiFunction(
 			Params: &ast.FieldList{
 				List: append(
 					[]*ast.Field{
-						MakeField("ctx", nil, ContextType),
+						Field("ctx", nil, ContextType),
 					},
 					functionArgs...,
 				),
 			},
 			Results: &ast.FieldList{
-				List: append(resultExpr, MakeField("err", nil, ast.NewIdent("error"))),
+				List: append(resultExpr, Field("err", nil, ast.NewIdent("error"))),
 			},
 		},
 		Body: &ast.BlockStmt{
@@ -325,22 +342,22 @@ func BuildExecutionBlockForFunction(
 	options executionBlockOptions,
 ) []ast.Stmt {
 	return []ast.Stmt{
-		MakeAssignmentWithErrChecking(
+		MakeCallWithErrChecking(
 			"rows",
-			MakeCallExpressionEllipsis(
+			CallEllipsis(
 				DbQueryFn,
 				options.variableForSqlText.makeExpr(),
 				options.variableForArguments.makeExpr(),
 			),
 		),
-		MakeDeferCallStatement(
-			CallFunctionDescriber{MakeSelectorExpression("rows", "Close"), 0, false},
+		DeferCall(
+			CallFunctionDescriber{SimpleSelector("rows", "Close"), 0, false},
 		),
 		scanBlock(
-			MakeVarStatement(MakeVarType(options.rowVariableName.String(), ast.NewIdent(options.rowStructTypeName.String()))),
-			MakeAssignmentWithErrChecking(
+			Var(VariableType(options.rowVariableName.String(), ast.NewIdent(options.rowStructTypeName.String()))),
+			MakeCallWithErrChecking(
 				"",
-				MakeCallExpression(
+				Call(
 					RowsScanFn,
 					fieldRefs...,
 				),
@@ -360,13 +377,13 @@ func makeFindProcessorForUnion(
 	}
 	if _, ok := field.Field.Type.(*ast.StarExpr); ok {
 		return []ast.Stmt{
-			MakeSimpleIfStatement(
-				MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, fieldName), Nil),
-				field.CompareOperator.getBuilder().makeUnionQueryOption(MakeStarExpression(MakeSelectorExpression(funcFilterOptionName, fieldName)), union, field.CaseInsensitive, options)...,
+			If(
+				NotEqual(SimpleSelector(funcFilterOptionName, fieldName), Nil),
+				field.CompareOperator.getBuilder().makeUnionQueryOption(Star(SimpleSelector(funcFilterOptionName, fieldName)), union, field.CaseInsensitive, options)...,
 			),
 		}
 	} else {
-		return field.CompareOperator.getBuilder().makeUnionQueryOption(MakeSelectorExpression(funcFilterOptionName, fieldName), union, field.CaseInsensitive, options)
+		return field.CompareOperator.getBuilder().makeUnionQueryOption(SimpleSelector(funcFilterOptionName, fieldName), union, field.CaseInsensitive, options)
 	}
 }
 
@@ -377,8 +394,8 @@ func makeFindProcessorForSingle(
 ) []ast.Stmt {
 	if _, ok := field.Field.Type.(*ast.StarExpr); ok {
 		return []ast.Stmt{
-			MakeSimpleIfStatement(
-				MakeNotEqualExpression(MakeSelectorExpression(funcFilterOptionName, fieldName), Nil),
+			If(
+				NotEqual(SimpleSelector(funcFilterOptionName, fieldName), Nil),
 				field.CompareOperator.getBuilder().makeScalarQueryOption(funcFilterOptionName, fieldName, field.SourceSql.sqlExpr(), field.CaseInsensitive, true, options)...,
 			),
 		}
@@ -488,7 +505,7 @@ func BuildInputValuesProcessor(
 		var (
 			tags      = utils.FieldTagToMap(field.Field.Tag.Value)
 			colName   = field.SourceSql
-			fieldName = MakeSelectorExpression(funcInputOptionName, field.Field.Names[0].Name)
+			fieldName = SimpleSelector(funcInputOptionName, field.Field.Names[0].Name)
 		)
 		/* isOmittedField - value will never be requested from the user */
 		valueExpr, isOmittedField := makeValuePicker(tags[TagTypeSQL][1:], fieldName)
@@ -506,8 +523,8 @@ func BuildInputValuesProcessor(
 					Sel: ast.NewIdent("IsOmitted"),
 				}
 				return []ast.Stmt{
-					MakeSimpleIfStatement(
-						MakeNotExpression(MakeCallExpression(
+					If(
+						Not(Call(
 							CallFunctionDescriber{
 								FunctionName:                fncName,
 								MinimumNumberOfArguments:    0,
@@ -523,18 +540,18 @@ func BuildInputValuesProcessor(
 		if isStarExpression && !isOmittedField {
 			wrapFunc = func(stmts []ast.Stmt) []ast.Stmt {
 				return []ast.Stmt{
-					MakeSimpleIfStatement(MakeNotNullExpression(fieldName), stmts...),
+					If(NotNil(fieldName), stmts...),
 				}
 			}
 		}
 		if !isStarExpression && field.IsCustomType {
-			valueExpr = MakeRef(valueExpr)
+			valueExpr = Ref(valueExpr)
 		}
 		if utils.ArrayFind(tags[TagTypeSQL], tagEncrypt) > 0 {
 			if _, star := field.Field.Type.(*ast.StarExpr); star {
-				valueExpr = MakeStarExpression(valueExpr)
+				valueExpr = Star(valueExpr)
 			} else if field.IsMaybeType {
-				valueExpr = MakeSelectorExpressionEx(valueExpr, "value")
+				valueExpr = Selector(valueExpr, "value")
 			}
 			valueExpr = makeEncryptPasswordCall(valueExpr)
 		}
@@ -561,4 +578,23 @@ func BuildInputValuesProcessor(
 				Type:  ast.NewIdent(funcInputOptionTypeName),
 			},
 		}
+}
+
+func MakeSqlFieldArrayType(expr ast.Expr) ast.Expr {
+	if i, ok := expr.(*ast.Ident); ok {
+		switch i.Name {
+		case "string":
+			return ast.NewIdent("SqlStringArray")
+		case "int", "int4", "int8", "int16", "int32", "int64":
+			return ast.NewIdent("SqlIntegerArray")
+		case "uint", "uint4", "uint8", "uint16", "uint32", "uint64":
+			return ast.NewIdent("SqlUnsignedArray")
+		case "float32", "float64":
+			return ast.NewIdent("SqlFloatArray")
+		default:
+			return ArrayType(expr)
+		}
+	} else {
+		return ArrayType(expr)
+	}
 }

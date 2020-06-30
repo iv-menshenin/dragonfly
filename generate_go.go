@@ -183,7 +183,7 @@ func (c *Column) describeGO() fieldDescriber {
 func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 	var decorator = func(e ast.Expr) ast.Expr { return e }
 	if !required && !c.Value.Schema.Value.IsArray {
-		decorator = builders.MakeStarExpression
+		decorator = builders.Star
 	}
 	fieldDescriber := c.Value.describeGO()
 	_, isCustomType := fieldDescriber.(customTypeDescriber)
@@ -201,7 +201,7 @@ func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 			builders.TagTypeSQL:  c.Value.tags(builders.TagTypeSQL),
 			builders.TagTypeJSON: c.Value.tags(builders.TagTypeJSON),
 		}),
-		Comment: builders.MakeComment([]string{c.Value.Description}),
+		Comment: builders.CommentGroup(c.Value.Description),
 	}, isCustomType
 }
 
@@ -617,7 +617,7 @@ func registerStructType(typeName, comment string, fields []builders.MetaField, w
 					Type: &ast.StructType{
 						Fields: &ast.FieldList{List: extractedFields},
 					},
-					Comment: builders.MakeComment(utils.StringToSlice(comment)),
+					Comment: builders.CommentGroup(comment),
 				},
 			},
 			Constants:       nil,
@@ -652,7 +652,7 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 	var mainStruct = builders.MetaField{
 		Field: &ast.Field{
 			Type:    ast.NewIdent(tableRowStructName),
-			Comment: builders.MakeComment(utils.StringToSlice("implemented main structure")),
+			Comment: builders.CommentGroup("implemented main structure"),
 		},
 		IsCustomType: isCustom,
 	}

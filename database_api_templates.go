@@ -85,16 +85,24 @@ func sortedDataChainImplementations(source map[string]*ast.FuncDecl) []ast.Decl 
 }
 
 func getPackagePath(pack string) string {
+	// TODO
 	packs := map[string]string{
-		"rand":   "math/rand",
-		"sql":    "database/sql",
-		"json":   "encoding/json",
-		"driver": "database/sql/driver",
+		"bytes":   "bytes",
+		"context": "context",
+		"fmt":     "fmt",
+		"regexp":  "regexp",
+		"strconv": "strconv",
+		"strings": "strings",
+		"time":    "time",
+		"rand":    "math/rand",
+		"sql":     "database/sql",
+		"json":    "encoding/json",
+		"driver":  "database/sql/driver",
 	}
 	if path, ok := packs[pack]; ok {
 		return path
 	} else {
-		return pack
+		return ""
 	}
 }
 
@@ -141,6 +149,10 @@ func extractPackagesFromBlock(t ast.BlockStmt, scopes []string) []string {
 				}
 			}
 		case *ast.IfStmt:
+			if s.Init != nil {
+				packages = extractPackagesFromBlock(ast.BlockStmt{List: []ast.Stmt{s.Init}}, scopes)
+				imp = inScopePackageAppend(scopes, imp, packages...)
+			}
 			if s.Body != nil {
 				packages = extractPackagesFromBlock(*s.Body, scopes)
 				imp = inScopePackageAppend(scopes, imp, packages...)
@@ -209,18 +221,24 @@ func extractPackagesFromExpression(t ast.Expr, scopes []string) ([]string, []str
 func (c AstDataChain) extractImports() map[string]string {
 	// TODO except field of struct
 	var (
-		imports = make(map[string]string, 0)
+		imports   = make(map[string]string, 0)
+		addImport = func(pack string) {
+			path := getPackagePath(pack)
+			if path != "" {
+				imports[pack] = path
+			}
+		}
 	)
 	for _, t := range c.Types {
 		packages, _ := extractPackagesFromExpression(t.Type, nil)
 		for _, pack := range packages {
-			imports[pack] = getPackagePath(pack)
+			addImport(pack)
 		}
 	}
 	for _, t := range c.Constants {
 		packages, _ := extractPackagesFromExpression(t.Type, nil)
 		for _, pack := range packages {
-			imports[pack] = getPackagePath(pack)
+			addImport(pack)
 		}
 	}
 	for _, f := range c.Implementations {
@@ -231,24 +249,24 @@ func (c AstDataChain) extractImports() map[string]string {
 		if f.Recv != nil {
 			packages, scopes = extractPackagesFromFieldList(*f.Recv, scopes)
 			for _, pack := range packages {
-				imports[pack] = getPackagePath(pack)
+				addImport(pack)
 			}
 		}
 		if f.Type.Params != nil {
 			packages, scopes = extractPackagesFromFieldList(*f.Type.Params, scopes)
 			for _, pack := range packages {
-				imports[pack] = getPackagePath(pack)
+				addImport(pack)
 			}
 		}
 		if f.Type.Results != nil {
 			packages, scopes = extractPackagesFromFieldList(*f.Type.Results, scopes)
 			for _, pack := range packages {
-				imports[pack] = getPackagePath(pack)
+				addImport(pack)
 			}
 		}
 		if f.Body != nil {
 			for _, pack := range extractPackagesFromBlock(*f.Body, scopes) {
-				imports[pack] = getPackagePath(pack)
+				addImport(pack)
 			}
 		}
 	}
@@ -283,7 +301,7 @@ func (c *AstData) makeAstFile(packageName string) (*ast.File, *token.FileSet) {
 	if len(imports) > 0 {
 		file.Decls = append(
 			[]ast.Decl{
-				builders.MakeImportDecl(&lPos, imports),
+				builders.Import(&lPos, imports),
 			},
 			file.Decls...,
 		)

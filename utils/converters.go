@@ -5,20 +5,6 @@ import (
 	"strings"
 )
 
-func StringToSlice(s string) []string {
-	if s == "" {
-		return nil
-	}
-	return []string{s}
-}
-
-func StringRefToSlice(s *string) []string {
-	if s == nil {
-		return nil
-	}
-	return []string{*s}
-}
-
 func StringToRef(s string) *string {
 	if s == "" {
 		return nil

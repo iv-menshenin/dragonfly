@@ -6,129 +6,54 @@ import (
 	"strings"
 )
 
-type (
-	CallFunctionDescriber struct {
-		FunctionName                ast.Expr
-		MinimumNumberOfArguments    int
-		ExtensibleNumberOfArguments bool
-	}
-)
-
-func makeFunc(n ast.Expr, m int, e bool) CallFunctionDescriber {
-	return CallFunctionDescriber{n, m, e}
-}
-
 var (
-	Nil         = ast.NewIdent("nil")
-	ContextType = MakeSelectorExpression("context", "Context")
+	// 0
+	Zero = IntegerConstant(0).Expr()
+	// _
+	Blank = ast.NewIdent("_")
+	// nil
+	Nil = ast.NewIdent("nil")
+	// interface{}
+	EmptyInterface = &ast.InterfaceType{
+		Methods: &ast.FieldList{},
+	}
 
-	MakeFn   = makeFunc(ast.NewIdent("make"), 1, true)
-	LengthFn = makeFunc(ast.NewIdent("len"), 1, false)
-	AppendFn = makeFunc(ast.NewIdent("append"), 1, true)
+	// uint
+	UInt = ast.NewIdent("uint")
+	// uint8
+	UInt8 = ast.NewIdent("uint8")
+	// uint16
+	UInt16 = ast.NewIdent("uint16")
+	// uint32
+	UInt32 = ast.NewIdent("uint32")
+	// uint64
+	UInt64 = ast.NewIdent("uint64")
 
-	ConvertItoaFn   = makeFunc(MakeSelectorExpression("strconv", "Itoa"), 1, false)
-	ConvertStringFn = makeFunc(ast.NewIdent("string"), 1, false)
+	// int
+	Int = ast.NewIdent("int")
+	// int8
+	Int8 = ast.NewIdent("int8")
+	// int16
+	Int16 = ast.NewIdent("int16")
+	// int32
+	Int32 = ast.NewIdent("int32")
+	// int64
+	Int64 = ast.NewIdent("int64")
 
-	EqualFoldFn   = makeFunc(MakeSelectorExpression("strings", "EqualFold"), 2, false)
-	ToLowerFn     = makeFunc(MakeSelectorExpression("strings", "ToLower"), 1, false)
-	StringsJoinFn = makeFunc(MakeSelectorExpression("strings", "Join"), 2, false)
-	SprintfFn     = makeFunc(MakeSelectorExpression("fmt", "Sprintf"), 1, true)
-	JsonUnmarshal = makeFunc(MakeSelectorExpression("json", "Unmarshal"), 2, false)
-	JsonMarshal   = makeFunc(MakeSelectorExpression("json", "Marshal"), 1, false)
-	TimeNowFn     = makeFunc(MakeSelectorExpression("time", "Now"), 0, false)
+	// float32
+	Float32 = ast.NewIdent("float32")
+	// float64
+	Float64 = ast.NewIdent("float64")
 
-	// WARNING do not forget about Close
-	DbQueryFn  = makeFunc(MakeSelectorExpression("db", "Query"), 1, true)
-	RowsNextFn = makeFunc(MakeSelectorExpression("rows", "Next"), 0, false)
-	RowsErrFn  = makeFunc(MakeSelectorExpression("rows", "Err"), 0, false)
-	RowsScanFn = makeFunc(MakeSelectorExpression("rows", "Scan"), 1, true)
+	// string
+	String = ast.NewIdent("string")
+
+	// context.Context
+	ContextType = SimpleSelector("context", "Context")
 )
 
-func MakeReturn(results ...ast.Expr) *ast.ReturnStmt {
-	return &ast.ReturnStmt{
-		Results: results,
-	}
-}
-
-func MakeEmptyReturn() ast.Stmt {
-	return MakeReturn()
-}
-
-func MakeComment(comment []string) *ast.CommentGroup {
-	if len(comment) == 0 {
-		return nil
-	} else {
-		if len(comment) == 1 && strings.TrimSpace(comment[0]) == "" {
-			return nil
-		}
-	}
-	return &ast.CommentGroup{
-		List: []*ast.Comment{
-			{
-				Text: " /* " + strings.Join(comment, "\n") + " */",
-			},
-		},
-	}
-}
-
-func MakeDeferCallStatement(fn CallFunctionDescriber, args ...ast.Expr) ast.Stmt {
-	if fn.MinimumNumberOfArguments > len(args) {
-		panic("the minimum number of arguments has not been reached")
-	}
-	if !fn.ExtensibleNumberOfArguments && len(args) > fn.MinimumNumberOfArguments {
-		panic("the maximum number of arguments exceeded")
-	}
-	return &ast.DeferStmt{
-		Call: &ast.CallExpr{
-			Fun:  fn.FunctionName,
-			Args: args,
-		},
-	}
-}
-
-func MakeCallExpression(fn CallFunctionDescriber, args ...ast.Expr) *ast.CallExpr {
-	if fn.MinimumNumberOfArguments > len(args) {
-		panic("the minimum number of arguments has not been reached")
-	}
-	if !fn.ExtensibleNumberOfArguments && len(args) > fn.MinimumNumberOfArguments {
-		panic("the maximum number of arguments exceeded")
-	}
-	return &ast.CallExpr{
-		Fun:  fn.FunctionName,
-		Args: args,
-	}
-}
-
-func MakeCallExpressionEllipsis(fn CallFunctionDescriber, args ...ast.Expr) *ast.CallExpr {
-	if fn.MinimumNumberOfArguments > len(args) {
-		panic("the minimum number of arguments has not been reached")
-	}
-	if !fn.ExtensibleNumberOfArguments && len(args) > fn.MinimumNumberOfArguments {
-		panic("the maximum number of arguments exceeded")
-	}
-	return &ast.CallExpr{
-		Fun:      fn.FunctionName,
-		Args:     args,
-		Ellipsis: token.Pos(1),
-	}
-}
-
-func MakeIndexExpression(x, index ast.Expr) ast.Expr {
-	return &ast.IndexExpr{
-		X:      x,
-		Lbrack: 1,
-		Index:  index,
-		Rbrack: 2,
-	}
-}
-
-func MakeBlockStmt(statements ...ast.Stmt) *ast.BlockStmt {
-	return &ast.BlockStmt{
-		List: statements,
-	}
-}
-
-func MakeImportDecl(lPos *token.Pos, imports map[string]string) ast.Decl {
+// import declaration with token.IMPORT
+func Import(lPos *token.Pos, imports map[string]string) ast.Decl {
 	var (
 		impSpec []ast.Spec
 		lParen  = *lPos
@@ -142,26 +67,58 @@ func MakeImportDecl(lPos *token.Pos, imports map[string]string) ast.Decl {
 	}
 }
 
-func MakeField(name string, tag *ast.BasicLit, fieldType ast.Expr, comment ...string) *ast.Field {
-	var names = make([]*ast.Ident, 0, 1)
-	if name != "" {
-		names = []*ast.Ident{ast.NewIdent(name)}
+// ast.CommentGroup. "nil" if arguments is omitted or empty
+func CommentGroup(comment ...string) *ast.CommentGroup {
+	if len(comment) == 0 {
+		return nil
+	} else {
+		if len(comment) == 1 && strings.TrimSpace(comment[0]) == "" {
+			return nil
+		}
 	}
-	return &ast.Field{
-		Names:   names,
-		Type:    fieldType,
-		Tag:     tag,
-		Comment: MakeComment(comment),
+	return &ast.CommentGroup{
+		List: []*ast.Comment{
+			{
+				Slash: 1,
+				Text:  " /* " + strings.Join(comment, "\n") + " */\n",
+			},
+		},
 	}
 }
 
-func MakeFieldList(fields ...*ast.Field) *ast.FieldList {
+// ast.Field constructor.
+// docAndComments contains the first line as Docstring, all other lines turn into CommentGroup
+func Field(name string, tag *ast.BasicLit, fieldType ast.Expr, docAndComments ...string) *ast.Field {
+	var (
+		doc      = ""
+		comments []string
+		names    = make([]*ast.Ident, 0, 1)
+	)
+	if name != "" {
+		names = []*ast.Ident{ast.NewIdent(name)}
+	}
+	if len(docAndComments) > 0 {
+		doc = docAndComments[0]
+		comments = docAndComments[1:]
+	}
+	return &ast.Field{
+		Doc:     CommentGroup(doc),
+		Names:   names,
+		Type:    fieldType,
+		Tag:     tag,
+		Comment: CommentGroup(comments...),
+	}
+}
+
+// creates ast.FieldList
+func FieldList(fields ...*ast.Field) *ast.FieldList {
 	return &ast.FieldList{
 		List: fields,
 	}
 }
 
-func MakeVarType(name string, varType ast.Expr) *ast.ValueSpec {
+// creates ast.ValueSpec with Type field
+func VariableType(name string, varType ast.Expr) *ast.ValueSpec {
 	return &ast.ValueSpec{
 		Names: []*ast.Ident{
 			ast.NewIdent(name),
@@ -170,7 +127,8 @@ func MakeVarType(name string, varType ast.Expr) *ast.ValueSpec {
 	}
 }
 
-func MakeVarValue(name string, varValue ast.Expr) *ast.ValueSpec {
+// creates ast.ValueSpec with Values field
+func VariableValue(name string, varValue ast.Expr) *ast.ValueSpec {
 	return &ast.ValueSpec{
 		Names: []*ast.Ident{
 			ast.NewIdent(name),
@@ -179,83 +137,48 @@ func MakeVarValue(name string, varValue ast.Expr) *ast.ValueSpec {
 	}
 }
 
-func MakeVarStatement(spec ...ast.Spec) ast.Stmt {
-	return &ast.DeclStmt{
-		Decl: &ast.GenDecl{
-			Tok:   token.VAR,
-			Specs: spec,
-		},
+type assignToken int
+
+const (
+	Assignment  assignToken = iota + 1 // =
+	Incremental                        // +=
+	Decremental                        // -=
+	Definition                         // :=
+)
+
+func (t assignToken) token() token.Token {
+	switch t {
+	case Assignment:
+		return token.ASSIGN
+	case Incremental:
+		return token.ADD_ASSIGN
+	case Decremental:
+		return token.SUB_ASSIGN
+	case Definition:
+		return token.DEFINE
+	default:
+		panic("unknown assignment token")
 	}
 }
 
-func MakeAssignment(lhs []string, rhs ...ast.Expr) ast.Stmt {
-	lhsExpr := make([]ast.Expr, 0, len(lhs))
-	for _, e := range lhs {
-		lhsExpr = append(lhsExpr, ast.NewIdent(e))
+type (
+	// represents a list of variable names
+	VarNames []string
+)
+
+func (c VarNames) expression() []ast.Expr {
+	var varNames = make([]ast.Expr, 0, len(c))
+	for _, varName := range c {
+		varNames = append(varNames, ast.NewIdent(varName))
 	}
+	return varNames
+}
+
+// creates ast.AssignStmt which assigns a variable with a value
+func Assign(varNames VarNames, tok assignToken, rhs ...ast.Expr) ast.Stmt {
 	return &ast.AssignStmt{
-		Lhs: lhsExpr,
-		Tok: token.ASSIGN,
+		Lhs: varNames.expression(),
+		Tok: tok.token(),
 		Rhs: rhs,
-	}
-}
-
-func MakeAddAssignment(lhs []string, rhs ...ast.Expr) ast.Stmt {
-	lhsExpr := make([]ast.Expr, 0, len(lhs))
-	for _, e := range lhs {
-		lhsExpr = append(lhsExpr, ast.NewIdent(e))
-	}
-	return &ast.AssignStmt{
-		Lhs: lhsExpr,
-		Tok: token.ADD_ASSIGN,
-		Rhs: rhs,
-	}
-}
-
-func MakeDefinition(lhs []string, rhs ...ast.Expr) ast.Stmt {
-	lhsExpr := make([]ast.Expr, 0, len(lhs))
-	for _, e := range lhs {
-		lhsExpr = append(lhsExpr, ast.NewIdent(e))
-	}
-	return &ast.AssignStmt{
-		Lhs: lhsExpr,
-		Tok: token.DEFINE,
-		Rhs: rhs,
-	}
-}
-
-func MakeSimpleIfStatement(condition ast.Expr, body ...ast.Stmt) ast.Stmt {
-	return &ast.IfStmt{
-		If:   1,
-		Cond: condition,
-		Body: MakeBlockStmt(body...),
-	}
-}
-
-func MakeInitialIfStatement(initiation ast.Stmt, condition ast.Expr, body ...ast.Stmt) ast.Stmt {
-	return &ast.IfStmt{
-		If:   1,
-		Init: initiation,
-		Cond: condition,
-		Body: MakeBlockStmt(body...),
-	}
-}
-
-func MakeRangeStatement(key, value string, x ast.Expr, body *ast.BlockStmt) ast.Stmt {
-	var k, v ast.Expr = nil, nil
-	if key != "" {
-		k = ast.NewIdent(key)
-	}
-	if value != "" {
-		v = ast.NewIdent(value)
-	}
-	return &ast.RangeStmt{
-		For:    1,
-		Key:    k,
-		Value:  v,
-		TokPos: 2,
-		Tok:    token.DEFINE,
-		X:      x,
-		Body:   body,
 	}
 }
