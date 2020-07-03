@@ -13,9 +13,9 @@ func E(first ast.Expr, next ...ast.Expr) []ast.Expr {
 	if first != nil {
 		result = append(result, first)
 	}
-	for _, expr := range next {
+	for i, expr := range next {
 		if expr != nil {
-			result = append(result, expr)
+			result = append(result, next[i])
 		}
 	}
 	return result
