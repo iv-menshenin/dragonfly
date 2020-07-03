@@ -89,6 +89,9 @@ func CommentGroup(comment ...string) *ast.CommentGroup {
 // ast.Field constructor.
 // docAndComments contains the first line as Docstring, all other lines turn into CommentGroup
 func Field(name string, tag *ast.BasicLit, fieldType ast.Expr, docAndComments ...string) *ast.Field {
+	if fieldType == nil {
+		return nil
+	}
 	var (
 		doc      = ""
 		comments []string
@@ -110,11 +113,17 @@ func Field(name string, tag *ast.BasicLit, fieldType ast.Expr, docAndComments ..
 	}
 }
 
-// creates ast.FieldList
+// creates ast.FieldList, any nil values will be excluded from list
 func FieldList(fields ...*ast.Field) *ast.FieldList {
-	return &ast.FieldList{
-		List: fields,
+	var list = ast.FieldList{
+		List: make([]*ast.Field, 0, len(fields)),
 	}
+	for i, field := range fields {
+		if field != nil {
+			list.List = append(list.List, fields[i])
+		}
+	}
+	return &list
 }
 
 // creates ast.ValueSpec with Type field
