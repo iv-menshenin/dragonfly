@@ -390,7 +390,6 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		},
 		builders.E(builders.StringConstant("("+strings.Join(formatLiters, ",")+")").Expr(), formatArgs...)...,
 	)
-	// TODO simplify
 	main := AstDataChain{
 		Types: map[string]*ast.TypeSpec{
 			ast.NewIdent(c.typeName).Name: {
@@ -404,57 +403,17 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 		Implementations: funcDeclsToMap(
 			[]*ast.FuncDecl{
 				{
-					Recv: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Names: []*ast.Ident{
-									{
-										Name: "c",
-										Obj: &ast.Object{
-											Kind: ast.Var,
-											Name: "c",
-										},
-									},
-								},
-								Type: &ast.StarExpr{
-									X: &ast.Ident{
-										Name: c.typeName,
-									},
-								},
-							},
-						},
-					},
-					Name: &ast.Ident{
-						Name: "Scan",
-					},
+					Recv: builders.FieldList(
+						builders.Field("c", nil, builders.Star(ast.NewIdent(c.typeName))),
+					),
+					Name: ast.NewIdent("Scan"),
 					Type: &ast.FuncType{
-						Params: &ast.FieldList{
-							List: []*ast.Field{
-								{
-									Names: []*ast.Ident{
-										{
-											Name: "value",
-											Obj: &ast.Object{
-												Kind: ast.Var,
-												Name: "value",
-											},
-										},
-									},
-									Type: &ast.InterfaceType{
-										Methods: &ast.FieldList{},
-									},
-								},
-							},
-						},
-						Results: &ast.FieldList{
-							List: []*ast.Field{
-								{
-									Type: &ast.Ident{
-										Name: "error",
-									},
-								},
-							},
-						},
+						Params: builders.FieldList(
+							builders.Field("value", nil, builders.EmptyInterface),
+						),
+						Results: builders.FieldList(
+							builders.Field("", nil, ast.NewIdent("error")),
+						),
 					},
 					Body: &ast.BlockStmt{
 						List: []ast.Stmt{
