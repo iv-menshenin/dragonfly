@@ -580,17 +580,24 @@ func BuildInputValuesProcessor(
 		}
 }
 
+var (
+	stringArray   = ast.NewIdent("SqlStringArray")
+	integerArray  = ast.NewIdent("SqlIntegerArray")
+	unsignedArray = ast.NewIdent("SqlUnsignedArray")
+	floatArray    = ast.NewIdent("SqlFloatArray")
+)
+
 func MakeSqlFieldArrayType(expr ast.Expr) ast.Expr {
 	if i, ok := expr.(*ast.Ident); ok {
 		switch i.Name {
 		case "string":
-			return ast.NewIdent("SqlStringArray")
+			return stringArray
 		case "int", "int4", "int8", "int16", "int32", "int64":
-			return ast.NewIdent("SqlIntegerArray")
+			return integerArray
 		case "uint", "uint4", "uint8", "uint16", "uint32", "uint64":
-			return ast.NewIdent("SqlUnsignedArray")
+			return unsignedArray
 		case "float32", "float64":
-			return ast.NewIdent("SqlFloatArray")
+			return floatArray
 		default:
 			return ArrayType(expr)
 		}

@@ -190,7 +190,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 						Results: &ast.FieldList{
 							List: []*ast.Field{
 								{
-									Type: builders.ArrayType(ast.NewIdent("string")),
+									Type: builders.ArrayType(builders.String),
 								},
 							},
 						},
@@ -198,7 +198,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 					Body: builders.Block(
 						builders.Return(
 							&ast.CompositeLit{
-								Type: builders.ArrayType(ast.NewIdent("string")),
+								Type: builders.ArrayType(builders.String),
 								Elts: enumValues,
 							},
 						),
@@ -277,7 +277,7 @@ func makeJsonScanSimpleFunction(typeName string) map[string]*ast.FuncDecl {
 					builders.Return(
 						builders.Call(
 							builders.JsonUnmarshal,
-							builders.VariableTypeAssert("value", builders.ArrayType(ast.NewIdent("uint8"))),
+							builders.VariableTypeAssert("value", builders.ArrayType(builders.UInt8)),
 							ast.NewIdent("c"),
 						),
 					),
@@ -359,9 +359,6 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 			tags = append(tags, "omitempty")
 		}
 		var basicType = intDesc.fieldTypeExpr()
-		if f.Value.Schema.Value.IsArray {
-			basicType = builders.ArrayType(basicType)
-		}
 		objFields = append(objFields, builders.Field(
 			makeExportedName(f.Value.Name),
 			&ast.BasicLit{
@@ -455,9 +452,6 @@ func (c jsonTypeDescriber) getFile() []AstDataChain {
 			tags = append(tags, "omitempty")
 		}
 		var basicType = intDesc.fieldTypeExpr()
-		if f.Value.Schema.Value.IsArray {
-			basicType = builders.ArrayType(basicType)
-		}
 		objFields = append(objFields, builders.Field(
 			makeExportedName(f.Value.Name),
 			&ast.BasicLit{
