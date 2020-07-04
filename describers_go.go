@@ -30,7 +30,7 @@ type (
 		typeLit string // custom user type name
 	}
 	sliceTypeDescriber struct {
-		simpleTypeDescriber
+		descr fieldDescriber
 	}
 	enumTypeDescriber struct {
 		simpleTypeDescriber
@@ -107,7 +107,11 @@ func makeSliceDescriber(t, p, x string) makeDescriber {
 }
 
 func (c sliceTypeDescriber) fieldTypeExpr() ast.Expr {
-	return builders.MakeSqlFieldArrayType(c.simpleTypeDescriber.fieldTypeExpr())
+	return builders.MakeSqlFieldArrayType(c.descr.fieldTypeExpr())
+}
+
+func (c sliceTypeDescriber) getFile() []AstDataChain {
+	return c.descr.getFile()
 }
 
 /*
@@ -558,11 +562,18 @@ var (
 
 func goTypeParametersBySqlType(typeName string, c *DomainSchema) fieldDescriber {
 	if makeFn, ok := knownTypes[strings.ToLower(c.Type)]; ok {
+		// the makeFn function automatically checks when a type has an array flag
 		return makeFn(typeName, c)
 	}
 	if t := strings.Split(c.Type, "."); len(t) == 2 {
-		// custom user type
-		return customTypeDescriber{typeLit: makeExportedName(c.Type)}
+		if c.IsArray {
+			return sliceTypeDescriber{
+				descr: customTypeDescriber{typeLit: makeExportedName(c.Type)},
+			}
+		} else {
+			// custom user type
+			return customTypeDescriber{typeLit: makeExportedName(c.Type)}
+		}
 	}
 	panic(fmt.Sprintf("unknown field type '%s'", c.Type))
 }
