@@ -144,7 +144,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 			Type:   ast.NewIdent(c.typeName),
 			Values: builders.E(entityValue),
 		}
-		enumValues = append(enumValues, builders.VariableTypeAssert(entityName.Name, builders.String))
+		enumValues = append(enumValues, builders.VariableTypeConvert(entityName.Name, builders.String))
 	}
 	returnTypeValueErrorExpr := builders.Return(
 		builders.Call(
@@ -158,7 +158,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 				builders.StringConstant("%T").Expr(),
 				ast.NewIdent(methodReceiverLit),
 			),
-			builders.VariableTypeAssert(methodReceiverLit, builders.String),
+			builders.VariableTypeConvert(methodReceiverLit, builders.String),
 		),
 	)
 	rangeBody := builders.Block(
@@ -166,7 +166,7 @@ func (c enumTypeDescriber) getFile() []AstDataChain {
 			Cond: builders.Call(
 				builders.EqualFoldFn,
 				ast.NewIdent("s"),
-				builders.VariableTypeAssert(methodReceiverLit, builders.String),
+				builders.VariableTypeConvert(methodReceiverLit, builders.String),
 			),
 			Body: builders.Block(builders.Return(builders.Nil)),
 		},
@@ -277,10 +277,7 @@ func makeJsonScanSimpleFunction(typeName string) map[string]*ast.FuncDecl {
 					builders.Return(
 						builders.Call(
 							builders.JsonUnmarshal,
-							&ast.TypeAssertExpr{
-								X:    ast.NewIdent("value"),
-								Type: builders.ArrayType(ast.NewIdent("uint8")),
-							},
+							builders.VariableTypeAssert("value", builders.ArrayType(ast.NewIdent("uint8"))),
 							ast.NewIdent("c"),
 						),
 					),
@@ -386,7 +383,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 	formatArgs = builders.E(
 		&ast.CallExpr{
 			Fun:  builders.SimpleSelector("bytes", "NewReader"),
-			Args: builders.E(builders.VariableTypeAssert("value", builders.ArrayType(builders.UInt8))),
+			Args: builders.E(builders.VariableTypeConvert("value", builders.ArrayType(builders.UInt8))),
 		},
 		builders.E(builders.StringConstant("("+strings.Join(formatLiters, ",")+")").Expr(), formatArgs...)...,
 	)
@@ -415,13 +412,11 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 							builders.Field("", nil, ast.NewIdent("error")),
 						),
 					},
-					Body: &ast.BlockStmt{
-						List: []ast.Stmt{
-							builders.If(builders.Equal(ast.NewIdent("value"), builders.Nil), builders.Return(builders.Nil)),
-							builders.Assign(builders.MakeVarNames("_", "err"), builders.Definition, builders.Call(builders.FscanfFn, formatArgs...)),
-							builders.Return(ast.NewIdent("err")),
-						},
-					},
+					Body: builders.Block(
+						builders.If(builders.Equal(ast.NewIdent("value"), builders.Nil), builders.Return(builders.Nil)),
+						builders.Assign(builders.MakeVarNames("_", "err"), builders.Definition, builders.Call(builders.FscanfFn, formatArgs...)),
+						builders.Return(ast.NewIdent("err")),
+					),
 				},
 			},
 		),
