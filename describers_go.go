@@ -380,7 +380,7 @@ func (c recordTypeDescriber) getFile() []AstDataChain {
 	formatArgs = builders.E(
 		&ast.CallExpr{
 			Fun:  builders.SimpleSelector("bytes", "NewReader"),
-			Args: builders.E(builders.VariableTypeConvert("value", builders.ArrayType(builders.UInt8))),
+			Args: builders.E(builders.VariableTypeAssert("value", builders.ArrayType(builders.UInt8))),
 		},
 		builders.E(builders.StringConstant("("+strings.Join(formatLiters, ",")+")").Expr(), formatArgs...)...,
 	)
