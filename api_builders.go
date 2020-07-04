@@ -592,19 +592,17 @@ func upsertBuilder(
 		),
 		builders.Range(
 			true, "i", "", ast.NewIdent(builders.FieldsVariable.String()),
-			builders.Block(
-				builders.Assign(
-					builders.MakeVarNames("update"),
-					builders.Assignment,
+			builders.Assign(
+				builders.MakeVarNames("update"),
+				builders.Assignment,
+				builders.Call(
+					builders.AppendFn,
+					ast.NewIdent("update"),
 					builders.Call(
-						builders.AppendFn,
-						ast.NewIdent("update"),
-						builders.Call(
-							builders.SprintfFn,
-							builders.StringConstant("%s = %s").Expr(),
-							builders.Index(ast.NewIdent(builders.FieldsVariable.String()), builders.VariableName("i")),
-							builders.Index(ast.NewIdent(builders.ValuesVariable.String()), builders.VariableName("i")),
-						),
+						builders.SprintfFn,
+						builders.StringConstant("%s = %s").Expr(),
+						builders.Index(ast.NewIdent(builders.FieldsVariable.String()), builders.VariableName("i")),
+						builders.Index(ast.NewIdent(builders.ValuesVariable.String()), builders.VariableName("i")),
 					),
 				),
 			),
