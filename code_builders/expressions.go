@@ -183,10 +183,22 @@ func IsNil(expr ast.Expr) ast.Expr {
 	return Binary(expr, Nil, token.EQL)
 }
 
-// <t>(<varName>) e.g. string(varName)
+// <varName>.(<t>) e.g. varName.(string)
 func VariableTypeAssert(varName string, t ast.Expr) ast.Expr {
 	return &ast.TypeAssertExpr{
 		X:    ast.NewIdent(varName),
 		Type: t,
 	}
+}
+
+// <t>(<varName>) e.g. string(varName)
+func VariableTypeConvert(varName string, t ast.Expr) ast.Expr {
+	return Call(
+		CallFunctionDescriber{
+			FunctionName:                t,
+			MinimumNumberOfArguments:    1,
+			ExtensibleNumberOfArguments: false,
+		},
+		ast.NewIdent(varName),
+	)
 }
