@@ -2,8 +2,8 @@ package dragonfly
 
 import (
 	"fmt"
-	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
 	"github.com/iv-menshenin/dragonfly/utils"
+	sqt "github.com/iv-menshenin/sql-ast"
 	_ "github.com/lib/pq"
 	"go/token"
 	"math/rand"
@@ -771,6 +771,15 @@ func (c TableComparator) makeSolution(
 ) {
 	install = make([]sqt.SqlStmt, 0, 0)
 	afterInstall = make([]sqt.SqlStmt, 0, 0)
+	columnConstraints := make(TableConstraints, 0, 4)
+	for _, column := range c.TableStruct.NewStructure.Columns {
+		for i := range column.Value.Constraints {
+			columnConstraints = append(columnConstraints, ConstraintSchema{
+				Columns:    []string{column.Value.Name},
+				Constraint: column.Value.Constraints[i],
+			})
+		}
+	}
 	if c.Schema.Actual == "" && c.Schema.New != "" {
 		install = append(install, makeTableCreate(c.Schema.New, c.Name.New, *c.TableStruct.NewStructure))
 		return
@@ -794,6 +803,35 @@ func (c TableComparator) makeSolution(
 		}
 	}
 	// TODO add constraints (afterinstall)
+	allConstraints := append(c.TableStruct.NewStructure.Constraints, columnConstraints...)
+	for _, constraint := range allConstraints {
+		if exists, ok := c.TableStruct.OldStructure.Constraints.tryToFind(constraint.Constraint.Name); ok {
+			// TODO if used?
+			*exists.Constraint.used = true
+			*constraint.Constraint.used = true
+			// TODO merge
+		} else {
+			afterInstall = append(afterInstall, &sqt.AlterStmt{
+				Target: sqt.TargetTable,
+				Name: &sqt.Selector{
+					Name:      c.Name.New,
+					Container: c.Schema.New,
+				},
+				Alter: makeAddConstraintExpr(constraint.Columns, constraint.Constraint),
+			})
+		}
+	}
+	for _, constraint := range c.TableStruct.OldStructure.Constraints {
+		if !*constraint.Constraint.used {
+			install = append(install, makeConstraintDropStmt(
+				c.Schema.New,
+				c.Name.New,
+				constraint.Constraint.Name,
+				true,
+				true,
+			))
+		}
+	}
 	return
 }
 
@@ -828,15 +866,11 @@ func (c ColumnComparator) makeSolution(current *Root) (install []sqt.SqlStmt, af
 		return
 	}
 	if c.Name.New == "" {
-		afterInstall = append(afterInstall, makeColumnDrop(c.SchemaName, c.TableName, c.Name.Actual, true, true))
+		afterInstall = append(afterInstall, makeColumnDropStmt(c.SchemaName, c.TableName, c.Name.Actual, true, true))
 		return
 	}
 	if !strings.EqualFold(c.Name.Actual, c.Name.New) {
 		install = append(install, makeColumnRename(c.SchemaName, c.TableName, c.Name))
-	}
-	// TODO debug
-	if c.TableName == "places" && c.Name.New == "country" {
-		c.Name.New = "country"
 	}
 	if typeSchema, typeName, ok := c.NewStruct.Value.Schema.makeCustomType(); ok {
 		if _, oldTypeName, ok := c.ActualStruct.Value.Schema.makeCustomType(); ok {

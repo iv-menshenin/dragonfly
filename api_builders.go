@@ -2,7 +2,7 @@ package dragonfly
 
 import (
 	"fmt"
-	"github.com/iv-menshenin/dragonfly/code_builders"
+	"github.com/iv-menshenin/go-ast"
 	"go/ast"
 	"go/token"
 	"reflect"

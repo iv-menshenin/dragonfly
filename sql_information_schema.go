@@ -146,6 +146,7 @@ type (
 		UdtSchema    string
 		UdtName      string
 	}
+	rawColumnStructs []rawColumnStruct
 	actualConstraint struct {
 		TableSchema      string
 		TableName        string
@@ -165,6 +166,18 @@ type (
 		Schemas map[string]actualSchema
 	}
 )
+
+func (c rawColumnStructs) getColumnsCount(schema, table string) int {
+	var cnt = 0
+	for _, columnDef := range c {
+		if strings.EqualFold(columnDef.TableSchema, schema) && strings.EqualFold(columnDef.TableName, table) {
+			if cnt < columnDef.Ord {
+				cnt = columnDef.Ord
+			}
+		}
+	}
+	return cnt
+}
 
 func (c rawEnums) extractSchema(schema string) map[string]rawEnums {
 	result := make(map[string]rawEnums, 0)
@@ -306,6 +319,7 @@ func (c *rawColumnStruct) toColumnRef() ColumnRef {
 			Description: "",
 		},
 		Ref:  nil,
+		ord:  c.Ord,
 		used: utils.RefBool(false),
 	}
 }
@@ -546,6 +560,7 @@ func (c rawActualConstraints) toTableConstraints() TableConstraints {
 				Name:       constraint.ConstraintName,
 				Type:       cType,
 				Parameters: ConstraintParameters{Parameter: parameter},
+				used:       utils.RefBool(false),
 			},
 		})
 	}
@@ -793,6 +808,16 @@ func getAllConstraints(db *sql.DB, catalog string) (constraints rawActualConstra
 	return
 }
 
+func filterByUsedNil(columns ColumnsContainer) ColumnsContainer {
+	var cc = make(ColumnsContainer, 0, len(columns))
+	for i, column := range columns {
+		if column.used != nil {
+			cc = append(cc, columns[i])
+		}
+	}
+	return cc
+}
+
 func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error) {
 	var (
 		allSchemas     rawActualSchemaNames
@@ -839,10 +864,6 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 		for _, columnStruct := range allTables {
 			if strings.EqualFold(columnStruct.TableSchema, actualSchemaName) {
 				tableName := columnStruct.TableName
-				// TODO debug
-				if tableName == "protected_endpoints" && columnStruct.Column == "id" {
-					tableName = "protected_endpoints"
-				}
 				if columnStruct.Default != nil {
 					if serial, ok := extractSerialType(columnStruct); ok {
 						columnStruct.UdtName = serial
@@ -850,15 +871,16 @@ func getAllDatabaseInformation(db *sql.DB, dbName string) (info Root, err error)
 					}
 				}
 				if _, ok := schemaColumns[strings.ToLower(tableName)]; !ok {
-					schemaColumns[strings.ToLower(tableName)] = make(ColumnsContainer, 0, 20)
+					columnsCount := rawColumnStructs(allTables).getColumnsCount(columnStruct.TableSchema, tableName)
+					schemaColumns[strings.ToLower(tableName)] = make(ColumnsContainer, columnsCount, columnsCount)
 				}
-				schemaColumns[strings.ToLower(tableName)] = append(schemaColumns[strings.ToLower(tableName)], columnStruct.toColumnRef())
+				schemaColumns[strings.ToLower(tableName)][columnStruct.Ord-1] = columnStruct.toColumnRef()
 			}
 		}
 		schemaTables := make(TablesContainer)
 		for tableName, tableStruct := range schemaColumns {
 			table := Table{
-				Columns:     tableStruct,
+				Columns:     filterByUsedNil(tableStruct),
 				Constraints: allConstraints.filterConstraints(actualSchemaName, tableName).toTableConstraints(),
 				used:        utils.RefBool(false),
 			}

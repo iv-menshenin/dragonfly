@@ -3,9 +3,9 @@ package dragonfly
 import (
 	"database/sql"
 	"fmt"
-	builders "github.com/iv-menshenin/dragonfly/code_builders"
-	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
 	"github.com/iv-menshenin/dragonfly/utils"
+	builders "github.com/iv-menshenin/go-ast"
+	sqt "github.com/iv-menshenin/sql-ast"
 	"go/ast"
 	"go/printer"
 	"io"

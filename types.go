@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/iv-menshenin/dragonfly/code_builders"
 	"github.com/iv-menshenin/dragonfly/utils"
+	"github.com/iv-menshenin/go-ast"
 	"os"
 	"reflect"
 	"sort"
@@ -83,6 +83,7 @@ type (
 	ColumnRef struct {
 		Value Column  `yaml:"value,inline" json:"value,inline"`
 		Ref   *string `yaml:"$ref,omitempty" json:"$ref,omitempty"`
+		ord   int
 		used  *bool
 	}
 	// constraint parameters
@@ -115,17 +116,17 @@ type (
 		Columns    []string   `yaml:"columns" json:"columns"`
 		Constraint Constraint `yaml:"constraint" json:"constraint"`
 	}
-	IndexType   int
-	IndexColumn struct {
-		Name     string `yaml:"name" json:"name"`
-		Type     string `yaml:"type,omitempty" json:"type,omitempty"`
-		Function string `yaml:"function,omitempty" function:"type,omitempty"`
-	}
+	IndexType int
+	//IndexColumn struct {
+	//	Name     string `yaml:"name" json:"name"`
+	//	Type     string `yaml:"type,omitempty" json:"type,omitempty"`
+	//	Function string `yaml:"function,omitempty" function:"type,omitempty"`
+	//}
 	Index struct {
-		Name      string        `yaml:"name" json:"name"`
-		IndexType IndexType     `yaml:"type" json:"type"`
-		Columns   []IndexColumn `yaml:"columns" json:"columns"`
-		Where     string        `yaml:"where" json:"where"`
+		Name      string    `yaml:"name" json:"name"`
+		IndexType IndexType `yaml:"type" json:"type"`
+		Columns   []string  `yaml:"columns" json:"columns"`
+		Where     string    `yaml:"where,omitempty" json:"where,omitempty"`
 	}
 	ApiFindOption struct {
 		Column   string                          `yaml:"column,omitempty" json:"column,omitempty"`
@@ -164,6 +165,7 @@ type (
 	TableClass struct {
 		Columns     ColumnsContainer `yaml:"columns" json:"columns"`
 		Constraints TableConstraints `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+		Indices     IndicesContainer `yaml:"indices,omitempty" json:"indices,omitempty"`
 		Api         ApiContainer     `yaml:"api,omitempty" json:"api,omitempty"`
 	}
 	DomainsContainer map[string]DomainSchema
@@ -198,7 +200,7 @@ const (
 
 var (
 	indexTypes = map[string]IndexType{
-		"index":  IndexTypeIndex,
+		"index":  IndexTypeIndex, // TODO ascending/descending ??
 		"unique": IndexTypeUnique,
 	}
 )
@@ -705,6 +707,7 @@ func (c *Table) normalize(schema *SchemaRef, tableName string, db *Root) {
 	c.used = utils.RefBool(false)
 	inheritColumns := make(ColumnsContainer, 0, 10)
 	inheritConstraints := make(TableConstraints, 0, 10)
+	inheritIndices := make(IndicesContainer, 0, 10)
 	inheritApis := make(ApiContainer, 0, 10)
 	for _, class := range c.Inherits {
 		classSchema, ok := db.getComponentClass(schema, tableName, class)
@@ -713,6 +716,7 @@ func (c *Table) normalize(schema *SchemaRef, tableName string, db *Root) {
 		}
 		inheritColumns = append(inheritColumns, classSchema.Columns...)
 		inheritConstraints = append(inheritConstraints, classSchema.Constraints...)
+		inheritIndices = append(inheritIndices, classSchema.Indices...)
 		inheritApis = append(inheritApis, classSchema.Api...)
 	}
 	/* merging */
@@ -720,6 +724,8 @@ func (c *Table) normalize(schema *SchemaRef, tableName string, db *Root) {
 	reflect.Copy(reflect.ValueOf(c.Columns[:len(inheritColumns)]), reflect.ValueOf(inheritColumns))
 	c.Constraints = append(make(TableConstraints, len(inheritConstraints), len(inheritConstraints)+len(c.Constraints)), c.Constraints...)
 	reflect.Copy(reflect.ValueOf(c.Constraints[:len(inheritConstraints)]), reflect.ValueOf(inheritConstraints))
+	c.Indices = append(make(IndicesContainer, len(inheritIndices), len(inheritIndices)+len(c.Indices)), c.Indices...)
+	reflect.Copy(reflect.ValueOf(c.Indices[:len(inheritIndices)]), reflect.ValueOf(inheritIndices))
 	c.Api = append(make(ApiContainer, len(inheritApis), len(inheritApis)+len(c.Api)), c.Api...)
 	reflect.Copy(reflect.ValueOf(c.Api[:len(inheritApis)]), reflect.ValueOf(inheritApis))
 	/* normalization */

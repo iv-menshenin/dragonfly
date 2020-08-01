@@ -497,6 +497,7 @@ func TestTableClass_normalize(t *testing.T) {
 											ToTable:  "schema1.table1",
 											ToColumn: "fcolumn",
 										}},
+										used: utils.RefBool(false),
 									},
 								},
 							},

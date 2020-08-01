@@ -2,7 +2,7 @@ package dragonfly
 
 import (
 	"fmt"
-	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
+	sqt "github.com/iv-menshenin/sql-ast"
 	"go/token"
 	"strings"
 )
@@ -25,6 +25,17 @@ func makeAddColumnExpr(column ColumnRef) sqt.SqlExpr {
 			Precision: column.Value.Schema.Value.Precision,
 			Collation: column.Value.Schema.Value.Collate,
 		}, // TODO column constraints
+	}
+}
+
+func makeAddConstraintExpr(columns []string, constraint Constraint) sqt.SqlExpr {
+	return &sqt.AddExpr{
+		Target: sqt.TargetConstraint,
+		Name:   &sqt.Literal{Text: constraint.Name},
+		Definition: &sqt.ConstraintWithColumns{
+			Columns:    columns,
+			Constraint: &sqt.UnnamedConstraintExpr{Constraint: makeConstraintInterface(false, constraint)},
+		},
 	}
 }
 
@@ -322,7 +333,7 @@ func makeColumnAdd(schema, table string, column ColumnRef) sqt.SqlStmt {
 	}
 }
 
-func makeColumnDrop(schema, table, column string, ifExists, cascade bool) sqt.SqlStmt {
+func makeColumnDropStmt(schema, table, column string, ifExists, cascade bool) sqt.SqlStmt {
 	return &sqt.AlterStmt{
 		Target: sqt.TargetTable,
 		Name: &sqt.Selector{
@@ -332,6 +343,22 @@ func makeColumnDrop(schema, table, column string, ifExists, cascade bool) sqt.Sq
 		Alter: &sqt.DropExpr{
 			Target:   sqt.TargetColumn,
 			Name:     &sqt.Literal{Text: column},
+			IfExists: ifExists,
+			Cascade:  cascade,
+		},
+	}
+}
+
+func makeConstraintDropStmt(schema, table, constraint string, ifExists, cascade bool) sqt.SqlStmt {
+	return &sqt.AlterStmt{
+		Target: sqt.TargetTable,
+		Name: &sqt.Selector{
+			Name:      table,
+			Container: schema,
+		},
+		Alter: &sqt.DropExpr{
+			Target:   sqt.TargetConstraint,
+			Name:     &sqt.Literal{Text: constraint},
 			IfExists: ifExists,
 			Cascade:  cascade,
 		},

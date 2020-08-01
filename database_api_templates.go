@@ -1,8 +1,8 @@
 package dragonfly
 
 import (
-	"github.com/iv-menshenin/dragonfly/code_builders"
 	"github.com/iv-menshenin/dragonfly/utils"
+	"github.com/iv-menshenin/go-ast"
 	"go/ast"
 	"go/token"
 	"math"

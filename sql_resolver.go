@@ -1,7 +1,7 @@
 package dragonfly
 
 import (
-	sqt "github.com/iv-menshenin/dragonfly/sql_ast"
+	sqt "github.com/iv-menshenin/sql-ast"
 	"sort"
 )
 
