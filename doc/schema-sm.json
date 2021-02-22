@@ -8,7 +8,8 @@
       "type": "object",
       "properties": {
         "type": {
-          "type": "string"
+          "type": "string",
+          "enum": [ "uuid", "smallserial", "serial", "bigserial", "bigint", "int2", "int4", "int8", "int16", "varchar", "character", "char", "boolean", "bool", "float4", "float8", "double precision", "smallint", "real", "numeric", "decimal", "time", "timez", "timestamp", "timestampz", "varbit" ]
         },
         "length": {
           "type": "integer"
@@ -70,11 +71,11 @@
                 },
                 "on_update": {
                   "type": "string",
-                  "enum": [ "cascade", "nothing" ]
+                  "enum": [ "cascade", "restrict", "set null", "nothing", "default" ]
                 },
                 "on_delete": {
                   "type": "string",
-                  "enum": [ "cascade", "nothing" ]
+                  "enum": [ "cascade", "restrict", "set null", "nothing", "default" ]
                 }
               },
               "required": [ "table", "column" ]
