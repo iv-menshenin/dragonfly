@@ -519,7 +519,7 @@ func stringToOnDeleteUpdateRule(s *string) sqt.OnDeleteUpdateRule {
 		return sqt.RuleRestrict
 	case "set null":
 		return sqt.RuleSetNull
-	case "default":
+	case "default", "nothing":
 		return sqt.RuleSetDefault
 	default:
 		panic(fmt.Sprintf("cannot resolve update (delete) rule `%s`", *s))
