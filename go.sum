@@ -3,7 +3,11 @@ github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeME
 github.com/iv-menshenin/dragonfly v0.0.0-20200111170644-aee5b4c42458 h1:LLVAkbfQzaNSnOSfP6FoYIO48oECrlT+v2YWBqpspyc=
 github.com/iv-menshenin/dragonfly v0.0.0-20200111170644-aee5b4c42458/go.mod h1:DTysvImS8zCK7wLIsXjHFBKqJ1g8TLzne7O7sMqpeh0=
 github.com/iv-menshenin/go-ast v0.0.0-20200801075358-69887f53bcc4 h1:O/clUThTPdxcZfXnqMBUuPqtVJfgRgcIUi4qlO57x90=
+github.com/iv-menshenin/go-ast v0.0.0-20200801084131-3b1a08fe6125 h1:6rFdoiy0dUpXVFrm54/Hnb1g3XCynkezGiuvUHrI2Aw=
+github.com/iv-menshenin/go-ast v0.0.0-20200801084131-3b1a08fe6125/go.mod h1:6e0O0ha4JMJPQCii+z0ubt+UoXcQuCwCt6rlYh5JGbw=
 github.com/iv-menshenin/sql-ast v0.0.0-20200801075823-ef2d37aeb8eb h1:jtQoVsl3eE2S2XNtifziNlnzD5L6c9XPL5LjCM2gscE=
+github.com/iv-menshenin/sql-ast v0.0.0-20200801084131-b053208e0a3d h1:6hhtMEsvoGtscJhtbNj1eqj2bCL4pZTfg4vvmET3Qo4=
+github.com/iv-menshenin/sql-ast v0.0.0-20200801084131-b053208e0a3d/go.mod h1:fPUR6ivb0wIt3zB6qIbdaaFlBAAmiTAl08++gFlOf1E=
 github.com/lib/pq v1.3.0 h1:/qkRGz8zljWiDcFvgpwUpwIAPu3r07TDvs3Rws+o/pU=
 github.com/lib/pq v1.3.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=

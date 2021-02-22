@@ -520,7 +520,7 @@ func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) builders.
 		}
 	} else {
 		if _, ok := field.Type.(*ast.StarExpr); !ok {
-			// make custom type as ref, if isnt yet
+			// make custom type as ref, if isn`t yet
 			field.Type = &ast.StarExpr{X: field.Type}
 		}
 		return builders.MetaField{

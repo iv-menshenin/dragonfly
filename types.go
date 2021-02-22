@@ -173,13 +173,16 @@ type (
 	TablesContainer  map[string]Table
 	TableDataRow     map[string]interface{}
 	TableData        []TableDataRow
-	DataContainer    map[string]TableData
-	Schema           struct {
+	DataContainer    struct {
+		Name string    `yaml:"name" json:"name"`
+		Data TableData `yaml:"data" json:"data"`
+	}
+	Schema struct {
 		Name    string           `yaml:"name" json:"name"`
 		Types   TypesContainer   `yaml:"types,omitempty" json:"types,omitempty"`
 		Domains DomainsContainer `yaml:"domains,omitempty" json:"domains,omitempty"`
 		Tables  TablesContainer  `yaml:"tables,omitempty" json:"tables,omitempty"`
-		Data    DataContainer    `yaml:"data,omitempty" json:"data,omitempty"`
+		Data    []DataContainer  `yaml:"data,omitempty" json:"data,omitempty"`
 	}
 	SchemaRef struct {
 		Value Schema  `yaml:"value,inline" json:"value,inline"`

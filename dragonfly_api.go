@@ -8,6 +8,7 @@ import (
 	sqt "github.com/iv-menshenin/sql-ast"
 	"go/ast"
 	"go/printer"
+	"go/token"
 	"io"
 	"net/url"
 	"os"
@@ -100,6 +101,74 @@ func MakeDiff(current, new *Root) Diff {
 		result.preInstall = append(result.preInstall, pre...)
 		result.install = append(result.install, ins...)
 		result.afterInstall = append(result.afterInstall, after...)
+	}
+	return result
+}
+
+func MakeDataSQL(file *Root) []sqt.SqlStmt {
+	var result = make([]sqt.SqlStmt, 0)
+	for _, schema := range file.Schemas {
+		for _, data := range schema.Value.Data {
+			table, ok := schema.Value.Tables.tryToFind(data.Name)
+			if !ok {
+				panic(fmt.Sprintf("cannot find table `%s` in `%s`", data.Name, schema.Value.Name))
+			}
+			keys := table.extractPrimaryKeyColumns()
+			if len(keys) == 0 {
+				keys = table.extractUniqueKeyColumns()
+			}
+			var cause = make([]sqt.SqlExpr, 0)
+			for _, k := range keys {
+				cause = append(cause, &sqt.Literal{Text: k.Value.Name})
+			}
+			for _, row := range data.Data {
+				var (
+					onConflict = make([]sqt.SqlExpr, 0, len(row))
+					setExps    = make(map[string]sqt.SqlExpr, len(row))
+				)
+				for f, i := range row {
+					column, ok := table.Columns.tryToFind(f)
+					if !ok {
+						panic(fmt.Sprintf("cannot find column `%s` in `%s.%s`", f, data.Name, schema.Value.Name))
+					}
+					var value string
+					if fm, ok := formatTypes[column.Value.Schema.Value.TypeBase.Type]; ok && fm == "%s" {
+						value = fmt.Sprintf("'%v'", i)
+					} else {
+						value = fmt.Sprintf("%v", i)
+					}
+					setExps[f] = &sqt.Literal{Text: value}
+					var found = false
+					for _, k := range keys {
+						if strings.EqualFold(k.Value.Name, f) {
+							found = true
+							break
+						}
+					}
+					if found {
+						continue
+					}
+					onConflict = append(onConflict, &sqt.BinaryExpr{
+						Left:  &sqt.Literal{Text: f},
+						Right: &sqt.Literal{Text: value},
+						Op:    token.ASSIGN,
+					})
+				}
+				result = append(result, &sqt.InsertStmt{
+					Table: sqt.TableDesc{
+						Table: &sqt.Selector{
+							Name:      data.Name,
+							Container: schema.Value.Name,
+						},
+					},
+					Insert: setExps,
+					OnConflict: &sqt.OnConflict{
+						Cause: &sqt.BracketBlock{Expr: cause},
+						Set:   onConflict,
+					},
+				})
+			}
+		}
 	}
 	return result
 }
