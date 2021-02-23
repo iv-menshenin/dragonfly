@@ -1,5 +1,107 @@
 # API description and generation  
 
+## DATABASE PROCEDURE INTERFACE
+
+### how I can generate database API in golang code?
+
+In first, we must describe the structures of the database using yaml syntax
+```yaml
+schemas:
+  - name: schema_name    # database schema name
+    tables:
+      some_table:        # table name
+        columns:         # array of columns
+          - name: id
+            schema: {type: int8, not_null: true}
+            constraints:
+              - type: primary key
+          - name: name
+            schema: {type: varchar, length: 20, not_null: true}
+          - name: volume
+            schema: {type: decimal, length: 12, precision: 2}
+        api:             # needed database APIs
+          - name: insertSomeTableEntity
+            type: insertOne
+          - name: updateSomeTableEntity
+            type: updateOne
+          - name: deleteSomeTableEntity
+            type: deleteOne
+          - name: lookupSomeTableEntity
+            type: lookUp
+```
+the `api` section describes the types of procedures that need to be generated
+consider the types that already exist:
+ - `insertOne`
+ - `upsertOne`
+ - `updateOne`
+ - `updateAll`
+ - `deleteOne`
+ - `deleteAll`
+ - `findOne`
+ - `findAll`
+ - `findAllPaginate`
+ - `lookUp`
+ 
+each of these types has a meaningful name — its name describes the work being done. For interfaces that contain the word `One` in the name, the data entered for the search guarantees the match of only one record, for this a primary key or a unique index is used. For interfaces in the name of which the word `All` is used, the data list for search is configured using the "find_by" section.
+
+The specified list can be extended using the dragonfly.RegisterApiBuilder procedural interface.
+
+### how to prepare data structures for searching records
+
+in order to configure the set of fields for the search structure used in multi-line procedures (such as updateAll, deleteAll, findAll, findAllPaginate), you can list the search options in the `find_by` section
+ - `equal`
+ - `notEqual`
+ - `like`
+ - `notLike`
+ - `in`
+ - `notIn`
+ - `great`
+ - `less`
+ - `notGreat`
+ - `notLess`
+ - `starts`
+ - `isNull`
+
+```yaml
+api:
+  - name: updateSomeTableEntities
+    type: updateAll
+    find_by:
+      - column: name
+        operator: in
+      - column: volume
+        operator: great
+```
+this example will be generated into the following code:
+```go
+type UpdateSomeTableEntitiesOption struct {
+	Name   []string `sql:"name"`
+	Volume *float64 `sql:"volume,omitempty"`
+}
+
+func UpdateSomeTableEntities(ctx context.Context, filter UpdateSomeTableEntitiesOption) (result []SchemaNameSomeTableRow, err error) {
+    var (
+        sqlText = "update schema_name.some_table set %s where %s returning id, name, volume"
+        ...
+    )
+    ...
+    var arrayName []string
+    for _, opt := range filter.Name {
+        args = append(args, opt)
+        arrayName = append(arrayName, "$"+strconv.Itoa(len(args)))
+    }
+    if len(arrayName) > 0 {
+        filters = append(filters, fmt.Sprintf("%s in (%s)", "name", strings.Join(arrayName, ", ")))
+    }
+    if filter.Volume != nil {
+        args = append(args, *filter.Volume)
+        filters = append(filters, fmt.Sprintf("%s > %s", "volume", "$"+strconv.Itoa(len(args))))
+    }
+    ...
+    rows, err = db.Query(sqlText, args...)
+    ...
+}
+```
 
 ## AUTOGENERATION  
 
