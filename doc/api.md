@@ -5,6 +5,7 @@
 ### how I can generate database API in golang code?
 
 In first, we must describe the structures of the database using yaml syntax
+
 ```yaml
 schemas:
   - name: schema_name    # database schema name
@@ -29,8 +30,9 @@ schemas:
           - name: lookupSomeTableEntity
             type: lookUp
 ```
-the `api` section describes the types of procedures that need to be generated
-consider the types that already exist:
+
+The `api` section describes the types of procedures that need to be generated.
+Consider the types that already exist:
  - `insertOne`
  - `upsertOne`
  - `updateOne`
@@ -42,37 +44,28 @@ consider the types that already exist:
  - `findAllPaginate`
  - `lookUp`
  
-each of these types has a meaningful name — its name describes the work being done. For interfaces that contain the word `One` in the name, the data entered for the search guarantees the match of only one record, for this a primary key or a unique index is used. For interfaces in the name of which the word `All` is used, the data list for search is configured using the "find_by" section.
+Each of these types has a meaningful name — its name describes the work being done. For interfaces that contain the word `One` in the name, the data entered for the search guarantees the match of only one record, for this a primary key or a unique index is used. For interfaces in the name of which the word `All` is used, the data list for search is configured using the `find_by` section.
 
 The specified list can be extended using the dragonfly.RegisterApiBuilder procedural interface.
 
 ### how to prepare data structures for searching records
 
-in order to configure the set of fields for the search structure used in multi-line procedures (such as updateAll, deleteAll, findAll, findAllPaginate), you can list the search options in the `find_by` section
- - `equal`
- - `notEqual`
- - `like`
- - `notLike`
- - `in`
- - `notIn`
- - `great`
- - `less`
- - `notGreat`
- - `notLess`
- - `starts`
- - `isNull`
+In order to configure the set of fields for the search structure used in multi-line procedures (such as updateAll, deleteAll, findAll, findAllPaginate), you can list the search options in the `find_by` section
 
 ```yaml
 api:
   - name: updateSomeTableEntities
     type: updateAll
     find_by:
-      - column: name
-        operator: in
+      - column: name    # specify column
+        operator: in    # specify comparison operator
+        required: true  # if not marked as required, the field will be pointer
       - column: volume
         operator: great
 ```
-this example will be generated into the following code:
+
+This example will be generated into the following code:
+
 ```go
 type UpdateSomeTableEntitiesOption struct {
 	Name   []string `sql:"name"`
@@ -103,11 +96,27 @@ func UpdateSomeTableEntities(ctx context.Context, filter UpdateSomeTableEntities
 }
 ```
 
+As `operation` you can use following:
+ - `equal`
+ - `notEqual`
+ - `like`
+ - `notLike`
+ - `in`
+ - `notIn`
+ - `great`
+ - `less`
+ - `notGreat`
+ - `notLess`
+ - `starts`
+ - `isNull`
+ 
+ You can specify a `constant` as a value for the fields of the search structure, you can learn about this from the next section
+
 ## AUTOGENERATION  
 
 ### how to generate datetime value
 
-put `generate(now)` into column tags, like this:
+Put `generate(now)` into column tags, like this:
 
 ```yaml
 schemas:
@@ -125,7 +134,7 @@ schemas:
             tags: [ generate(now) ]  # HERE
 ```
 
-and generator will make something like this:
+Then generator will make something like this:
 
 ```go
     ...
@@ -137,7 +146,7 @@ and generator will make something like this:
 
 ### how can i use this?
 
-let's make timestamp `delete flag` column:
+Let's make timestamp `delete flag` column:
 
 ```yaml
 schemas:
@@ -185,7 +194,6 @@ Thus, the `findRecords` function will always return data in which the `deleted` 
 ### how to generate uuid value for column
 
 1. make generator function  
-
 
 ```go
 package generated
@@ -268,3 +276,22 @@ Just specify the `ignore` tag for these fields.
         tags: [ ignore ]  # HERE
     ...
 ```
+
+### TAGS
+
+#### behavior
+
+ - `noInsert` - do not insert value
+ - `noUpdate` - do not update value
+ - `noDefaultValue` - do not use default value
+ - `alwaysUpdate` - update column every update operation
+ - `deletedFlag` - deleted record if this column is not null
+
+#### column definition
+ 
+ - `identifier` - mark column as ID
+ - `ignore` - ignore it on GO side
+
+#### column type modifier
+
+ - `ci` - case-insensitive
