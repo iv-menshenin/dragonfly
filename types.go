@@ -130,6 +130,7 @@ type (
 		OneOf    []string                        `yaml:"one_of,omitempty" json:"one_of,omitempty"`
 		Operator builders.SQLDataCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 		Constant string                          `yaml:"constant,omitempty" json:"constant,omitempty"`
+		Or       ApiFindOptions                  `yaml:"or,omitempty" json:"or,omitempty"`
 	}
 	ExtColumn struct {
 		Schema ColumnSchemaRef `yaml:"schema" json:"schema"`

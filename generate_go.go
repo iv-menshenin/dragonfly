@@ -205,8 +205,8 @@ func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 	}, isCustomType
 }
 
-func (c *Table) generateFields(w *AstData) (fields []builders.MetaField) {
-	fields = make([]builders.MetaField, 0, len(c.Columns))
+func (c *Table) generateFields(w *AstData) (fields []builders.MetaFieldI) {
+	fields = make([]builders.MetaFieldI, 0, len(c.Columns))
 	for _, column := range c.Columns {
 		if utils.ArrayContains(column.Value.Tags, tagIgnore) {
 			continue
@@ -217,8 +217,8 @@ func (c *Table) generateFields(w *AstData) (fields []builders.MetaField) {
 	return
 }
 
-func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w *AstData, tags ...string) (fields []builders.MetaField) {
-	fields = make([]builders.MetaField, 0, len(table.Columns))
+func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w *AstData, tags ...string) (fields []builders.MetaFieldI) {
+	fields = make([]builders.MetaFieldI, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if utils.ArrayContains(column.Value.Tags, tagIgnore) {
 			continue
@@ -238,15 +238,15 @@ func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w
 	return
 }
 
-func (c *TableApi) generateInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaField) {
+func (c *TableApi) generateInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaFieldI) {
 	return c.generateFieldsExceptTags(fn, table, w, tagNoInsert)
 }
 
-func (c *TableApi) generateMutable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaField) {
+func (c *TableApi) generateMutable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaFieldI) {
 	return c.generateFieldsExceptTags(fn, table, w, tagNoUpdate)
 }
 
-func (c *TableApi) generateMutableOrInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaField) {
+func (c *TableApi) generateMutableOrInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []builders.MetaFieldI) {
 	return c.generateFieldsExceptTags(fn, table, w, tagNoUpdate, tagNoInsert)
 }
 
@@ -301,7 +301,7 @@ func (c *Table) extractUniqueKeyColumns() (columns []ColumnRef) {
 	return c.extractColumnsByUniqueKeyType(ConstraintUniqueKey)
 }
 
-func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []builders.MetaField) {
+func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []builders.MetaFieldI) {
 	var columns []ColumnRef
 	if c.Key != "" {
 		columns = table.extractColumnsByConstraintName(c.Key)
@@ -319,7 +319,7 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 			panic("cannot extract unique columns for " + c.Name)
 		}
 	}
-	fields = make([]builders.MetaField, 0, len(columns))
+	fields = make([]builders.MetaFieldI, 0, len(columns))
 	for _, column := range columns {
 		field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull)
 		fields = append(fields, builders.MetaField{
@@ -354,6 +354,10 @@ func checkOption(table *Table, operator builders.SQLDataCompareOperator, option 
 			} else if !reflect.DeepEqual(basicType, colType.Type) {
 				panic(fmt.Sprintf("each of 'one_of' must have same go-type of data: %v", option.OneOf))
 			}
+		}
+	} else if len(option.Or) > 0 {
+		for _, opt := range option.Or {
+			checkOption(table, operator, opt, w)
 		}
 	} else {
 		panic("the option must contains 'one_of' or 'column'")
@@ -401,15 +405,23 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) buil
 }
 
 // TODO split
-func (c *TableApi) generateFindFields(table *Table, w *AstData) (findBy []builders.MetaField) {
-	findBy = make([]builders.MetaField, 0, len(c.FindOptions))
-	for _, option := range c.FindOptions {
+func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstData) (findBy []builders.MetaFieldI) {
+	findBy = make([]builders.MetaFieldI, 0, len(fo))
+	for _, option := range fo {
 		operator := option.Operator
 		operator.Check()
 		checkOption(table, operator, option, w)
 		if option.Column != "" {
 			findBy = append(findBy, option.makeMetaFieldByColumn(table, w))
 			continue
+		}
+		if len(option.Or) > 0 {
+			// TODO move to new function
+			findByEx := make(builders.MetaFields, 0, len(fo))
+			for _, f := range c.generateFindFields(table, option.Or, w) {
+				findByEx = append(findByEx, f)
+			}
+			findBy = append(findBy, findByEx)
 		}
 		if len(option.OneOf) > 0 {
 			// TODO move to new function
@@ -531,10 +543,10 @@ func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) builders.
 	}
 }
 
-func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []builders.MetaField) {
+func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []builders.MetaFieldI) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
-			findBy = c.generateFindFields(table, w)
+			findBy = c.generateFindFields(table, c.FindOptions, w)
 		} else {
 			findBy = c.generateIdentifierOption(table, w)
 		}
@@ -551,7 +563,7 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 			decorator = makeMetaFieldMaybeType
 		}
 		if len(c.ModifyColumns) > 0 {
-			mutable = make([]builders.MetaField, 0, len(c.ModifyColumns))
+			mutable = make([]builders.MetaFieldI, 0, len(c.ModifyColumns))
 			for _, columnName := range c.ModifyColumns {
 				column := table.Columns.getColumn(columnName)
 				field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
@@ -577,7 +589,7 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 }
 
 type (
-	apiBuilder func(*SchemaRef, string, string, []builders.MetaField, []builders.MetaField, []builders.MetaField) AstDataChain
+	apiBuilder func(*SchemaRef, string, string, []builders.MetaFieldI, []builders.MetaFieldI, []builders.MetaFieldI) AstDataChain
 )
 
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
@@ -591,7 +603,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	return func(
 		schema *SchemaRef,
 		tableName, rowStructName string,
-		queryOptionFields, queryInputFields, queryOutputFields []builders.MetaField,
+		queryOptionFields, queryInputFields, queryOutputFields []builders.MetaFieldI,
 	) AstDataChain {
 		return tplSet(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
@@ -604,10 +616,10 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	}
 }
 
-func registerStructType(typeName, comment string, fields []builders.MetaField, w *AstData) {
+func registerStructType(typeName, comment string, fields []builders.MetaFieldI, w *AstData) {
 	var extractedFields = make([]*ast.Field, 0, len(fields))
 	for _, f := range fields {
-		extractedFields = append(extractedFields, f.Field)
+		extractedFields = append(extractedFields, f.GetField())
 	}
 	if err := mergeCodeBase(w, []AstDataChain{
 		{
@@ -628,8 +640,8 @@ func registerStructType(typeName, comment string, fields []builders.MetaField, w
 	}
 }
 
-func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (apiResultStructName string, additionFields []builders.MetaField) {
-	additionFields = make([]builders.MetaField, 0, len(c.Extended)+1)
+func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (apiResultStructName string, additionFields []builders.MetaFieldI) {
+	additionFields = make([]builders.MetaFieldI, 0, len(c.Extended)+1)
 	apiResultStructName = makeExportedName(c.Name + "ExRow")
 	var isCustom = false
 	for _, column := range c.Extended {
@@ -656,7 +668,7 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 		},
 		IsCustomType: isCustom,
 	}
-	registerStructType(apiResultStructName, c.Name, append([]builders.MetaField{mainStruct}, additionFields...), w)
+	registerStructType(apiResultStructName, c.Name, append([]builders.MetaFieldI{mainStruct}, additionFields...), w)
 	return
 }
 
@@ -677,7 +689,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 		registerStructType(tableRowStructName, table.Description, resultFields, w)
 		if len(table.Api) > 0 {
 			for i, api := range table.Api {
-				var additionFields []builders.MetaField
+				var additionFields []builders.MetaFieldI
 				apiName := utils.EvalTemplateParameters(
 					api.Name,
 					map[string]string{

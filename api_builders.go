@@ -191,7 +191,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []builders.MetaField,
+		optionFields, _, rowFields []builders.MetaFieldI,
 	) AstDataChain {
 		var (
 			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
@@ -293,7 +293,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []builders.MetaField,
+		optionFields, _, rowFields []builders.MetaFieldI,
 	) AstDataChain {
 		var (
 			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
@@ -395,7 +395,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, mutableFields, rowFields []builders.MetaField,
+		optionFields, mutableFields, rowFields []builders.MetaFieldI,
 	) AstDataChain {
 		var (
 			fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
@@ -481,7 +481,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 
 func insertOneBuilder(
 	fullTableName, functionName, rowStructName string,
-	_, mutableFields, rowFields []builders.MetaField,
+	_, mutableFields, rowFields []builders.MetaFieldI,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"
@@ -557,7 +557,7 @@ func insertOneBuilder(
 
 func upsertBuilder(
 	fullTableName, functionName, rowStructName string,
-	optionFields, mutableFields, rowFields []builders.MetaField,
+	optionFields, mutableFields, rowFields []builders.MetaFieldI,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"
