@@ -318,17 +318,17 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 	}
 	fields = make([]DataCellFactory, 0, len(columns))
 	for _, column := range columns {
-		field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull)
+		field, isCustom := column.generateField(w, true) // is required be cause it identifier, previous value is `column.Value.Schema.Value.NotNull`
 		dcFactory := MakeDataCellFactoryType
 		if isCustom {
 			dcFactory = MakeDataCellFactoryCustom
 		}
-		dcFactory(
+		fields = append(fields, dcFactory(
 			&field,
 			SourceSqlColumn{ColumnName: column.Value.Name},
 			column.Value.Tags,
 			CompareEqual,
-		)
+		))
 	}
 	return
 }

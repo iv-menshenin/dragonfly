@@ -5,8 +5,10 @@ schemas:
       test_table:
         columns:
           - name: uuid
-            schema: { type: uuid }
+            schema: { type: uuid, not_null: true }
             tags: [ generate(uuid) ]
+            constraints:
+              - type: primary key
           - name: someOther
             schema: { type: varchar, length: 20 }
           - name: created

@@ -1,7 +1,7 @@
 github.com/ghodss/yaml v1.0.0 h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
-github.com/iv-menshenin/go-ast v0.0.0-20210227165021-7a20080d0f73 h1:+chf4ETj5W/WpeP88CFSeCUM2NKgwq5LjFIwftzhjTk=
-github.com/iv-menshenin/go-ast v0.0.0-20210227165021-7a20080d0f73/go.mod h1:6e0O0ha4JMJPQCii+z0ubt+UoXcQuCwCt6rlYh5JGbw=
+github.com/iv-menshenin/go-ast v0.0.0-20210227170439-9d600abeba9d h1:Bsz0ziwyx+qYkeoW4+UiI7ZB1PXfIAFtaKWHgpLPkoA=
+github.com/iv-menshenin/go-ast v0.0.0-20210227170439-9d600abeba9d/go.mod h1:6e0O0ha4JMJPQCii+z0ubt+UoXcQuCwCt6rlYh5JGbw=
 github.com/iv-menshenin/sql-ast v0.0.0-20210227064904-5d9b4ebb8e54 h1:2EzNoE49YSIbhrXsDkuKSih5TYZGt7qIuktIXO9V3yw=
 github.com/iv-menshenin/sql-ast v0.0.0-20210227064904-5d9b4ebb8e54/go.mod h1:fPUR6ivb0wIt3zB6qIbdaaFlBAAmiTAl08++gFlOf1E=
 github.com/lib/pq v1.3.0 h1:/qkRGz8zljWiDcFvgpwUpwIAPu3r07TDvs3Rws+o/pU=
