@@ -362,7 +362,7 @@ func TestConstraintSchema_normalize(t *testing.T) {
 									Constraint: Constraint{
 										Name:       "",
 										Type:       ConstraintUniqueKey,
-										Parameters: ConstraintParameters{Parameter: Where{Where: "test_column is not null"}},
+										Parameters: ConstraintParameters{Parameter: nil},
 									},
 								},
 								{
@@ -485,7 +485,7 @@ func TestTableClass_normalize(t *testing.T) {
 									Constraint: Constraint{
 										Name:       "",
 										Type:       ConstraintUniqueKey,
-										Parameters: ConstraintParameters{Parameter: Where{Where: "test_column is not null"}},
+										Parameters: ConstraintParameters{Parameter: nil},
 									},
 								},
 								{
