@@ -225,11 +225,7 @@ func RegisterFieldValueGenerator(alias, funcName string, minimumArgumentsCount i
 		MinimumNumberOfArguments:    minimumArgumentsCount,
 		ExtensibleNumberOfArguments: isExtensible,
 	}
-	builders.AddNewGenerator(alias, newFunction)
-}
-
-func RegisterSqlFieldEncryptFunction(encryptFn func(valueForEncrypt ast.Expr) *ast.CallExpr) {
-	builders.RegisterSqlFieldEncryptFunction(encryptFn)
+	AddNewGenerator(alias, newFunction)
 }
 
 func (c *Diff) Print(w io.Writer) {

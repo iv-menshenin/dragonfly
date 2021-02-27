@@ -107,7 +107,7 @@ func makeSliceDescriber(t, p, x string) makeDescriber {
 }
 
 func (c sliceTypeDescriber) fieldTypeExpr() ast.Expr {
-	return builders.MakeSqlFieldArrayType(c.descr.fieldTypeExpr())
+	return MakeSqlFieldArrayType(c.descr.fieldTypeExpr())
 }
 
 func (c sliceTypeDescriber) getFile() []AstDataChain {

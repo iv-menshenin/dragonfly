@@ -114,7 +114,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 		sqlTextName = "sqlText"
 	)
 	var (
-		scanBlockWrapper      builders.ScanWrapper
+		scanBlockWrapper      ScanWrapper
 		resultExprFn          func(string) []*ast.Field
 		optionsExprFn         = func(e []*ast.Field) []*ast.Field { return e }
 		lastReturn            ast.Stmt
@@ -123,18 +123,18 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	)
 	switch variant {
 	case findVariantOnce:
-		scanBlockWrapper = builders.WrapperFindOne
+		scanBlockWrapper = WrapperFindOne
 		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
-		scanBlockWrapper = builders.WrapperFindAll
+		scanBlockWrapper = WrapperFindAll
 		resultExprFn = simpleResultArray
 		lastReturn = builders.ReturnEmpty()
 	case findVariantPaginate:
-		scanBlockWrapper = builders.WrapperFindAll
+		scanBlockWrapper = WrapperFindAll
 		resultExprFn = resultArrayWithCounter
 		lastReturn = builders.ReturnEmpty()
 		fieldRefsWrapper = func(e []ast.Expr) []ast.Expr { return append(e, builders.Ref(ast.NewIdent("rowCount"))) }
@@ -142,10 +142,10 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			return append(e, builders.Field("page", nil, ast.NewIdent("Pagination")))
 		}
 		executionBlockBuilder = func(rowStructName string, fieldRefs []ast.Expr) []ast.Stmt {
-			return builders.BuildExecutionBlockForFunction(
+			return BuildExecutionBlockForFunction(
 				scanBlockWrapper,
 				fieldRefsWrapper(fieldRefs),
-				builders.MakeExecutionOptionWithWrappers(
+				MakeExecutionOptionWithWrappers(
 					rowStructName,
 					sqlTextName,
 					func(sql ast.Expr) ast.Expr {
@@ -182,31 +182,31 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	}
 	if executionBlockBuilder == nil {
 		executionBlockBuilder = func(rowStructName string, fieldRefs []ast.Expr) []ast.Stmt {
-			return builders.BuildExecutionBlockForFunction(
+			return BuildExecutionBlockForFunction(
 				scanBlockWrapper,
 				fieldRefsWrapper(fieldRefs),
-				builders.MakeExecutionOption(rowStructName, sqlTextName),
+				MakeExecutionOption(rowStructName, sqlTextName),
 			)
 		}
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []builders.DataCellFactory,
+		optionFields, _, rowFields []DataCellFactory,
 	) AstDataChain {
 		var (
-			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
+			fieldRefs, columnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("select %s from %s where %%s", strings.Join(columnList, ", "), fullTableName)
-		functionBody, findTypes, findAttrs := builders.BuildFindArgumentsProcessor(
+		functionBody, findTypes, findAttrs := BuildFindArgumentsProcessor(
 			"find",
 			functionName+"Option",
 			optionFields,
-			builders.FindBuilderOptions,
+			FindBuilderOptions,
 		)
 		functionBody = append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: builders.MakeLenGreatThanZero(builders.FiltersVariable.String()),
+				Cond: builders.MakeLenGreatThanZero(FiltersVariable.String()),
 				Body: builders.Block(
 					builders.Assign(
 						builders.MakeVarNames(sqlTextName),
@@ -218,7 +218,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 								builders.StringConstant("(").Expr(),
 								builders.Call(
 									builders.StringsJoinFn,
-									ast.NewIdent(builders.FiltersVariable.String()),
+									ast.NewIdent(FiltersVariable.String()),
 									builders.StringConstant(") and (").Expr(),
 								),
 								builders.StringConstant(")").Expr(),
@@ -249,11 +249,11 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			sqlTextName,
 			sqlQuery,
 			builders.VariableValue(
-				builders.ArgsVariable.String(),
+				ArgsVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
 			builders.VariableValue(
-				builders.FiltersVariable.String(),
+				FiltersVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
 		)
@@ -261,7 +261,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: builders.MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, optionsExprFn(findAttrs)...),
+				functionName: MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, optionsExprFn(findAttrs)...),
 			},
 		}
 	}
@@ -272,20 +272,20 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 		sqlTextName = "sqlText"
 	)
 	var (
-		scanBlockWrapper builders.ScanWrapper
+		scanBlockWrapper ScanWrapper
 		resultExprFn     func(string) []*ast.Field
 		lastReturn       ast.Stmt
 	)
 	switch variant {
 	case findVariantOnce:
-		scanBlockWrapper = builders.WrapperFindOne
+		scanBlockWrapper = WrapperFindOne
 		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
-		scanBlockWrapper = builders.WrapperFindAll
+		scanBlockWrapper = WrapperFindAll
 		resultExprFn = simpleResultArray
 		lastReturn = builders.ReturnEmpty()
 	default:
@@ -293,22 +293,22 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []builders.DataCellFactory,
+		optionFields, _, rowFields []DataCellFactory,
 	) AstDataChain {
 		var (
-			fieldRefs, columnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
+			fieldRefs, columnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("delete from %s where %%s returning %s", fullTableName, strings.Join(columnList, ", "))
-		functionBody, findTypes, findAttrs := builders.BuildFindArgumentsProcessor(
+		functionBody, findTypes, findAttrs := BuildFindArgumentsProcessor(
 			"find",
 			functionName+"Option",
 			optionFields,
-			builders.DeleteBuilderOptions,
+			DeleteBuilderOptions,
 		)
 		functionBody = append(
 			functionBody,
 			&ast.IfStmt{
-				Cond: builders.MakeLenGreatThanZero(builders.FiltersVariable.String()),
+				Cond: builders.MakeLenGreatThanZero(FiltersVariable.String()),
 				Body: builders.Block(
 					builders.Assign(
 						builders.MakeVarNames(sqlTextName),
@@ -320,7 +320,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 								builders.StringConstant("(").Expr(),
 								builders.Call(
 									builders.StringsJoinFn,
-									ast.NewIdent(builders.FiltersVariable.String()),
+									ast.NewIdent(FiltersVariable.String()),
 									builders.StringConstant(") and (").Expr(),
 								),
 								builders.StringConstant(")").Expr(),
@@ -342,7 +342,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = append(
 			append(
 				functionBody,
-				builders.BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, builders.MakeExecutionOption(rowStructName, sqlTextName))...,
+				BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
 			),
 			lastReturn,
 		)
@@ -351,11 +351,11 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			sqlTextName,
 			sqlQuery,
 			builders.VariableValue(
-				builders.ArgsVariable.String(),
+				ArgsVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
 			builders.VariableValue(
-				builders.FiltersVariable.String(),
+				FiltersVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(optionFields)).Expr()),
 			),
 		)
@@ -363,7 +363,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			Types:     findTypes,
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: builders.MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, findAttrs...),
+				functionName: MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, findAttrs...),
 			},
 		}
 	}
@@ -374,20 +374,20 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 		sqlTextName = "sqlText"
 	)
 	var (
-		scanBlockWrapper builders.ScanWrapper
+		scanBlockWrapper ScanWrapper
 		resultExprFn     func(string) []*ast.Field
 		lastReturn       ast.Stmt
 	)
 	switch variant {
 	case findVariantOnce:
-		scanBlockWrapper = builders.WrapperFindOne
+		scanBlockWrapper = WrapperFindOne
 		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
-		scanBlockWrapper = builders.WrapperFindAll
+		scanBlockWrapper = WrapperFindAll
 		resultExprFn = simpleResultArray
 		lastReturn = builders.ReturnEmpty()
 	default:
@@ -395,23 +395,23 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, mutableFields, rowFields []builders.DataCellFactory,
+		optionFields, mutableFields, rowFields []DataCellFactory,
 	) AstDataChain {
 		var (
-			fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
+			fieldRefs, outColumnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("update %s set %%s where %%s returning %s", fullTableName, strings.Join(outColumnList, ", "))
-		functionBody, inputTypes, inputAttrs := builders.BuildInputValuesProcessor(
+		functionBody, inputTypes, inputAttrs := BuildInputValuesProcessor(
 			"values",
 			makeExportedName(functionName+"Values"),
 			mutableFields,
-			builders.UpdateBuilderOptions,
+			UpdateBuilderOptions,
 		)
-		findBlock, findTypes, findAttrs := builders.BuildFindArgumentsProcessor(
+		findBlock, findTypes, findAttrs := BuildFindArgumentsProcessor(
 			"filter",
 			makeExportedName(functionName+"Option"),
 			optionFields,
-			builders.IncomingArgumentsBuilderOptions,
+			IncomingArgumentsBuilderOptions,
 		)
 		functionBody = append(functionBody, findBlock...)
 		functionBody = append(
@@ -424,14 +424,14 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 					ast.NewIdent(sqlTextName),
 					builders.Call(
 						builders.StringsJoinFn,
-						ast.NewIdent(builders.FieldsVariable.String()),
+						ast.NewIdent(FieldsVariable.String()),
 						builders.StringConstant(", ").Expr(),
 					),
 					builders.Add(
 						builders.StringConstant("(").Expr(),
 						builders.Call(
 							builders.StringsJoinFn,
-							ast.NewIdent(builders.FiltersVariable.String()),
+							ast.NewIdent(FiltersVariable.String()),
 							builders.StringConstant(") and (").Expr(),
 						),
 						builders.StringConstant(")").Expr(),
@@ -442,7 +442,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 		functionBody = append(
 			append(
 				functionBody,
-				builders.BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, builders.MakeExecutionOption(rowStructName, sqlTextName))...,
+				BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
 			),
 			lastReturn,
 		)
@@ -451,15 +451,15 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 			sqlTextName,
 			sqlQuery,
 			builders.VariableValue(
-				builders.ArgsVariable.String(),
+				ArgsVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 			),
 			builders.VariableValue(
-				builders.FieldsVariable.String(),
+				FieldsVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 			),
 			builders.VariableValue(
-				builders.FiltersVariable.String(),
+				FiltersVariable.String(),
 				builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 			),
 		)
@@ -473,7 +473,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 			Types:     unionTypeDeclMaps(inputTypes, findTypes),
 			Constants: nil,
 			Implementations: map[string]*ast.FuncDecl{
-				functionName: builders.MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, append(inputAttrs, findAttrs...)...),
+				functionName: MakeDatabaseApiFunction(functionName, resultExprFn(rowStructName), functionBody, append(inputAttrs, findAttrs...)...),
 			},
 		}
 	}
@@ -481,25 +481,25 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 
 func insertOneBuilder(
 	fullTableName, functionName, rowStructName string,
-	_, mutableFields, rowFields []builders.DataCellFactory,
+	_, mutableFields, rowFields []DataCellFactory,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"
 	)
-	scanBlockWrapper := builders.WrapperFindOne
+	scanBlockWrapper := WrapperFindOne
 	lastReturn := builders.Return(
 		ast.NewIdent("result"),
 		ast.NewIdent(sqlEmptyResultErrorName),
 	)
 	var (
-		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
+		fieldRefs, outColumnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 	)
 	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) returning %s", fullTableName, strings.Join(outColumnList, ", "))
-	functionBody, functionTypes, functionAttrs := builders.BuildInputValuesProcessor(
+	functionBody, functionTypes, functionAttrs := BuildInputValuesProcessor(
 		"record",
 		makeExportedName(functionName+"Values"),
 		mutableFields,
-		builders.InsertBuilderOptions,
+		InsertBuilderOptions,
 	)
 	functionBody = append(
 		functionBody,
@@ -511,12 +511,12 @@ func insertOneBuilder(
 				ast.NewIdent(sqlTextName),
 				builders.Call(
 					builders.StringsJoinFn,
-					ast.NewIdent(builders.FieldsVariable.String()),
+					ast.NewIdent(FieldsVariable.String()),
 					builders.StringConstant(", ").Expr(),
 				),
 				builders.Call(
 					builders.StringsJoinFn,
-					ast.NewIdent(builders.ValuesVariable.String()),
+					ast.NewIdent(ValuesVariable.String()),
 					builders.StringConstant(", ").Expr(),
 				),
 			),
@@ -525,7 +525,7 @@ func insertOneBuilder(
 	functionBody = append(
 		append(
 			functionBody,
-			builders.BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, builders.MakeExecutionOption(rowStructName, sqlTextName))...,
+			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
 		),
 		lastReturn,
 	)
@@ -534,15 +534,15 @@ func insertOneBuilder(
 		sqlTextName,
 		sqlQuery,
 		builders.VariableValue(
-			builders.ArgsVariable.String(),
+			ArgsVariable.String(),
 			builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 		builders.VariableValue(
-			builders.FieldsVariable.String(),
+			FieldsVariable.String(),
 			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 		builders.VariableValue(
-			builders.ValuesVariable.String(),
+			ValuesVariable.String(),
 			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 	)
@@ -550,33 +550,33 @@ func insertOneBuilder(
 		Types:     functionTypes,
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
-			functionName: builders.MakeDatabaseApiFunction(functionName, simpleResultOneRecord(rowStructName), functionBody, functionAttrs...),
+			functionName: MakeDatabaseApiFunction(functionName, simpleResultOneRecord(rowStructName), functionBody, functionAttrs...),
 		},
 	}
 }
 
 func upsertBuilder(
 	fullTableName, functionName, rowStructName string,
-	optionFields, mutableFields, rowFields []builders.DataCellFactory,
+	optionFields, mutableFields, rowFields []DataCellFactory,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"
 	)
-	scanBlockWrapper := builders.WrapperFindOne
+	scanBlockWrapper := WrapperFindOne
 	lastReturn := builders.Return(
 		ast.NewIdent("result"),
 		ast.NewIdent(sqlEmptyResultErrorName),
 	)
 	var (
-		fieldRefs, outColumnList = builders.ExtractDestinationFieldRefsFromStruct(builders.ScanDestVariable.String(), rowFields)
-		_, uniqueColumns         = builders.ExtractDestinationFieldRefsFromStruct("", optionFields)
+		fieldRefs, outColumnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
+		_, uniqueColumns         = ExtractDestinationFieldRefsFromStruct("", optionFields)
 	)
 	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) on conflict (%s) do update set %%s returning %s", fullTableName, strings.Join(uniqueColumns, ","), strings.Join(outColumnList, ", "))
-	functionBody, functionTypes, functionAttrs := builders.BuildInputValuesProcessor(
+	functionBody, functionTypes, functionAttrs := BuildInputValuesProcessor(
 		"record",
 		makeExportedName(functionName+"Values"),
 		mutableFields,
-		builders.InsertBuilderOptions,
+		InsertBuilderOptions,
 	)
 	functionBody = append(
 		functionBody,
@@ -587,11 +587,11 @@ func upsertBuilder(
 				builders.MakeFn,
 				builders.ArrayType(ast.NewIdent("string")),
 				builders.Zero,
-				builders.Call(builders.LengthFn, ast.NewIdent(builders.FieldsVariable.String())),
+				builders.Call(builders.LengthFn, ast.NewIdent(FieldsVariable.String())),
 			),
 		),
 		builders.Range(
-			true, "i", "", ast.NewIdent(builders.FieldsVariable.String()),
+			true, "i", "", ast.NewIdent(FieldsVariable.String()),
 			builders.Assign(
 				builders.MakeVarNames("update"),
 				builders.Assignment,
@@ -601,8 +601,8 @@ func upsertBuilder(
 					builders.Call(
 						builders.SprintfFn,
 						builders.StringConstant("%s = %s").Expr(),
-						builders.Index(ast.NewIdent(builders.FieldsVariable.String()), builders.VariableName("i")),
-						builders.Index(ast.NewIdent(builders.ValuesVariable.String()), builders.VariableName("i")),
+						builders.Index(ast.NewIdent(FieldsVariable.String()), builders.VariableName("i")),
+						builders.Index(ast.NewIdent(ValuesVariable.String()), builders.VariableName("i")),
 					),
 				),
 			),
@@ -615,12 +615,12 @@ func upsertBuilder(
 				ast.NewIdent(sqlTextName),
 				builders.Call(
 					builders.StringsJoinFn,
-					ast.NewIdent(builders.FieldsVariable.String()),
+					ast.NewIdent(FieldsVariable.String()),
 					builders.StringConstant(", ").Expr(),
 				),
 				builders.Call(
 					builders.StringsJoinFn,
-					ast.NewIdent(builders.ValuesVariable.String()),
+					ast.NewIdent(ValuesVariable.String()),
 					builders.StringConstant(", ").Expr(),
 				),
 				builders.Call(
@@ -634,7 +634,7 @@ func upsertBuilder(
 	functionBody = append(
 		append(
 			functionBody,
-			builders.BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, builders.MakeExecutionOption(rowStructName, sqlTextName))...,
+			BuildExecutionBlockForFunction(scanBlockWrapper, fieldRefs, MakeExecutionOption(rowStructName, sqlTextName))...,
 		),
 		lastReturn,
 	)
@@ -643,15 +643,15 @@ func upsertBuilder(
 		sqlTextName,
 		sqlQuery,
 		builders.VariableValue(
-			builders.ArgsVariable.String(),
+			ArgsVariable.String(),
 			builders.Call(builders.MakeFn, builders.ArrayType(builders.EmptyInterface), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 		builders.VariableValue(
-			builders.FieldsVariable.String(),
+			FieldsVariable.String(),
 			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 		builders.VariableValue(
-			builders.ValuesVariable.String(),
+			ValuesVariable.String(),
 			builders.Call(builders.MakeFn, builders.ArrayType(ast.NewIdent("string")), builders.Zero, builders.IntegerConstant(len(mutableFields)).Expr()),
 		),
 	)
@@ -659,7 +659,7 @@ func upsertBuilder(
 		Types:     functionTypes,
 		Constants: nil,
 		Implementations: map[string]*ast.FuncDecl{
-			functionName: builders.MakeDatabaseApiFunction(functionName, simpleResultOneRecord(rowStructName), functionBody, functionAttrs...),
+			functionName: MakeDatabaseApiFunction(functionName, simpleResultOneRecord(rowStructName), functionBody, functionAttrs...),
 		},
 	}
 }
