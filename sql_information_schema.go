@@ -539,7 +539,7 @@ func (c rawActualConstraints) toTableConstraints() TableConstraints {
 		}
 		switch cType {
 		case ConstraintPrimaryKey:
-			parameter = nil // wow!
+			parameter = nil
 		case ConstraintForeignKey:
 			parameter = ForeignKey{
 				ToTable:  fmt.Sprintf("%s.%s", constraint.ForeignKey.ForeignTable.SchemaName, constraint.ForeignKey.ForeignTable.TableName),
@@ -548,7 +548,7 @@ func (c rawActualConstraints) toTableConstraints() TableConstraints {
 				OnDelete: nil, // TODO rules
 			}
 		case ConstraintUniqueKey:
-			parameter = Where{Where: ""} // TODO `where` constraint parameter
+			parameter = nil
 		case ConstraintCheck:
 			parameter = Check{Expression: ""} // TODO check expression
 		default:

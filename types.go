@@ -97,10 +97,6 @@ type (
 	Check struct {
 		Expression string `yaml:"expression" json:"expression"`
 	}
-	// deprecated
-	Where struct {
-		Where string `yaml:"where" json:"where"`
-	}
 	// ForeignKey, Check, Where
 	ConstraintParameters struct {
 		Parameter interface{} `yaml:"value,inline" json:"value,inline"`
@@ -344,11 +340,6 @@ func (c *ConstraintParameters) UnmarshalYAML(unmarshal func(interface{}) error) 
 		c.Parameter = check
 		return nil
 	}
-	var where Where
-	if unmarshal(&where) == nil {
-		c.Parameter = where
-		return nil
-	}
 	return errors.New("cannot resolve parameter type")
 }
 
@@ -363,11 +354,6 @@ func (c *ConstraintParameters) UnmarshalJSON(data []byte) error {
 	var check Check
 	if decoder.Decode(&check) == nil {
 		c.Parameter = check
-		return nil
-	}
-	var where Where
-	if decoder.Decode(&where) == nil {
-		c.Parameter = where
 		return nil
 	}
 	return errors.New("cannot resolve parameter type")

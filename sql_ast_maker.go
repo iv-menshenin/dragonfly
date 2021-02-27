@@ -530,6 +530,9 @@ func makeConstraintInterface(inColumn bool, constraintDef Constraint) sqt.Constr
 	var newConstraint sqt.ConstraintInterface
 	switch constraintDef.Type {
 	case ConstraintPrimaryKey:
+		if constraintDef.Parameters.Parameter != nil {
+			panic("primary keys does not support key parameters")
+		}
 		newConstraint = &sqt.ConstraintPrimaryKeyExpr{
 			ConstraintCommon: sqt.ConstraintCommon{InColumn: inColumn},
 		}
@@ -544,16 +547,11 @@ func makeConstraintInterface(inColumn bool, constraintDef Constraint) sqt.Constr
 			panic("the check constraint should contains the check expression")
 		}
 	case ConstraintUniqueKey:
-		if params, ok := constraintDef.Parameters.Parameter.(Where); ok {
-			newConstraint = &sqt.ConstraintUniqueExpr{
-				ConstraintCommon: sqt.ConstraintCommon{InColumn: inColumn},
-				Where:            &sqt.Literal{Text: params.Where},
-			}
-		} else {
-			newConstraint = &sqt.ConstraintUniqueExpr{
-				ConstraintCommon: sqt.ConstraintCommon{InColumn: inColumn},
-				Where:            nil,
-			}
+		if constraintDef.Parameters.Parameter != nil {
+			panic("unique keys does not support key parameters")
+		}
+		newConstraint = &sqt.ConstraintUniqueExpr{
+			ConstraintCommon: sqt.ConstraintCommon{InColumn: inColumn},
 		}
 	case ConstraintForeignKey:
 		if params, ok := constraintDef.Parameters.Parameter.(ForeignKey); ok {
