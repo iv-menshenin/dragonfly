@@ -202,8 +202,8 @@ func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 	}, isCustomType
 }
 
-func (c *Table) generateFields(w *AstData) (fields []DataCellFactory) {
-	fields = make([]DataCellFactory, 0, len(c.Columns))
+func (c *Table) generateFields(w *AstData) (fields []dataCellFactory) {
+	fields = make([]dataCellFactory, 0, len(c.Columns))
 	for _, column := range c.Columns {
 		if utils.ArrayContains(column.Value.Tags, tagIgnore) {
 			continue
@@ -214,8 +214,8 @@ func (c *Table) generateFields(w *AstData) (fields []DataCellFactory) {
 	return
 }
 
-func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w *AstData, tags ...string) (fields []DataCellFactory) {
-	fields = make([]DataCellFactory, 0, len(table.Columns))
+func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w *AstData, tags ...string) (fields []dataCellFactory) {
+	fields = make([]dataCellFactory, 0, len(table.Columns))
 	for _, column := range table.Columns {
 		if utils.ArrayContains(column.Value.Tags, tagIgnore) {
 			continue
@@ -235,15 +235,15 @@ func (c *TableApi) generateFieldsExceptTags(fn fieldConstructor, table *Table, w
 	return
 }
 
-func (c *TableApi) generateInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []DataCellFactory) {
+func (c *TableApi) generateInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []dataCellFactory) {
 	return c.generateFieldsExceptTags(fn, table, w, tagNoInsert)
 }
 
-func (c *TableApi) generateMutable(fn fieldConstructor, table *Table, w *AstData) (fields []DataCellFactory) {
+func (c *TableApi) generateMutable(fn fieldConstructor, table *Table, w *AstData) (fields []dataCellFactory) {
 	return c.generateFieldsExceptTags(fn, table, w, tagNoUpdate)
 }
 
-func (c *TableApi) generateMutableOrInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []DataCellFactory) {
+func (c *TableApi) generateMutableOrInsertable(fn fieldConstructor, table *Table, w *AstData) (fields []dataCellFactory) {
 	return c.generateFieldsExceptTags(fn, table, w, tagNoUpdate, tagNoInsert)
 }
 
@@ -298,7 +298,7 @@ func (c *Table) extractUniqueKeyColumns() (columns []ColumnRef) {
 	return c.extractColumnsByUniqueKeyType(ConstraintUniqueKey)
 }
 
-func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []DataCellFactory) {
+func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []dataCellFactory) {
 	var columns []ColumnRef
 	if c.Key != "" {
 		columns = table.extractColumnsByConstraintName(c.Key)
@@ -316,7 +316,7 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 			panic("cannot extract unique columns for " + c.Name)
 		}
 	}
-	fields = make([]DataCellFactory, 0, len(columns))
+	fields = make([]dataCellFactory, 0, len(columns))
 	for _, column := range columns {
 		field, isCustom := column.generateField(w, true) // is required be cause it identifier, previous value is `column.Value.Schema.Value.NotNull`
 		dcFactory := MakeDataCellFactoryType
@@ -325,7 +325,7 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 		}
 		fields = append(fields, dcFactory(
 			&field,
-			SourceSqlColumn{ColumnName: column.Value.Name},
+			sourceSqlColumn{ColumnName: column.Value.Name},
 			column.Value.Tags,
 			CompareEqual,
 		))
@@ -362,7 +362,7 @@ func checkOption(table *Table, operator SQLDataCompareOperator, option ApiFindOp
 	}
 }
 
-func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) DataCellFactory {
+func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) dataCellFactory {
 	column := table.Columns.getColumn(option.Column)
 	if option.Operator == CompareIsNull {
 		column = ColumnRef{
@@ -398,7 +398,7 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) Data
 	if option.Constant != "" {
 		return MakeDataCellFactoryConstant(
 			&field,
-			SourceSqlColumn{ColumnName: option.Column},
+			sourceSqlColumn{ColumnName: option.Column},
 			column.Value.Tags,
 			option.Operator,
 			option.Constant,
@@ -406,15 +406,15 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) Data
 	}
 	return dcFactory(
 		&field,
-		SourceSqlColumn{ColumnName: option.Column},
+		sourceSqlColumn{ColumnName: option.Column},
 		column.Value.Tags,
 		option.Operator,
 	)
 }
 
 // TODO split
-func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstData) (findBy []DataCellFactory) {
-	findBy = make([]DataCellFactory, 0, len(fo))
+func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstData) (findBy []dataCellFactory) {
+	findBy = make([]dataCellFactory, 0, len(fo))
 	for _, option := range fo {
 		operator := option.Operator
 		operator.Check()
@@ -425,7 +425,7 @@ func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstDat
 		}
 		if len(option.Or) > 0 {
 			// TODO move to new function
-			findByEx := make([]DataCellFactory, 0, len(fo))
+			findByEx := make([]dataCellFactory, 0, len(fo))
 			for _, f := range c.generateFindFields(table, option.Or, w) {
 				findByEx = append(findByEx, f)
 			}
@@ -465,7 +465,7 @@ func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstDat
 			}
 			findBy = append(findBy, dcFactory(
 				&fieldType,
-				SourceSqlSomeColumns{ColumnNames: unionColumns},
+				sourceSqlSomeColumns{ColumnNames: unionColumns},
 				sqlTags,
 				operator,
 			))
@@ -502,22 +502,22 @@ func tryMakeMaybeType(rawTypeName string) ast.Expr {
 	return nil
 }
 
-type fieldConstructor func(column ColumnRef, field ast.Field, isCustom bool) DataCellFactory
+type fieldConstructor func(column ColumnRef, field ast.Field, isCustom bool) dataCellFactory
 
-func makeMetaFieldAsIs(column ColumnRef, field ast.Field, isCustom bool) DataCellFactory {
+func makeMetaFieldAsIs(column ColumnRef, field ast.Field, isCustom bool) dataCellFactory {
 	dcFactory := MakeDataCellFactoryType
 	if isCustom {
 		dcFactory = MakeDataCellFactoryCustom
 	}
 	return dcFactory(
 		&field,
-		SourceSqlColumn{ColumnName: column.Value.Name},
+		sourceSqlColumn{ColumnName: column.Value.Name},
 		column.Value.Tags,
 		CompareEqual,
 	)
 }
 
-func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) DataCellFactory {
+func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) dataCellFactory {
 	var rawTypeName = fmt.Sprintf("%s", field.Type)
 	if star, ok := field.Type.(*ast.StarExpr); ok {
 		if t, ok := star.X.(*ast.Ident); ok {
@@ -538,7 +538,7 @@ func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) DataCellF
 				Tag:     field.Tag,
 				Comment: field.Comment,
 			},
-			SourceSqlColumn{ColumnName: column.Value.Name},
+			sourceSqlColumn{ColumnName: column.Value.Name},
 			column.Value.Tags,
 			CompareEqual,
 		)
@@ -549,14 +549,14 @@ func makeMetaFieldMaybeType(column ColumnRef, field ast.Field, _ bool) DataCellF
 		}
 		return MakeDataCellFactoryType(
 			&field,
-			SourceSqlColumn{ColumnName: column.Value.Name},
+			sourceSqlColumn{ColumnName: column.Value.Name},
 			column.Value.Tags,
 			CompareEqual,
 		)
 	}
 }
 
-func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []DataCellFactory) {
+func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []dataCellFactory) {
 	if c.Type.HasFindOption() {
 		if len(c.FindOptions) > 0 {
 			findBy = c.generateFindFields(table, c.FindOptions, w)
@@ -576,7 +576,7 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 			decorator = makeMetaFieldMaybeType
 		}
 		if len(c.ModifyColumns) > 0 {
-			mutable = make([]DataCellFactory, 0, len(c.ModifyColumns))
+			mutable = make([]dataCellFactory, 0, len(c.ModifyColumns))
 			for _, columnName := range c.ModifyColumns {
 				column := table.Columns.getColumn(columnName)
 				field, isCustom := column.generateField(w, column.Value.Schema.Value.NotNull && (column.Value.Schema.Value.Default == nil))
@@ -602,7 +602,7 @@ func (c *TableApi) generateOptions(table *Table, w *AstData) (findBy, mutable []
 }
 
 type (
-	apiBuilder func(*SchemaRef, string, string, []DataCellFactory, []DataCellFactory, []DataCellFactory) AstDataChain
+	apiBuilder func(*SchemaRef, string, string, []dataCellFactory, []dataCellFactory, []dataCellFactory) AstDataChain
 )
 
 func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
@@ -616,7 +616,7 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	return func(
 		schema *SchemaRef,
 		tableName, rowStructName string,
-		queryOptionFields, queryInputFields, queryOutputFields []DataCellFactory,
+		queryOptionFields, queryInputFields, queryOutputFields []dataCellFactory,
 	) AstDataChain {
 		return tplSet(
 			fmt.Sprintf("%s.%s", schema.Value.Name, tableName),
@@ -629,10 +629,10 @@ func (c *TableApi) getApiBuilder(functionName string) apiBuilder {
 	}
 }
 
-func registerStructType(typeName, comment string, fields []DataCellFactory, w *AstData) {
+func registerStructType(typeName, comment string, fields []dataCellFactory, w *AstData) {
 	var extractedFields = make([]*ast.Field, 0, len(fields))
 	for _, f := range fields {
-		extractedFields = append(extractedFields, f.GetField())
+		extractedFields = append(extractedFields, f.getField())
 	}
 	if err := mergeCodeBase(w, []AstDataChain{
 		{
@@ -653,8 +653,8 @@ func registerStructType(typeName, comment string, fields []DataCellFactory, w *A
 	}
 }
 
-func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (apiResultStructName string, additionFields []DataCellFactory) {
-	additionFields = make([]DataCellFactory, 0, len(c.Extended)+1)
+func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (apiResultStructName string, additionFields []dataCellFactory) {
+	additionFields = make([]dataCellFactory, 0, len(c.Extended)+1)
 	apiResultStructName = makeExportedName(c.Name + "ExRow")
 	var isCustom = false
 	for _, column := range c.Extended {
@@ -671,7 +671,7 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 		})
 		additionFields = append(additionFields, MakeDataCellFactoryType(
 			&field,
-			SourceSqlExpression{Expression: column.SQL},
+			sourceSqlExpression{Expression: column.SQL},
 			nil,
 			CompareEqual,
 		))
@@ -687,7 +687,7 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 		},
 		nil, nil, CompareEqual,
 	)
-	registerStructType(apiResultStructName, c.Name, append([]DataCellFactory{mainStruct}, additionFields...), w)
+	registerStructType(apiResultStructName, c.Name, append([]dataCellFactory{mainStruct}, additionFields...), w)
 	return
 }
 
@@ -708,7 +708,7 @@ func (c *SchemaRef) generateGO(schemaName string, w *AstData) {
 		registerStructType(tableRowStructName, table.Description, resultFields, w)
 		if len(table.Api) > 0 {
 			for i, api := range table.Api {
-				var additionFields []DataCellFactory
+				var additionFields []dataCellFactory
 				apiName := utils.EvalTemplateParameters(
 					api.Name,
 					map[string]string{

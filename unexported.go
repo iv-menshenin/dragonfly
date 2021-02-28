@@ -10,6 +10,16 @@ import (
 	"strings"
 )
 
+var (
+	registeredGenerators = map[string]builders.CallFunctionDescriber{
+		"now": builders.TimeNowFn,
+	}
+)
+
+func addNewGenerator(name string, descr builders.CallFunctionDescriber) {
+	registeredGenerators[name] = descr
+}
+
 const (
 	sqlSingletonViolationErrorName = "SingletonViolation"
 )
@@ -390,40 +400,42 @@ func makeValuePicker(tags []string, def ast.Expr) (ast.Expr, bool) {
 	return def, false
 }
 
-func processValueWrapper(
-	colName string,
-	field ast.Expr,
-	options builderOptions,
+// makeInputValueProcessor generates handler code for one cell of incoming data (one field)
+//
+//   Example:
+//   // makeInputValueProcessor("type = $%d", Selector{values, Type}, "args", "fields")
+//
+//   args = append(args, values.Type)
+//   fields = append(fields, fmt.Sprintf("type = $%d", len(args)))
+//
+// the `fields` variable are further used to build a sql query,
+//
+// and the `args` variable is used as a tuple of values for placeholders
+func makeInputValueProcessor(
+	sqlExpr string,
+	goExpr ast.Expr,
+	valueVarName, columnVarName string,
 ) []ast.Stmt {
-	stmts := make([]ast.Stmt, 0, 3)
-	if options.variableForColumnNames != nil {
-		stmts = append(stmts, builders.Assign(
-			builders.MakeVarNames(options.variableForColumnNames.String()),
-			builders.Assignment,
-			builders.Call(builders.AppendFn, ast.NewIdent(options.variableForColumnNames.String()), builders.StringConstant(colName).Expr()),
-		))
-	}
-	return append(
-		stmts,
+	return []ast.Stmt{
 		builders.Assign(
-			builders.MakeVarNames(options.variableForColumnValues.String()),
+			builders.MakeVarNames(valueVarName),
 			builders.Assignment,
-			builders.Call(builders.AppendFn, ast.NewIdent(options.variableForColumnValues.String()), field),
+			builders.Call(builders.AppendFn, ast.NewIdent(valueVarName), goExpr),
 		),
 		builders.Assign(
-			builders.MakeVarNames(options.variableForColumnExpr.String()),
+			builders.MakeVarNames(columnVarName),
 			builders.Assignment,
 			builders.Call(
 				builders.AppendFn,
-				ast.NewIdent(options.variableForColumnExpr.String()),
+				ast.NewIdent(columnVarName),
 				builders.Call(
 					builders.SprintfFn,
-					builders.StringConstant(fmt.Sprintf(options.appendValueFormat, colName)).Expr(),
-					builders.Call(builders.LengthFn, ast.NewIdent(options.variableForColumnValues.String())),
+					builders.StringConstant(sqlExpr).Expr(),
+					builders.Call(builders.LengthFn, ast.NewIdent(columnVarName)),
 				),
 			),
 		),
-	)
+	}
 }
 
 func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {

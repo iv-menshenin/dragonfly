@@ -16,16 +16,16 @@ const (
 )
 
 func exprToString(expr ast.Expr) string {
-	if i, ok := expr.(*ast.StarExpr); ok {
-		return exprToString(i.X)
+	switch v := expr.(type) {
+	case *ast.StarExpr:
+		return exprToString(v.X)
+	case *ast.Ident:
+		return v.Name
+	case *ast.SelectorExpr:
+		return exprToString(v.X) + "." + exprToString(v.Sel)
+	default:
+		panic("unimplemented")
 	}
-	if i, ok := expr.(*ast.Ident); ok {
-		return i.Name
-	}
-	if i, ok := expr.(*ast.SelectorExpr); ok {
-		return exprToString(i.X) + "." + exprToString(i.Sel)
-	}
-	return ""
 }
 
 // TODO other place?
@@ -191,7 +191,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []DataCellFactory,
+		optionFields, _, rowFields []dataCellFactory,
 	) AstDataChain {
 		var (
 			fieldRefs, columnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
@@ -293,7 +293,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, _, rowFields []DataCellFactory,
+		optionFields, _, rowFields []dataCellFactory,
 	) AstDataChain {
 		var (
 			fieldRefs, columnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
@@ -395,7 +395,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	}
 	return func(
 		fullTableName, functionName, rowStructName string,
-		optionFields, mutableFields, rowFields []DataCellFactory,
+		optionFields, mutableFields, rowFields []dataCellFactory,
 	) AstDataChain {
 		var (
 			fieldRefs, outColumnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
@@ -481,7 +481,7 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 
 func insertOneBuilder(
 	fullTableName, functionName, rowStructName string,
-	_, mutableFields, rowFields []DataCellFactory,
+	_, mutableFields, rowFields []dataCellFactory,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"
@@ -557,7 +557,7 @@ func insertOneBuilder(
 
 func upsertBuilder(
 	fullTableName, functionName, rowStructName string,
-	optionFields, mutableFields, rowFields []DataCellFactory,
+	optionFields, mutableFields, rowFields []dataCellFactory,
 ) AstDataChain {
 	const (
 		sqlTextName = "sqlText"

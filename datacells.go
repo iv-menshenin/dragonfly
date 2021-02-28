@@ -9,16 +9,6 @@ import (
 	"strings"
 )
 
-var (
-	registeredGenerators = map[string]builders.CallFunctionDescriber{
-		"now": builders.TimeNowFn,
-	}
-)
-
-func AddNewGenerator(name string, descr builders.CallFunctionDescriber) {
-	registeredGenerators[name] = descr
-}
-
 func RegisterSqlFieldEncryptFunction(encryptFn func(valueForEncrypt ast.Expr) *ast.CallExpr) {
 	if makeEncryptPasswordCallCustom == nil {
 		makeEncryptPasswordCallCustom = encryptFn
@@ -51,23 +41,23 @@ type (
 		variableForArguments variableEngine
 	}
 
-	SourceSql interface {
+	sourceSql interface {
 		sqlExpr() string
 	}
-	SourceSqlColumn struct {
+	sourceSqlColumn struct {
 		ColumnName string
 	}
-	SourceSqlExpression struct {
+	sourceSqlExpression struct {
 		Expression string
 	}
-	SourceSqlSomeColumns struct {
+	sourceSqlSomeColumns struct {
 		ColumnNames []string
 	}
-	DataCellFactory interface {
-		GetField() *ast.Field
-		SqlExpr() string
-		IsTagExists(tag string) bool
-		// GenerateFindArgumentCode is used to generate intermediate code that processes the value of one of the filter fields for an SQL query; as a result, it returns a piece of code that must perform the actions:
+	dataCellFactory interface {
+		getField() *ast.Field
+		sqlExpr() string
+		isTagExists(tag string) bool
+		// generateFindArgumentCode is used to generate intermediate code that processes the value of one of the filter fields for an SQL query; as a result, it returns a piece of code that must perform the actions:
 		//  1.checking for null
 		//  2.setting additional segments of the where clause in the variable
 		//  3.adding values for request placeholders to the array
@@ -75,41 +65,27 @@ type (
 		// boolean value (the second value of the result) indicates whether it is necessary to create a field for the structure (true) or this value will be generated automatically (false)
 		//
 		// Example:
-		//  // GenerateFindArgumentCode(filterOptionName, fieldName, option)
-		//  // generates following code:
+		//  // generateFindArgumentCode(filterOptionName, fieldName, option)
 		//
-		//  type (
-		//	  RefsServiceTypesUpdateOption struct {
-		//      Code *string `json:"-" sql:"code,identifier,noUpdate"`
-		//	  }
-		//	  RefsServiceTypesUpdateValues struct {
-		//      Name  MaybeString `json:"-" sql:"name,required"`
-		//      Short MaybeString `json:"-" sql:"short,required"`
-		//	  }
-		//  )
-		//
-		//  func RefsServiceTypesUpdate(
-		//    ctx context.Context,
-		//    values RefsServiceTypesUpdateValues,
-		//    filter RefsServiceTypesUpdateOption, // filterOptionName = 'filter'
-		//  ) (
-		//    result RefsServiceTypesRow,
-		//    err error,
-		//  ) {
-		//    ...
-		//    if filter.Code != nil { // fieldName = 'Code'
-		//      ...
-		GenerateFindArgumentCode(string, string, builderOptions) ([]ast.Stmt, bool)
+		//  if find.Username != nil {
+		//    // filterOptionName = 'filter', fieldName = 'Username'
+		//    args = append(args, strings.ToLower(find.Username))
+		//    filters = append(filters, fmt.Sprintf("%s like '%%'||%s||'%%'", "lower(username)", "$"+strconv.Itoa(len(args))))
+		//  }
+		generateFindArgumentCode(string, string, builderOptions) ([]ast.Stmt, bool)
 
-		// GenerateInputArgumentCode is used to generate code that implements the process of processing data inserted into the database of a new record
+		// generateInputArgumentCode is used to generate code that implements the process of processing data inserted into the database of a new record
 		//
 		// Example:
-		//  // GenerateInputArgumentCode(funcInputOptionName, options, isMaybe, isCustom)
-		GenerateInputArgumentCode(string, builderOptions, bool, bool) ([]ast.Stmt, bool)
+		//  // generateInputArgumentCode(funcInputOptionName, options, isMaybe, isCustom)
+		//
+		// 	args = append(args, record.Ogrn) // funcInputOptionName = 'record'
+		//	values = append(values, fmt.Sprintf("/* ogrn */ $%d", len(args)))
+		generateInputArgumentCode(string, builderOptions, bool, bool) ([]ast.Stmt, bool)
 	}
 	dataCellField struct {
 		field      *ast.Field
-		source     SourceSql // sql mirror for field
+		source     sourceSql // sql mirror for field
 		tags       []string
 		comparator SQLDataCompareOperator
 	}
@@ -123,15 +99,15 @@ type (
 		dataCell dataCellField
 		constant string
 	}
-	groupedDataCells []DataCellFactory
+	groupedDataCells []dataCellFactory
 )
 
 func MakeDataCellFactoryType(
 	field *ast.Field,
-	source SourceSql,
+	source sourceSql,
 	tags []string,
 	comparator SQLDataCompareOperator,
-) DataCellFactory {
+) dataCellFactory {
 	// tagCaseInsensitive
 	return dataCellField{
 		field:      field,
@@ -143,11 +119,11 @@ func MakeDataCellFactoryType(
 
 func MakeDataCellFactoryConstant(
 	field *ast.Field,
-	source SourceSql,
+	source sourceSql,
 	tags []string,
 	comparator SQLDataCompareOperator,
 	constant string,
-) DataCellFactory {
+) dataCellFactory {
 	return dataCellFieldConstant{
 		dataCell: dataCellField{
 			field:      field,
@@ -161,10 +137,10 @@ func MakeDataCellFactoryConstant(
 
 func MakeDataCellFactoryCustom(
 	field *ast.Field,
-	source SourceSql,
+	source sourceSql,
 	tags []string,
 	comparator SQLDataCompareOperator,
-) DataCellFactory {
+) dataCellFactory {
 	return dataCellFieldCustomType{
 		dataCell: dataCellField{
 			field:      field,
@@ -177,10 +153,10 @@ func MakeDataCellFactoryCustom(
 
 func MakeDataCellFactoryMaybe(
 	field *ast.Field,
-	source SourceSql,
+	source sourceSql,
 	tags []string,
 	comparator SQLDataCompareOperator,
-) DataCellFactory {
+) dataCellFactory {
 	return dataCellFieldMaybeType{
 		dataCell: dataCellField{
 			field:      field,
@@ -191,82 +167,82 @@ func MakeDataCellFactoryMaybe(
 	}
 }
 
-func MakeDataCellFactoryGrouped(dataCells []DataCellFactory) DataCellFactory {
+func MakeDataCellFactoryGrouped(dataCells []dataCellFactory) dataCellFactory {
 	return groupedDataCells(dataCells)
 }
 
-func (f dataCellField) GetField() *ast.Field {
+func (f dataCellField) getField() *ast.Field {
 	return f.field
 }
 
-func (f dataCellFieldCustomType) GetField() *ast.Field {
-	return f.dataCell.GetField()
+func (f dataCellFieldCustomType) getField() *ast.Field {
+	return f.dataCell.getField()
 }
 
-func (f dataCellFieldMaybeType) GetField() *ast.Field {
-	return f.dataCell.GetField()
+func (f dataCellFieldMaybeType) getField() *ast.Field {
+	return f.dataCell.getField()
 }
 
-func (f dataCellFieldConstant) GetField() *ast.Field {
-	return f.dataCell.GetField()
+func (f dataCellFieldConstant) getField() *ast.Field {
+	return f.dataCell.getField()
 }
 
-func (f groupedDataCells) GetField() *ast.Field {
+func (f groupedDataCells) getField() *ast.Field {
 	panic("unimplemented")
 	return nil
 }
 
-func (f dataCellField) SqlExpr() string {
+func (f dataCellField) sqlExpr() string {
 	return f.source.sqlExpr()
 }
 
-func (f dataCellFieldCustomType) SqlExpr() string {
-	return f.dataCell.SqlExpr()
+func (f dataCellFieldCustomType) sqlExpr() string {
+	return f.dataCell.sqlExpr()
 }
 
-func (f dataCellFieldMaybeType) SqlExpr() string {
-	return f.dataCell.SqlExpr()
+func (f dataCellFieldMaybeType) sqlExpr() string {
+	return f.dataCell.sqlExpr()
 }
 
-func (f dataCellFieldConstant) SqlExpr() string {
-	return f.dataCell.SqlExpr()
+func (f dataCellFieldConstant) sqlExpr() string {
+	return f.dataCell.sqlExpr()
 }
 
-func (f groupedDataCells) SqlExpr() string {
+func (f groupedDataCells) sqlExpr() string {
 	panic("unimplemented")
 	return "null"
 }
 
-func (f dataCellField) IsTagExists(tag string) bool {
+func (f dataCellField) isTagExists(tag string) bool {
 	return utils.ArrayContains(f.tags, tag)
 }
 
-func (f dataCellFieldCustomType) IsTagExists(tag string) bool {
-	return f.dataCell.IsTagExists(tag)
+func (f dataCellFieldCustomType) isTagExists(tag string) bool {
+	return f.dataCell.isTagExists(tag)
 }
 
-func (f dataCellFieldMaybeType) IsTagExists(tag string) bool {
-	return f.dataCell.IsTagExists(tag)
+func (f dataCellFieldMaybeType) isTagExists(tag string) bool {
+	return f.dataCell.isTagExists(tag)
 }
 
-func (f dataCellFieldConstant) IsTagExists(tag string) bool {
-	return f.dataCell.IsTagExists(tag)
+func (f dataCellFieldConstant) isTagExists(tag string) bool {
+	return f.dataCell.isTagExists(tag)
 }
 
-func (f groupedDataCells) IsTagExists(tag string) bool {
+func (f groupedDataCells) isTagExists(tag string) bool {
 	panic("unimplemented")
 	return false
 }
 
-func (s SourceSqlColumn) sqlExpr() string {
+func (s sourceSqlColumn) sqlExpr() string {
 	return s.ColumnName
 }
 
-func (s SourceSqlExpression) sqlExpr() string {
+func (s sourceSqlExpression) sqlExpr() string {
 	return s.Expression
 }
 
-func (s SourceSqlSomeColumns) sqlExpr() string {
+func (s sourceSqlSomeColumns) sqlExpr() string {
 	return strings.Join(s.ColumnNames, ", ")
 }
 
@@ -473,7 +449,7 @@ func (c SQLDataCompareOperator) getBuilder() iOperator {
 // references for the output structure. Column and field positions correspond to each other
 func ExtractDestinationFieldRefsFromStruct(
 	rowVariableName string,
-	rowStructureFields []DataCellFactory,
+	rowStructureFields []dataCellFactory,
 ) (
 	destinationStructureFields []ast.Expr,
 	sourceTableColumnNames []string,
@@ -481,9 +457,9 @@ func ExtractDestinationFieldRefsFromStruct(
 	destinationStructureFields = make([]ast.Expr, 0, len(rowStructureFields))
 	sourceTableColumnNames = make([]string, 0, len(rowStructureFields))
 	for _, field := range rowStructureFields {
-		for _, fName := range field.GetField().Names {
+		for _, fName := range field.getField().Names {
 			destinationStructureFields = append(destinationStructureFields, builders.Ref(builders.SimpleSelector(rowVariableName, fName.Name)))
-			sourceTableColumnNames = append(sourceTableColumnNames, field.SqlExpr())
+			sourceTableColumnNames = append(sourceTableColumnNames, field.sqlExpr())
 		}
 	}
 	return
@@ -556,7 +532,7 @@ func makeFindProcessorForUnion(
 	field dataCellField,
 	options builderOptions,
 ) []ast.Stmt {
-	caseInsensitive := field.IsTagExists(tagCaseInsensitive)
+	caseInsensitive := field.isTagExists(tagCaseInsensitive)
 	if field.comparator.IsMult() {
 		panic(fmt.Sprintf("joins cannot be used in multiple expressions, for example '%s' in the expression '%s'", fieldName, field.comparator))
 	}
@@ -572,16 +548,16 @@ func makeFindProcessorForUnion(
 	}
 }
 
-func (f dataCellField) GenerateFindArgumentCode(
+func (f dataCellField) generateFindArgumentCode(
 	funcFilterOptionName, fieldName string,
 	options builderOptions,
 ) (stmt []ast.Stmt, addField bool) {
 	addField = true
-	caseInsensitive := f.IsTagExists(tagCaseInsensitive)
+	caseInsensitive := f.isTagExists(tagCaseInsensitive)
 	if f.comparator.IsMult() {
 		stmt = f.comparator.getBuilder().makeArrayQueryOption(funcFilterOptionName, fieldName, f.source.sqlExpr(), caseInsensitive, options)
 	}
-	if union, ok := f.source.(SourceSqlSomeColumns); ok {
+	if union, ok := f.source.(sourceSqlSomeColumns); ok {
 		makeFindProcessorForUnion(funcFilterOptionName, fieldName, union.ColumnNames, f, options)
 	}
 	if _, ok := f.field.Type.(*ast.StarExpr); ok {
@@ -597,11 +573,11 @@ func (f dataCellField) GenerateFindArgumentCode(
 	return
 }
 
-func (f dataCellFieldConstant) GenerateFindArgumentCode(
+func (f dataCellFieldConstant) generateFindArgumentCode(
 	funcFilterOptionName, _ string,
 	options builderOptions,
 ) (stmt []ast.Stmt, addField bool) {
-	caseInsensitive := f.IsTagExists(tagCaseInsensitive)
+	caseInsensitive := f.isTagExists(tagCaseInsensitive)
 	if f.dataCell.comparator.IsMult() {
 		panic("constants cannot be used in multiple expressions")
 	}
@@ -631,21 +607,21 @@ func (f dataCellFieldConstant) GenerateFindArgumentCode(
 	return
 }
 
-func (f dataCellFieldCustomType) GenerateFindArgumentCode(
+func (f dataCellFieldCustomType) generateFindArgumentCode(
 	funcFilterOptionName, fieldName string,
 	options builderOptions,
 ) (stmt []ast.Stmt, addField bool) {
-	return f.dataCell.GenerateFindArgumentCode(funcFilterOptionName, fieldName, options)
+	return f.dataCell.generateFindArgumentCode(funcFilterOptionName, fieldName, options)
 }
 
-func (f dataCellFieldMaybeType) GenerateFindArgumentCode(
+func (f dataCellFieldMaybeType) generateFindArgumentCode(
 	funcFilterOptionName, fieldName string,
 	options builderOptions,
 ) (stmt []ast.Stmt, addField bool) {
-	return f.dataCell.GenerateFindArgumentCode(funcFilterOptionName, fieldName, options)
+	return f.dataCell.generateFindArgumentCode(funcFilterOptionName, fieldName, options)
 }
 
-func (f groupedDataCells) GenerateFindArgumentCode(
+func (f groupedDataCells) generateFindArgumentCode(
 	funcFilterOptionName, fieldName string,
 	options builderOptions,
 ) (stmt []ast.Stmt, addField bool) {
@@ -653,7 +629,7 @@ func (f groupedDataCells) GenerateFindArgumentCode(
 }
 
 func buildFindArgumentsProcessor(
-	dataCell DataCellFactory,
+	dataCell dataCellFactory,
 	funcFilterOptionName string,
 	options builderOptions,
 ) (
@@ -662,14 +638,14 @@ func buildFindArgumentsProcessor(
 ) {
 	functionBody = make([]ast.Stmt, 0, 10)
 	optionsFieldList = make([]*ast.Field, 0, 5)
-	if len(dataCell.GetField().Names) != 1 {
+	if len(dataCell.getField().Names) != 1 {
 		panic("not supported names count")
 	}
-	var fieldName = dataCell.GetField().Names[0].Name
-	stmts, addField := dataCell.GenerateFindArgumentCode(funcFilterOptionName, fieldName, options)
+	var fieldName = dataCell.getField().Names[0].Name
+	stmts, addField := dataCell.generateFindArgumentCode(funcFilterOptionName, fieldName, options)
 	functionBody = append(functionBody, stmts...)
 	if addField {
-		optionsFieldList = append(optionsFieldList, dataCell.GetField())
+		optionsFieldList = append(optionsFieldList, dataCell.getField())
 	}
 	return
 }
@@ -681,7 +657,7 @@ func buildFindArgumentsProcessor(
 func BuildFindArgumentsProcessor(
 	funcFilterOptionName string,
 	funcFilterOptionTypeName string,
-	optionFields []DataCellFactory,
+	optionFields []dataCellFactory,
 	options builderOptions,
 ) (
 	body []ast.Stmt,
@@ -699,8 +675,8 @@ func BuildFindArgumentsProcessor(
 			// TODO move out
 			var newFieldName = "Sub"
 			for _, mf := range f {
-				if strings.Index(newFieldName, mf.GetField().Names[0].Name) < 0 {
-					newFieldName += mf.GetField().Names[0].Name
+				if strings.Index(newFieldName, mf.getField().Names[0].Name) < 0 {
+					newFieldName += mf.getField().Names[0].Name
 				}
 			}
 			var (
@@ -756,7 +732,7 @@ func BuildFindArgumentsProcessor(
 		}
 }
 
-func (f dataCellField) GenerateInputArgumentCode(
+func (f dataCellField) generateInputArgumentCode(
 	funcInputOptionName string,
 	options builderOptions,
 	isMaybe, isCustom bool, // TODO not clear logic
@@ -812,38 +788,51 @@ func (f dataCellField) GenerateInputArgumentCode(
 		}
 		valueExpr = makeEncryptPasswordCall(valueExpr)
 	}
-	stmt = wrapFunc(processValueWrapper(
-		colName.sqlExpr(), valueExpr, options,
-	))
+	stmt = make([]ast.Stmt, 0, 10)
+	comment := []ast.Stmt{&ast.ExprStmt{X: &ast.BasicLit{Value: fmt.Sprintf("/* process %s */", f.getField().Names)}}}
+	if options.variableForColumnNames != nil {
+		stmt = append(stmt, builders.Assign(
+			builders.MakeVarNames(options.variableForColumnNames.String()),
+			builders.Assignment,
+			builders.Call(builders.AppendFn, ast.NewIdent(options.variableForColumnNames.String()), builders.StringConstant(colName.sqlExpr()).Expr()),
+		))
+	}
+	stmt = append(stmt, makeInputValueProcessor(
+		fmt.Sprintf(options.appendValueFormat, colName.sqlExpr()),
+		valueExpr,
+		options.variableForColumnValues.String(),
+		options.variableForColumnExpr.String(),
+	)...)
+	stmt = append(stmt, append(comment, wrapFunc(stmt)...)...)
 	return
 }
 
-func (f dataCellFieldConstant) GenerateInputArgumentCode(
+func (f dataCellFieldConstant) generateInputArgumentCode(
 	funcInputOptionName string,
 	options builderOptions,
 	isMaybe, isCustom bool,
 ) (stmt []ast.Stmt, omitted bool) {
 	// TODO what we must to do?
-	return f.dataCell.GenerateInputArgumentCode(funcInputOptionName, options, isMaybe, isCustom)
+	return f.dataCell.generateInputArgumentCode(funcInputOptionName, options, isMaybe, isCustom)
 }
 
-func (f dataCellFieldCustomType) GenerateInputArgumentCode(
+func (f dataCellFieldCustomType) generateInputArgumentCode(
 	funcInputOptionName string,
 	options builderOptions,
 	isMaybe, isCustom bool,
 ) (stmt []ast.Stmt, omitted bool) {
-	return f.dataCell.GenerateInputArgumentCode(funcInputOptionName, options, isMaybe, true)
+	return f.dataCell.generateInputArgumentCode(funcInputOptionName, options, isMaybe, true)
 }
 
-func (f dataCellFieldMaybeType) GenerateInputArgumentCode(
+func (f dataCellFieldMaybeType) generateInputArgumentCode(
 	funcInputOptionName string,
 	options builderOptions,
 	isMaybe, isCustom bool,
 ) (stmt []ast.Stmt, omitted bool) {
-	return f.dataCell.GenerateInputArgumentCode(funcInputOptionName, options, true, isCustom)
+	return f.dataCell.generateInputArgumentCode(funcInputOptionName, options, true, isCustom)
 }
 
-func (f groupedDataCells) GenerateInputArgumentCode(
+func (f groupedDataCells) generateInputArgumentCode(
 	funcInputOptionName string,
 	options builderOptions,
 	isMaybe, isCustom bool,
@@ -854,7 +843,7 @@ func (f groupedDataCells) GenerateInputArgumentCode(
 func BuildInputValuesProcessor(
 	funcInputOptionName string,
 	funcInputOptionTypeName string,
-	optionFields []DataCellFactory,
+	optionFields []dataCellFactory,
 	options builderOptions,
 ) (
 	functionBody []ast.Stmt,
@@ -864,9 +853,9 @@ func BuildInputValuesProcessor(
 	var optionStructFields = make([]*ast.Field, 0, len(optionFields))
 	functionBody = make([]ast.Stmt, 0, len(optionFields)*3)
 	for _, field := range optionFields {
-		stmt, omitted := field.GenerateInputArgumentCode(funcInputOptionName, options, false, false)
+		stmt, omitted := field.generateInputArgumentCode(funcInputOptionName, options, false, false)
 		if !omitted {
-			optionStructFields = append(optionStructFields, field.GetField())
+			optionStructFields = append(optionStructFields, field.getField())
 		}
 		functionBody = append(functionBody, stmt...)
 	}

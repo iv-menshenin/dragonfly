@@ -20,7 +20,7 @@ type (
 	}
 	ApiFuncBuilder func(
 		fullTableName, functionName, rowStructName string,
-		optionsFields, mutableFields, resultFields []DataCellFactory,
+		optionsFields, mutableFields, resultFields []dataCellFactory,
 	) AstDataChain
 )
 

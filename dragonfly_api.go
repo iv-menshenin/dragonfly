@@ -225,7 +225,7 @@ func RegisterFieldValueGenerator(alias, funcName string, minimumArgumentsCount i
 		MinimumNumberOfArguments:    minimumArgumentsCount,
 		ExtensibleNumberOfArguments: isExtensible,
 	}
-	AddNewGenerator(alias, newFunction)
+	addNewGenerator(alias, newFunction)
 }
 
 func (c *Diff) Print(w io.Writer) {
