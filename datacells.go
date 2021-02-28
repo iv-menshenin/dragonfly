@@ -368,8 +368,8 @@ type (
 )
 
 var (
-	WrapperFindOne = scanBlockForFindOnce
-	WrapperFindAll = scanBlockForFindAll
+	WrapperFindOne = wrapFetchOnceForScanner
+	WrapperFindAll = wrapIteratorForScanner
 )
 
 const (
@@ -789,7 +789,7 @@ func (f dataCellField) generateInputArgumentCode(
 		valueExpr = makeEncryptPasswordCall(valueExpr)
 	}
 	stmt = make([]ast.Stmt, 0, 10)
-	comment := []ast.Stmt{&ast.ExprStmt{X: &ast.BasicLit{Value: fmt.Sprintf("/* process %s */", f.getField().Names)}}}
+	comment := []ast.Stmt{&ast.ExprStmt{X: &ast.BasicLit{Value: fmt.Sprintf("/* process the input data of %s */", f.getField().Names)}}}
 	if options.variableForColumnNames != nil {
 		stmt = append(stmt, builders.Assign(
 			builders.MakeVarNames(options.variableForColumnNames.String()),
@@ -803,7 +803,7 @@ func (f dataCellField) generateInputArgumentCode(
 		options.variableForColumnValues.String(),
 		options.variableForColumnExpr.String(),
 	)...)
-	stmt = append(stmt, append(comment, wrapFunc(stmt)...)...)
+	stmt = append(comment, wrapFunc(stmt)...)
 	return
 }
 

@@ -5,7 +5,6 @@ import (
 	"github.com/iv-menshenin/go-ast"
 	"go/ast"
 	"go/token"
-	"reflect"
 	"strings"
 )
 
@@ -14,38 +13,6 @@ const (
 	getQueryExecPointFnName = "getQueryExecPoint"
 	queryExecInterfaceName  = "queryExecInterface"
 )
-
-func exprToString(expr ast.Expr) string {
-	switch v := expr.(type) {
-	case *ast.StarExpr:
-		return exprToString(v.X)
-	case *ast.Ident:
-		return v.Name
-	case *ast.SelectorExpr:
-		return exprToString(v.X) + "." + exprToString(v.Sel)
-	default:
-		panic("unimplemented")
-	}
-}
-
-// TODO other place?
-func funcDeclsToMap(functions []*ast.FuncDecl) map[string]*ast.FuncDecl {
-	result := make(map[string]*ast.FuncDecl, len(functions))
-	for i, f := range functions {
-		funcName := f.Name.Name
-		if f.Recv != nil && len(f.Recv.List) > 0 {
-			funcName = fmt.Sprintf("%s.%s", exprToString(f.Recv.List[0].Type), funcName)
-		}
-		if r, ok := result[funcName]; ok {
-			if reflect.DeepEqual(r, f) {
-				continue
-			}
-			panic(fmt.Sprintf("name `%s` repeated", funcName))
-		}
-		result[funcName] = functions[i]
-	}
-	return result
-}
 
 type (
 	findVariant int

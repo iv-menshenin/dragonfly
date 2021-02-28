@@ -5,6 +5,7 @@ import (
 	builders "github.com/iv-menshenin/go-ast"
 	"go/ast"
 	"go/token"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -182,6 +183,7 @@ func (op opRegular) makeScalarQueryOption(
 		optionExpr = builders.Call(builders.ToLowerFn, optionExpr)
 	}
 	return []ast.Stmt{
+		// &ast.ExprStmt{X: &ast.BasicLit{Value: "/* opRegular:makeScalarQueryOption */"}},
 		builders.Assign(
 			builders.MakeVarNames(options.variableForColumnValues.String()),
 			builders.Assignment,
@@ -302,6 +304,7 @@ func (op opInline) makeScalarQueryOption(
 		optionExpr = builders.Star(optionExpr)
 	}
 	return []ast.Stmt{
+		// &ast.ExprStmt{X: &ast.BasicLit{Value: "/* opInline:makeScalarQueryOption */"}},
 		builders.Assign(
 			builders.MakeVarNames(options.variableForColumnExpr.String()),
 			builders.Assignment,
@@ -325,6 +328,7 @@ func (op *opConstant) makeScalarQueryOption(
 	options builderOptions,
 ) []ast.Stmt {
 	return []ast.Stmt{
+		// &ast.ExprStmt{X: &ast.BasicLit{Value: "/* opConstant:makeScalarQueryOption */"}},
 		builders.Assign(
 			builders.MakeVarNames(options.variableForColumnExpr.String()),
 			builders.Assignment,
@@ -342,6 +346,10 @@ func (op *opConstant) makeScalarQueryOption(
 	}
 }
 
+// doFuncPicker searches for a suitable function by name and implements its calling code,
+// taking into account the passed arguments
+//
+// returns nil if the function is not found
 func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 	switch funcName {
 	case tagGenerate:
@@ -355,6 +363,7 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			}
 			return builders.Call(userDefinedFunction, args...)
 		}
+		// TODO move it to registeredGenerators
 		var funcNames = map[string]string{
 			generateFunctionHex:    "randomHex",
 			generateFunctionAlpha:  "randomAlpha",
@@ -380,24 +389,6 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 		}
 	}
 	return nil
-}
-
-var (
-	fncTemplate = regexp.MustCompile(`^(\w+)\(([^)]*)\)$`)
-)
-
-func makeValuePicker(tags []string, def ast.Expr) (ast.Expr, bool) {
-	for _, tag := range tags {
-		sub := fncTemplate.FindAllStringSubmatch(tag, -1)
-		if len(sub) > 0 {
-			funcName := sub[0][1]
-			funcArgs := strings.Split(sub[0][2], ";")
-			if expr := doFuncPicker(funcName, funcArgs...); expr != nil {
-				return expr, true
-			}
-		}
-	}
-	return def, false
 }
 
 // makeInputValueProcessor generates handler code for one cell of incoming data (one field)
@@ -438,18 +429,32 @@ func makeInputValueProcessor(
 	}
 }
 
-func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
+// wrapFetchOnceForScanner generates a code to traverse once record received from the database
+//  Example:
+//  if rows.Next() {
+//    if err = rows.Err(); err != nil {
+//      return
+//    }
+//    // *** starts printing `stmts` from arguments
+//    var row BaseAccountServiceRow
+//    if err = rows.Scan(&row.Id, &row.AccountId, &row.ServiceId); err != nil {
+//      return
+//    }
+//    // *** ends printing `stmts` from arguments
+//    if rows.Next() {
+//      return row, SingletonViolation
+//    } else {
+//      return row, nil
+//    }
+//  }
+// thus wraps the stmts argument, which is useful code
+func wrapFetchOnceForScanner(stmts ...ast.Stmt) ast.Stmt {
 	return builders.If(
 		builders.Call(builders.RowsNextFn),
 		append(
 			append(
 				[]ast.Stmt{
-					builders.MakeCallWithErrChecking(
-						"",
-						builders.Call(
-							builders.RowsErrFn,
-						),
-					),
+					builders.MakeCallWithErrChecking("", builders.Call(builders.RowsErrFn)),
 				},
 				stmts...,
 			),
@@ -470,23 +475,35 @@ func scanBlockForFindOnce(stmts ...ast.Stmt) ast.Stmt {
 	)
 }
 
-func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
+// wrapIteratorForScanner generates a code to traverse all records received from the database
+//  Example:
+//  for rows.Next() {
+//    if err = rows.Err(); err != nil {
+//      return
+//    }
+//    // *** starts printing `stmts` from arguments
+//    var row BaseAccountServiceRow
+//    if err = rows.Scan(&row.Id, &row.AccountId, &row.ServiceId); err != nil {
+//      return
+//    }
+//    // *** ends printing `stmts` from arguments
+//    result = append(result, row)
+//  }
+// thus wraps the stmts argument, which is useful code
+func wrapIteratorForScanner(stmts ...ast.Stmt) ast.Stmt {
 	return &ast.ForStmt{
 		Cond: builders.Call(builders.RowsNextFn),
 		Body: builders.Block(
 			append(
 				append(
 					[]ast.Stmt{
-						builders.MakeCallWithErrChecking(
-							"",
-							builders.Call(
-								builders.RowsErrFn,
-							),
-						),
+						// if err = rows.Err(); err != nil {
+						builders.MakeCallWithErrChecking("", builders.Call(builders.RowsErrFn)),
 					},
 					stmts...,
 				),
 				builders.Assign(
+					// result = append(result, row)
 					builders.MakeVarNames("result"),
 					builders.Assignment,
 					builders.Call(
@@ -500,23 +517,26 @@ func scanBlockForFindAll(stmts ...ast.Stmt) ast.Stmt {
 	}
 }
 
-func arrayFind(a []string, s string) int {
-	for i, elem := range a {
-		if elem == s {
-			return i
-		}
-	}
-	return -1
-}
-
 var (
-	tagsPattern   = regexp.MustCompile("^`((\\s*[a-z]+\\s*:\\s*\"[^\"]*\"\\s*)*)`$")
+	// tagsPattern - full tag validation template including quotes
+	tagsPattern = regexp.MustCompile("^`((\\s*[a-z]+\\s*:\\s*\"[^\"]*\"\\s*)*)`$")
+	// tagsExtractor - a template for separating different tags from each other
 	tagsExtractor = regexp.MustCompile("\\s*[a-z]+\\s*:\\s*\"[^\"]*\"\\s*")
-	tagPattern    = regexp.MustCompile("\\s*([a-z]+)\\s*:\\s*\"([^\"]*)\"\\s*")
+	// tagPattern - a pattern for separating a tag name from values
+	tagPattern = regexp.MustCompile("\\s*([a-z]+)\\s*:\\s*\"([^\"]*)\"\\s*")
 )
 
-func fieldTagToMap(tag string) (result map[string][]string) {
-	result = make(map[string][]string, 10)
+// fieldTagToMap parses go tags and provides them as a map of string arrays
+//
+// Example:
+//  fieldTagToMap('`sql:"field_name,omitempty"` json:"-"')
+// Return:
+//  map[string][]string{
+//    "sql": {"field_name", "omitempty"},
+//    "json": {"-"},
+//  }
+func fieldTagToMap(tag string) map[string][]string {
+	var result = make(map[string][]string, 10)
 	sub := tagsPattern.FindAllStringSubmatch(tag, -1)
 	if len(sub) > 0 {
 		tagsUnquoted := sub[0][1]
@@ -530,5 +550,71 @@ func fieldTagToMap(tag string) (result map[string][]string) {
 			result[tagSmt[0][1]] = list
 		}
 	}
-	return
+	return result
+}
+
+// funcDeclUniqueName represents simple types in string format, has a very narrow purpose -
+// used to form a unique function name taking into account the receiver parameter
+func funcDeclUniqueName(f *ast.FuncDecl) string {
+	if f.Name == nil {
+		return ""
+	}
+	if f.Recv == nil || len(f.Recv.List) < 1 {
+		return f.Name.Name
+	}
+	var identToStr func(e ast.Expr) string
+	identToStr = func(e ast.Expr) string {
+		switch v := e.(type) {
+		case *ast.StarExpr:
+			return ":" + identToStr(v.X)
+		case *ast.Ident:
+			return ":" + v.Name
+		case *ast.SelectorExpr:
+			return ":" + identToStr(v.X) + "." + identToStr(v.Sel)
+		default:
+			return ":0"
+		}
+	}
+	return f.Name.Name + identToStr(f.Recv.List[0].Type)
+}
+
+// funcDeclsToMap grouping implementations based on function names.
+// panics if different implementations with the same name are found
+func funcDeclsToMap(functions []*ast.FuncDecl) map[string]*ast.FuncDecl {
+	result := make(map[string]*ast.FuncDecl, len(functions))
+	for i, f := range functions {
+		funcName := funcDeclUniqueName(f)
+		if r, ok := result[funcName]; ok {
+			if reflect.DeepEqual(r, f) {
+				continue
+			}
+			panic(fmt.Sprintf("name `%s` repeated", funcName))
+		}
+		result[funcName] = functions[i]
+	}
+	return result
+}
+
+var (
+	// fncTemplate - the pattern matches the function call format:
+	//  funcName(arg1;arg2)
+	fncTemplate = regexp.MustCompile(`^(\w+)\(([^)]*)\)$`)
+)
+
+// makeValuePicker generates code to get field values taking into account data generation tags,
+// if tags do not provide data generation, def value is used
+//
+// a boolean value indicates whether the generation was performed (true) or the default value was taken (false)
+func makeValuePicker(tags []string, def ast.Expr) (ast.Expr, bool) {
+	for _, tag := range tags {
+		sub := fncTemplate.FindAllStringSubmatch(tag, -1)
+		if len(sub) > 0 {
+			funcName := sub[0][1]
+			funcArgs := strings.Split(sub[0][2], ";")
+			if expr := doFuncPicker(funcName, funcArgs...); expr != nil {
+				return expr, true
+			}
+		}
+	}
+	return def, false
 }
