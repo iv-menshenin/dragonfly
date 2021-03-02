@@ -164,7 +164,7 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 			fieldRefs, columnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("select %s from %s where %%s", strings.Join(columnList, ", "), fullTableName)
-		functionBody, findTypes, findAttrs := BuildFindArgumentsProcessor(
+		functionBody, findTypes, findAttrs := buildFindArgumentsProcessor(
 			"find",
 			functionName+"Option",
 			optionFields,
@@ -266,7 +266,7 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 			fieldRefs, columnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("delete from %s where %%s returning %s", fullTableName, strings.Join(columnList, ", "))
-		functionBody, findTypes, findAttrs := BuildFindArgumentsProcessor(
+		functionBody, findTypes, findAttrs := buildFindArgumentsProcessor(
 			"find",
 			functionName+"Option",
 			optionFields,
@@ -368,13 +368,13 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 			fieldRefs, outColumnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 		)
 		sqlQuery := fmt.Sprintf("update %s set %%s where %%s returning %s", fullTableName, strings.Join(outColumnList, ", "))
-		functionBody, inputTypes, inputAttrs := BuildInputValuesProcessor(
+		functionBody, inputTypes, inputAttrs := buildInputValuesProcessor(
 			"values",
 			makeExportedName(functionName+"Values"),
 			mutableFields,
 			UpdateBuilderOptions,
 		)
-		findBlock, findTypes, findAttrs := BuildFindArgumentsProcessor(
+		findBlock, findTypes, findAttrs := buildFindArgumentsProcessor(
 			"filter",
 			makeExportedName(functionName+"Option"),
 			optionFields,
@@ -462,7 +462,7 @@ func insertOneBuilder(
 		fieldRefs, outColumnList = ExtractDestinationFieldRefsFromStruct(ScanDestVariable.String(), rowFields)
 	)
 	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) returning %s", fullTableName, strings.Join(outColumnList, ", "))
-	functionBody, functionTypes, functionAttrs := BuildInputValuesProcessor(
+	functionBody, functionTypes, functionAttrs := buildInputValuesProcessor(
 		"record",
 		makeExportedName(functionName+"Values"),
 		mutableFields,
@@ -539,7 +539,7 @@ func upsertBuilder(
 		_, uniqueColumns         = ExtractDestinationFieldRefsFromStruct("", optionFields)
 	)
 	sqlQuery := fmt.Sprintf("insert into %s (%%s) values (%%s) on conflict (%s) do update set %%s returning %s", fullTableName, strings.Join(uniqueColumns, ","), strings.Join(outColumnList, ", "))
-	functionBody, functionTypes, functionAttrs := BuildInputValuesProcessor(
+	functionBody, functionTypes, functionAttrs := buildInputValuesProcessor(
 		"record",
 		makeExportedName(functionName+"Values"),
 		mutableFields,

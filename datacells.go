@@ -5,17 +5,8 @@ import (
 	"github.com/iv-menshenin/dragonfly/utils"
 	"github.com/iv-menshenin/go-ast"
 	"go/ast"
-	"strconv"
 	"strings"
 )
-
-func RegisterSqlFieldEncryptFunction(encryptFn func(valueForEncrypt ast.Expr) *ast.CallExpr) {
-	if makeEncryptPasswordCallCustom == nil {
-		makeEncryptPasswordCallCustom = encryptFn
-	} else {
-		panic("custom function already registered")
-	}
-}
 
 type (
 	variableEngine interface {
@@ -556,11 +547,9 @@ func (f dataCellField) generateFindArgumentCode(
 	caseInsensitive := f.isTagExists(tagCaseInsensitive)
 	if f.comparator.IsMult() {
 		stmt = f.comparator.getBuilder().makeArrayQueryOption(funcFilterOptionName, fieldName, f.source.sqlExpr(), caseInsensitive, options)
-	}
-	if union, ok := f.source.(sourceSqlSomeColumns); ok {
-		makeFindProcessorForUnion(funcFilterOptionName, fieldName, union.ColumnNames, f, options)
-	}
-	if _, ok := f.field.Type.(*ast.StarExpr); ok {
+	} else if union, ok := f.source.(sourceSqlSomeColumns); ok {
+		stmt = makeFindProcessorForUnion(funcFilterOptionName, fieldName, union.ColumnNames, f, options)
+	} else if _, ok := f.field.Type.(*ast.StarExpr); ok {
 		stmt = []ast.Stmt{
 			builders.If(
 				builders.NotEqual(builders.SimpleSelector(funcFilterOptionName, fieldName), builders.Nil),
@@ -628,7 +617,7 @@ func (f groupedDataCells) generateFindArgumentCode(
 	panic("unimplemented")
 }
 
-func buildFindArgumentsProcessor(
+func buildFindArgumentProcessor(
 	dataCell dataCellFactory,
 	funcFilterOptionName string,
 	options builderOptions,
@@ -650,11 +639,49 @@ func buildFindArgumentsProcessor(
 	return
 }
 
-/*
-	Extracts required and optional parameters from incoming arguments, builds program code
-	Returns the body of program code, required type declarations and required input fields
-*/
-func BuildFindArgumentsProcessor(
+func buildFindSubArgumentProcessor(
+	funcFilterOptionName string,
+	funcFilterOptionTypeName string,
+	optionField groupedDataCells,
+	options builderOptions,
+) (
+	body []ast.Stmt,
+	declarations map[string]*ast.TypeSpec,
+	optionsFuncField []*ast.Field,
+	newVarName variableName,
+) {
+	var newFieldName = "Sub"
+	for _, mf := range optionField {
+		if strings.Index(newFieldName, mf.getField().Names[0].Name) < 0 {
+			newFieldName += mf.getField().Names[0].Name
+		}
+	}
+	var internalOptionName = funcFilterOptionTypeName + newFieldName
+	newVarName = options.variableForColumnExpr + variableName(newFieldName)
+	var newFieldVarName = "v" + newFieldName
+	body, declarations, optionsFuncField = buildFindArgumentsProcessor(newFieldVarName, internalOptionName, optionField, builderOptions{
+		appendValueFormat:       options.appendValueFormat,
+		variableForColumnNames:  options.variableForColumnNames,
+		variableForColumnValues: options.variableForColumnValues,
+		variableForColumnExpr:   newVarName,
+	})
+	body = append(
+		[]ast.Stmt{
+			&ast.ExprStmt{X: &ast.BasicLit{Value: "/* process sub-options */"}},
+			builders.Var(
+				builders.VariableValue(newFieldVarName, builders.Selector(ast.NewIdent(funcFilterOptionName), newFieldVarName)),
+				builders.VariableValue(string(newVarName), builders.Call(builders.MakeFn, builders.ArrayType(builders.String), builders.IntegerConstant(0).Expr())),
+			),
+		},
+		body...,
+	)
+	return
+}
+
+// buildFindArgumentsProcessor extracts required and optional parameters from incoming arguments, builds program code
+//
+// returns the body of program code, required type declarations and required input fields
+func buildFindArgumentsProcessor(
 	funcFilterOptionName string,
 	funcFilterOptionTypeName string,
 	optionFields []dataCellFactory,
@@ -666,34 +693,13 @@ func BuildFindArgumentsProcessor(
 ) {
 	declarations = make(map[string]*ast.TypeSpec)
 	var (
-		functionBody     = make([]ast.Stmt, 0, len(optionFields)*3)
-		optionsFieldList = make([]*ast.Field, 0, len(optionFields))
+		functionBody     = make([]ast.Stmt, 0)
+		optionsFieldList = make([]*ast.Field, 0)
 	)
-	for i, field := range optionFields {
+	for _, field := range optionFields {
 		switch f := field.(type) {
 		case groupedDataCells:
-			// TODO move out
-			var newFieldName = "Sub"
-			for _, mf := range f {
-				if strings.Index(newFieldName, mf.getField().Names[0].Name) < 0 {
-					newFieldName += mf.getField().Names[0].Name
-				}
-			}
-			var (
-				newVarNameAsField  = newFieldName
-				internalOptionName = funcFilterOptionTypeName + strconv.Itoa(i)
-				newVarName         = options.variableForColumnExpr + variableName(strconv.Itoa(i))
-			)
-			functionBody = append(functionBody, builders.Var(
-				builders.VariableValue(newVarNameAsField, builders.Selector(ast.NewIdent(funcFilterOptionName), newVarNameAsField)),
-				builders.VariableValue(string(newVarName), builders.Call(builders.MakeFn, builders.ArrayType(builders.String), builders.IntegerConstant(0).Expr())),
-			))
-			body2, decl2, ff2 := BuildFindArgumentsProcessor(newVarNameAsField, internalOptionName, f, builderOptions{
-				appendValueFormat:       options.appendValueFormat,
-				variableForColumnNames:  options.variableForColumnNames,
-				variableForColumnValues: options.variableForColumnValues,
-				variableForColumnExpr:   newVarName,
-			})
+			body2, decl2, ff2, newVarName := buildFindSubArgumentProcessor(funcFilterOptionName, funcFilterOptionTypeName, f, options)
 			functionBody = append(functionBody, body2...)
 			for k, v := range decl2 {
 				declarations[k] = v
@@ -710,7 +716,11 @@ func BuildFindArgumentsProcessor(
 			))
 			optionsFieldList = append(optionsFieldList, ff2...)
 		default:
-			functionBodyEx, optionsFieldListEx := buildFindArgumentsProcessor(f, funcFilterOptionName, options)
+			functionBody = append(
+				functionBody,
+				&ast.ExprStmt{X: &ast.BasicLit{Value: fmt.Sprintf("/* process find option %v */", field.getField().Names)}},
+			)
+			functionBodyEx, optionsFieldListEx := buildFindArgumentProcessor(f, funcFilterOptionName, options)
 			functionBody = append(functionBody, functionBodyEx...)
 			optionsFieldList = append(optionsFieldList, optionsFieldListEx...)
 		}
@@ -840,7 +850,7 @@ func (f groupedDataCells) generateInputArgumentCode(
 	panic("not implemented")
 }
 
-func BuildInputValuesProcessor(
+func buildInputValuesProcessor(
 	funcInputOptionName string,
 	funcInputOptionTypeName string,
 	optionFields []dataCellFactory,
