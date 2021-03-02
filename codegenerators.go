@@ -169,6 +169,8 @@ func (op opRegular) makeUnionQueryOption(
 	}
 }
 
+//  args = append(args, filter.Id)
+//  filters = append(filters, fmt.Sprintf("%s = %s", "id", "$"+strconv.Itoa(len(args))))
 func (op opRegular) makeScalarQueryOption(
 	optionName, fieldName, columnName string,
 	ci, ref bool,
@@ -183,7 +185,6 @@ func (op opRegular) makeScalarQueryOption(
 		optionExpr = builders.Call(builders.ToLowerFn, optionExpr)
 	}
 	return []ast.Stmt{
-		// &ast.ExprStmt{X: &ast.BasicLit{Value: "/* opRegular:makeScalarQueryOption */"}},
 		builders.Assign(
 			builders.MakeVarNames(options.variableForColumnValues.String()),
 			builders.Assignment,
