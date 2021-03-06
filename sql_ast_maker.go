@@ -253,22 +253,16 @@ func makeType(schema, typeName string, typeSchema TypeSchema) sqt.SqlStmt {
 			Values: sqlValues,
 		}
 	} else if strings.EqualFold(typeSchema.Type, "map") || strings.EqualFold(typeSchema.Type, "json") {
-		values := make([]string, len(typeSchema.Enum))
-		for i, f := range typeSchema.Enum {
-			values[i] = f.Value
-		}
-		create = &sqt.RecordDescription{
-			Fields: []sqt.SqlExpr{
-				&sqt.SqlField{
-					Name: &sqt.Literal{Text: "data"},
-					Describer: &sqt.DataTypeExpr{
-						DataType:  "json",
-						IsArray:   false,
-						Length:    nil,
-						Precision: nil,
-						Collation: nil,
-					},
-					Constraints: nil,
+		return &sqt.CreateStmt{
+			Target: sqt.TargetDomain,
+			Name: &sqt.Selector{
+				Name:      typeName,
+				Container: schema,
+			},
+			Create: &sqt.SqlField{
+				Name: &sqt.WithoutNameIdent{},
+				Describer: &sqt.DataTypeExpr{
+					DataType: "json",
 				},
 			},
 		}
