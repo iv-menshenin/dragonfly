@@ -258,9 +258,15 @@ func (c *Table) extractColumnsByConstraintName(keyName string) (columns []Column
 			columns = append(columns, *column)
 		}
 		return
-	} else {
-		panic(fmt.Sprintf("cannot find key `%s`", keyName))
 	}
+	for i, column := range c.Columns {
+		for _, constraint := range column.Value.Constraints {
+			if strings.EqualFold(constraint.Name, keyName) {
+				return []ColumnRef{c.Columns[i]}
+			}
+		}
+	}
+	panic(fmt.Sprintf("cannot find key `%s`", keyName))
 }
 
 func (c *Table) extractColumnsByTags(tagName string) (columns []ColumnRef) {
