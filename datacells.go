@@ -650,10 +650,16 @@ func buildFindSubArgumentProcessor(
 	optionsFuncField []*ast.Field,
 	newVarName variableName,
 ) {
-	var newFieldName = "Sub"
+	var (
+		newFieldName       = "Sub"
+		allFieldsIsOmitted = true
+	)
 	for _, mf := range optionField {
 		if strings.Index(newFieldName, mf.getField().Names[0].Name) < 0 {
 			newFieldName += mf.getField().Names[0].Name
+		}
+		if _, isConstant := mf.(dataCellFieldConstant); !isConstant {
+			allFieldsIsOmitted = false
 		}
 	}
 	var internalOptionName = funcFilterOptionTypeName + newFieldName
@@ -665,13 +671,15 @@ func buildFindSubArgumentProcessor(
 		variableForColumnValues: options.variableForColumnValues,
 		variableForColumnExpr:   newVarName,
 	})
+	var vars []ast.Spec
+	if !allFieldsIsOmitted {
+		vars = append(vars, builders.VariableValue(newFieldVarName, builders.Selector(ast.NewIdent(funcFilterOptionName), newFieldVarName)))
+	}
+	vars = append(vars, builders.VariableValue(string(newVarName), builders.Call(builders.MakeFn, builders.ArrayType(builders.String), builders.IntegerConstant(0).Expr())))
 	body = append(
 		[]ast.Stmt{
 			&ast.ExprStmt{X: &ast.BasicLit{Value: "/* process sub-options */"}},
-			builders.Var(
-				builders.VariableValue(newFieldVarName, builders.Selector(ast.NewIdent(funcFilterOptionName), newFieldVarName)),
-				builders.VariableValue(string(newVarName), builders.Call(builders.MakeFn, builders.ArrayType(builders.String), builders.IntegerConstant(0).Expr())),
-			),
+			builders.Var(vars...),
 		},
 		body...,
 	)
