@@ -143,7 +143,7 @@ func (c *DomainSchema) describeGO(typeName string) fieldDescriber {
 }
 
 func (c *Column) tags(name string) (tags []string) {
-	if name == TagTypeSQL {
+	if name == tagTypeSQL {
 		tags = append([]string{c.Name}, c.Tags...)
 	} else {
 		tagTemplate := regexp.MustCompile(fmt.Sprintf(`^%s\((\w+)\)$`, name))
@@ -195,8 +195,8 @@ func (c *ColumnRef) generateField(w *AstData, required bool) (ast.Field, bool) {
 		},
 		Type: decorator(fieldType),
 		Tag: builders.MakeTagsForField(map[string][]string{
-			TagTypeSQL:  c.Value.tags(TagTypeSQL),
-			TagTypeJSON: c.Value.tags(TagTypeJSON),
+			tagTypeSQL:  c.Value.tags(tagTypeSQL),
+			tagTypeJSON: c.Value.tags(tagTypeJSON),
 		}),
 		Comment: builders.CommentGroup(c.Value.Description),
 	}, isCustomType
@@ -339,7 +339,7 @@ func (c *TableApi) generateIdentifierOption(table *Table, w *AstData) (fields []
 	return
 }
 
-func checkOption(table *Table, operator SQLDataCompareOperator, option ApiFindOption, w *AstData) {
+func checkOption(table *Table, operator sqlDataCompareOperator, option ApiFindOption, w *AstData) {
 	if option.Column != "" {
 		if len(option.OneOf) > 0 {
 			panic("the option must contains 'one_of' or 'field' not both")
@@ -391,9 +391,9 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) data
 		field.Type = &ast.ArrayType{Elt: field.Type}
 	}
 	if field.Tag != nil { // TODO is this necessary?
-		if sqlTags, ok := utils.FieldTagToMap(field.Tag.Value)[TagTypeSQL]; ok {
+		if sqlTags, ok := utils.FieldTagToMap(field.Tag.Value)[tagTypeSQL]; ok {
 			field.Tag = builders.MakeTagsForField(map[string][]string{
-				TagTypeSQL: utils.ArrayRemove(sqlTags, "required"),
+				tagTypeSQL: utils.ArrayRemove(sqlTags, "required"),
 			})
 		}
 	}
@@ -418,6 +418,45 @@ func (option ApiFindOption) makeMetaFieldByColumn(table *Table, w *AstData) data
 	)
 }
 
+func generateFindFieldsOneOf(table *Table, option ApiFindOption, operator sqlDataCompareOperator, w *AstData) dataCellFactory {
+	unionColumns := make([]string, 0, len(option.OneOf))
+	for _, oneOf := range option.OneOf {
+		unionColumns = append(unionColumns, oneOf)
+	}
+	firstColumn := table.Columns.getColumn(option.OneOf[0])
+	fieldType, isCustom := firstColumn.generateField(w, option.Required)
+	fieldType.Names = []*ast.Ident{
+		ast.NewIdent(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
+	}
+	var sqlTags = []string{"-", tagTypeUnion}
+	if fieldType.Tag != nil {
+		if baseSqlTags, ok := utils.FieldTagToMap(fieldType.Tag.Value)[tagTypeSQL]; ok {
+			for _, tag := range baseSqlTags[1:] {
+				if tag != "required" {
+					sqlTags = append(sqlTags, tag)
+				}
+			}
+		}
+	}
+	if option.Required {
+		sqlTags = append(sqlTags, "required")
+	}
+	fieldType.Tag = builders.MakeTagsForField(map[string][]string{
+		tagTypeSQL:   sqlTags,
+		tagTypeUnion: unionColumns,
+	})
+	dcFactory := MakeDataCellFactoryType
+	if isCustom {
+		dcFactory = MakeDataCellFactoryCustom
+	}
+	return dcFactory(
+		&fieldType,
+		sourceSqlSomeColumns{ColumnNames: unionColumns},
+		sqlTags,
+		operator,
+	)
+}
+
 // TODO split
 func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstData) (findBy []dataCellFactory) {
 	findBy = make([]dataCellFactory, 0, len(fo))
@@ -438,43 +477,7 @@ func (c *TableApi) generateFindFields(table *Table, fo ApiFindOptions, w *AstDat
 			findBy = append(findBy, MakeDataCellFactoryGrouped(findByEx))
 		}
 		if len(option.OneOf) > 0 {
-			// TODO move to new function
-			unionColumns := make([]string, 0, len(option.OneOf))
-			for _, oneOf := range option.OneOf {
-				unionColumns = append(unionColumns, oneOf)
-			}
-			firstColumn := table.Columns.getColumn(option.OneOf[0])
-			fieldType, isCustom := firstColumn.generateField(w, option.Required)
-			fieldType.Names = []*ast.Ident{
-				ast.NewIdent(makeExportedName("OneOf-" + strings.Join(unionColumns, "-or-"))),
-			}
-			var sqlTags = []string{"-", TagTypeUnion}
-			if fieldType.Tag != nil {
-				if baseSqlTags, ok := utils.FieldTagToMap(fieldType.Tag.Value)[TagTypeSQL]; ok {
-					for _, tag := range baseSqlTags[1:] {
-						if tag != "required" {
-							sqlTags = append(sqlTags, tag)
-						}
-					}
-				}
-			}
-			if option.Required {
-				sqlTags = append(sqlTags, "required")
-			}
-			fieldType.Tag = builders.MakeTagsForField(map[string][]string{
-				TagTypeSQL:   sqlTags,
-				TagTypeUnion: unionColumns,
-			})
-			dcFactory := MakeDataCellFactoryType
-			if isCustom {
-				dcFactory = MakeDataCellFactoryCustom
-			}
-			findBy = append(findBy, dcFactory(
-				&fieldType,
-				sourceSqlSomeColumns{ColumnNames: unionColumns},
-				sqlTags,
-				operator,
-			))
+			findBy = append(findBy, generateFindFieldsOneOf(table, option, operator, w))
 			continue
 		}
 	}
@@ -673,7 +676,7 @@ func (c TableApi) buildExtendedFields(tableRowStructName string, w *AstData) (ap
 		var field ast.Field
 		field, isCustom = columnRef.generateField(w, column.Schema.Value.NotNull)
 		field.Tag = builders.MakeTagsForField(map[string][]string{
-			TagTypeSQL: {column.SQL},
+			tagTypeSQL: {column.SQL},
 		})
 		additionFields = append(additionFields, MakeDataCellFactoryType(
 			&field,

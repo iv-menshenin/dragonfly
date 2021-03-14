@@ -127,7 +127,7 @@ type (
 		Column   string                 `yaml:"column,omitempty" json:"column,omitempty"`
 		Required bool                   `yaml:"required,omitempty" json:"required,omitempty"`
 		OneOf    []string               `yaml:"one_of,omitempty" json:"one_of,omitempty"`
-		Operator SQLDataCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
+		Operator sqlDataCompareOperator `yaml:"operator,omitempty" json:"operator,omitempty"`
 		Constant string                 `yaml:"constant,omitempty" json:"constant,omitempty"`
 		Or       ApiFindOptions         `yaml:"or,omitempty" json:"or,omitempty"`
 	}

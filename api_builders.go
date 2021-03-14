@@ -90,18 +90,18 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 	)
 	switch variant {
 	case findVariantOnce:
-		scanBlockWrapper = WrapperFindOne
+		scanBlockWrapper = wrapFetchOnceForScanner
 		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
-		scanBlockWrapper = WrapperFindAll
+		scanBlockWrapper = wrapIteratorForScanner
 		resultExprFn = simpleResultArray
 		lastReturn = builders.ReturnEmpty()
 	case findVariantPaginate:
-		scanBlockWrapper = WrapperFindAll
+		scanBlockWrapper = wrapIteratorForScanner
 		resultExprFn = resultArrayWithCounter
 		lastReturn = builders.ReturnEmpty()
 		fieldRefsWrapper = func(e []ast.Expr) []ast.Expr { return append(e, builders.Ref(ast.NewIdent("rowCount"))) }
@@ -124,11 +124,11 @@ func makeFindFunction(variant findVariant) ApiFuncBuilder {
 							},
 							sql,
 							builders.Add(
-								builders.Call(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
+								builders.Call(builders.LengthFn, ast.NewIdent("args")),
 								builders.IntegerConstant(1).Expr(),
 							),
 							builders.Add(
-								builders.Call(builders.LengthFn, ast.NewIdent("args")), // TODO ast.NewIdent("args")
+								builders.Call(builders.LengthFn, ast.NewIdent("args")),
 								builders.IntegerConstant(2).Expr(),
 							),
 						)
@@ -245,14 +245,14 @@ func makeDeleteFunction(variant findVariant) ApiFuncBuilder {
 	)
 	switch variant {
 	case findVariantOnce:
-		scanBlockWrapper = WrapperFindOne
+		scanBlockWrapper = wrapFetchOnceForScanner
 		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
-		scanBlockWrapper = WrapperFindAll
+		scanBlockWrapper = wrapIteratorForScanner
 		resultExprFn = simpleResultArray
 		lastReturn = builders.ReturnEmpty()
 	default:
@@ -347,14 +347,14 @@ func makeUpdateFunction(variant findVariant) ApiFuncBuilder {
 	)
 	switch variant {
 	case findVariantOnce:
-		scanBlockWrapper = WrapperFindOne
+		scanBlockWrapper = wrapFetchOnceForScanner
 		resultExprFn = simpleResultOneRecord
 		lastReturn = builders.Return(
 			ast.NewIdent("result"),
 			ast.NewIdent(sqlEmptyResultErrorName),
 		)
 	case findVariantAll:
-		scanBlockWrapper = WrapperFindAll
+		scanBlockWrapper = wrapIteratorForScanner
 		resultExprFn = simpleResultArray
 		lastReturn = builders.ReturnEmpty()
 	default:
@@ -453,7 +453,7 @@ func insertOneBuilder(
 	const (
 		sqlTextName = "sqlText"
 	)
-	scanBlockWrapper := WrapperFindOne
+	scanBlockWrapper := wrapFetchOnceForScanner
 	lastReturn := builders.Return(
 		ast.NewIdent("result"),
 		ast.NewIdent(sqlEmptyResultErrorName),
@@ -529,7 +529,7 @@ func upsertBuilder(
 	const (
 		sqlTextName = "sqlText"
 	)
-	scanBlockWrapper := WrapperFindOne
+	scanBlockWrapper := wrapFetchOnceForScanner
 	lastReturn := builders.Return(
 		ast.NewIdent("result"),
 		ast.NewIdent(sqlEmptyResultErrorName),

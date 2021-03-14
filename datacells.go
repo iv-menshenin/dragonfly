@@ -17,7 +17,7 @@ type (
 		variableName variableEngine
 		wrapper      func(ast.Expr) ast.Expr
 	}
-	SQLDataCompareOperator string // TODO try to remove from export
+	sqlDataCompareOperator string
 
 	builderOptions struct {
 		appendValueFormat       string
@@ -78,7 +78,7 @@ type (
 		field      *ast.Field
 		source     sourceSql // sql mirror for field
 		tags       []string
-		comparator SQLDataCompareOperator
+		comparator sqlDataCompareOperator
 	}
 	dataCellFieldCustomType struct {
 		dataCell dataCellField
@@ -97,7 +97,7 @@ func MakeDataCellFactoryType(
 	field *ast.Field,
 	source sourceSql,
 	tags []string,
-	comparator SQLDataCompareOperator,
+	comparator sqlDataCompareOperator,
 ) dataCellFactory {
 	// tagCaseInsensitive
 	return dataCellField{
@@ -112,7 +112,7 @@ func MakeDataCellFactoryConstant(
 	field *ast.Field,
 	source sourceSql,
 	tags []string,
-	comparator SQLDataCompareOperator,
+	comparator sqlDataCompareOperator,
 	constant string,
 ) dataCellFactory {
 	return dataCellFieldConstant{
@@ -130,7 +130,7 @@ func MakeDataCellFactoryCustom(
 	field *ast.Field,
 	source sourceSql,
 	tags []string,
-	comparator SQLDataCompareOperator,
+	comparator sqlDataCompareOperator,
 ) dataCellFactory {
 	return dataCellFieldCustomType{
 		dataCell: dataCellField{
@@ -146,7 +146,7 @@ func MakeDataCellFactoryMaybe(
 	field *ast.Field,
 	source sourceSql,
 	tags []string,
-	comparator SQLDataCompareOperator,
+	comparator sqlDataCompareOperator,
 ) dataCellFactory {
 	return dataCellFieldMaybeType{
 		dataCell: dataCellField{
@@ -254,18 +254,18 @@ const (
 	tagEncrypt         = "encrypt"
 	tagCaseInsensitive = "ci"
 	// sql data comparing variants
-	CompareEqual     SQLDataCompareOperator = "equal"
-	CompareNotEqual  SQLDataCompareOperator = "notEqual"
-	CompareLike      SQLDataCompareOperator = "like"
-	CompareNotLike   SQLDataCompareOperator = "notLike"
-	CompareIn        SQLDataCompareOperator = "in"
-	CompareNotIn     SQLDataCompareOperator = "notIn"
-	CompareGreatThan SQLDataCompareOperator = "great"
-	CompareLessThan  SQLDataCompareOperator = "less"
-	CompareNotGreat  SQLDataCompareOperator = "notGreat"
-	CompareNotLess   SQLDataCompareOperator = "notLess"
-	CompareStarts    SQLDataCompareOperator = "starts"
-	CompareIsNull    SQLDataCompareOperator = "isNull"
+	CompareEqual     sqlDataCompareOperator = "equal"
+	CompareNotEqual  sqlDataCompareOperator = "notEqual"
+	CompareLike      sqlDataCompareOperator = "like"
+	CompareNotLike   sqlDataCompareOperator = "notLike"
+	CompareIn        sqlDataCompareOperator = "in"
+	CompareNotIn     sqlDataCompareOperator = "notIn"
+	CompareGreatThan sqlDataCompareOperator = "great"
+	CompareLessThan  sqlDataCompareOperator = "less"
+	CompareNotGreat  sqlDataCompareOperator = "notGreat"
+	CompareNotLess   sqlDataCompareOperator = "notLess"
+	CompareStarts    sqlDataCompareOperator = "starts"
+	CompareIsNull    sqlDataCompareOperator = "isNull"
 )
 
 func (v variableName) String() string {
@@ -358,19 +358,14 @@ type (
 	ScanWrapper func(...ast.Stmt) ast.Stmt
 )
 
-var (
-	WrapperFindOne = wrapFetchOnceForScanner
-	WrapperFindAll = wrapIteratorForScanner
-)
-
 const (
-	TagTypeSQL   = "sql"
-	TagTypeJSON  = "json"
-	TagTypeUnion = "union" // TODO internal, remove from export
+	tagTypeSQL   = "sql"
+	tagTypeJSON  = "json"
+	tagTypeUnion = "union"
 )
 
 var (
-	compareOperators = []SQLDataCompareOperator{
+	compareOperators = []sqlDataCompareOperator{
 		CompareEqual,
 		CompareNotEqual,
 		CompareLike,
@@ -384,13 +379,13 @@ var (
 		CompareStarts,
 		CompareIsNull,
 	}
-	multiCompareOperators = []SQLDataCompareOperator{
+	multiCompareOperators = []sqlDataCompareOperator{
 		CompareIn,
 		CompareNotIn,
 	}
 )
 
-func (c *SQLDataCompareOperator) Check() {
+func (c *sqlDataCompareOperator) Check() {
 	if c == nil || *c == "" {
 		*c = CompareEqual
 	}
@@ -402,7 +397,7 @@ func (c *SQLDataCompareOperator) Check() {
 	panic(fmt.Sprintf("unknown compare operator '%s'", string(*c)))
 }
 
-func (c SQLDataCompareOperator) IsMult() bool {
+func (c sqlDataCompareOperator) IsMult() bool {
 	for _, op := range multiCompareOperators {
 		if op == c {
 			return true
@@ -412,7 +407,7 @@ func (c SQLDataCompareOperator) IsMult() bool {
 }
 
 var (
-	knownOperators = map[SQLDataCompareOperator]iOperator{
+	knownOperators = map[sqlDataCompareOperator]iOperator{
 		CompareEqual:     opRegular{`%s = %s`},
 		CompareNotEqual:  opRegular{`% != %s`},
 		CompareLike:      opRegular{`%s like '%%'||%s||'%%'`},
@@ -428,7 +423,7 @@ var (
 	}
 )
 
-func (c SQLDataCompareOperator) getBuilder() iOperator {
+func (c sqlDataCompareOperator) getBuilder() iOperator {
 	c.Check()
 	if template, ok := knownOperators[c]; ok {
 		return template
@@ -585,7 +580,7 @@ func (f dataCellFieldConstant) generateFindArgumentCode(
 		},
 	}
 	stmt = newOperator.makeScalarQueryOption(
-		funcFilterOptionName, // TODO ?
+		funcFilterOptionName,
 		f.constant,
 		f.dataCell.source.sqlExpr(),
 		caseInsensitive,
@@ -762,7 +757,7 @@ func (f dataCellField) generateInputArgumentCode(
 		fieldName = builders.SimpleSelector(funcInputOptionName, f.field.Names[0].Name)
 	)
 	/* omitted - value will never be requested from the user */
-	valueExpr, omitted = makeValuePicker(tags[TagTypeSQL][1:], fieldName)
+	valueExpr, omitted = makeValuePicker(tags[tagTypeSQL][1:], fieldName)
 	/* test wrappers
 	if !value.omitted { ... }
 	*/
@@ -798,7 +793,7 @@ func (f dataCellField) generateInputArgumentCode(
 	if !isStarExpression && isCustom {
 		valueExpr = builders.Ref(valueExpr)
 	}
-	if utils.ArrayFind(tags[TagTypeSQL], tagEncrypt) > 0 { // first word is column name
+	if utils.ArrayFind(tags[tagTypeSQL], tagEncrypt) > 0 { // first word is column name
 		if _, star := f.field.Type.(*ast.StarExpr); star {
 			valueExpr = builders.Star(valueExpr)
 		} else if isMaybe {
