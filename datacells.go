@@ -751,13 +751,14 @@ func (f dataCellField) generateInputArgumentCode(
 	isMaybe, isCustom bool, // TODO not clear logic
 ) (stmt []ast.Stmt, omitted bool) {
 	var (
-		valueExpr ast.Expr
-		tags      = fieldTagToMap(f.field.Tag.Value)
-		colName   = f.source
-		fieldName = builders.SimpleSelector(funcInputOptionName, f.field.Names[0].Name)
+		valueExpr      ast.Expr
+		prependedStmts []ast.Stmt
+		tags           = fieldTagToMap(f.field.Tag.Value)
+		colName        = f.source
+		fieldName      = builders.SimpleSelector(funcInputOptionName, f.field.Names[0].Name)
 	)
 	/* omitted - value will never be requested from the user */
-	valueExpr, omitted = makeValuePicker(tags[tagTypeSQL][1:], fieldName)
+	prependedStmts, valueExpr, omitted = makeValuePicker(f.field.Names[0].Name, tags[tagTypeSQL][1:], fieldName)
 	/* test wrappers
 	if !value.omitted { ... }
 	*/
@@ -816,7 +817,7 @@ func (f dataCellField) generateInputArgumentCode(
 		options.variableForColumnValues.String(),
 		options.variableForColumnExpr.String(),
 	)...)
-	stmt = append(comment, wrapFunc(stmt)...)
+	stmt = append(prependedStmts, append(comment, wrapFunc(stmt)...)...)
 	return
 }
 

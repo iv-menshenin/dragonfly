@@ -351,7 +351,7 @@ func (op *opConstant) makeScalarQueryOption(
 // taking into account the passed arguments
 //
 // returns nil if the function is not found
-func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
+func doFuncPicker(funcName string, funcArgs ...string) (ast.Expr, bool) {
 	switch funcName {
 	case tagGenerate:
 		if len(funcArgs) == 0 {
@@ -362,7 +362,7 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 			for _, arg := range funcArgs[1:] {
 				args = append(args, ast.NewIdent(arg))
 			}
-			return builders.Call(userDefinedFunction, args...)
+			return builders.Call(userDefinedFunction, args...), userDefinedFunction.MultipleReturnValues
 		}
 		// TODO move it to registeredGenerators
 		var funcNames = map[string]string{
@@ -384,12 +384,15 @@ func doFuncPicker(funcName string, funcArgs ...string) ast.Expr {
 					FunctionName:                ast.NewIdent(goFncName),
 					MinimumNumberOfArguments:    1,
 					ExtensibleNumberOfArguments: false,
+					MultipleReturnValues:        false,
 				},
 				builders.IntegerConstant(l).Expr(),
-			)
+			), false
 		}
+	default:
+		panic("not implemented")
 	}
-	return nil
+	return nil, false
 }
 
 // makeInputValueProcessor generates handler code for one cell of incoming data (one field)
@@ -606,16 +609,29 @@ var (
 // if tags do not provide data generation, def value is used
 //
 // a boolean value indicates whether the generation was performed (true) or the default value was taken (false)
-func makeValuePicker(tags []string, def ast.Expr) (ast.Expr, bool) {
+func makeValuePicker(sourceName string, tags []string, def ast.Expr) ([]ast.Stmt, ast.Expr, bool) {
 	for _, tag := range tags {
 		sub := fncTemplate.FindAllStringSubmatch(tag, -1)
 		if len(sub) > 0 {
 			funcName := sub[0][1]
 			funcArgs := strings.Split(sub[0][2], ";")
-			if expr := doFuncPicker(funcName, funcArgs...); expr != nil {
-				return expr, true
+			if expr, needCheck := doFuncPicker(funcName, funcArgs...); expr != nil {
+				if needCheck {
+					varName := "var" + sourceName
+					return []ast.Stmt{
+						builders.Var(
+							builders.VariableType(varName, builders.EmptyInterface),
+						),
+						builders.IfInit(
+							builders.Assign(builders.MakeVarNames(varName, "err"), builders.Assignment, expr),
+							builders.NotEqual(ast.NewIdent("err"), builders.Nil),
+							builders.ReturnEmpty(),
+						),
+					}, ast.NewIdent(varName), true
+				}
+				return nil, expr, true
 			}
 		}
 	}
-	return def, false
+	return nil, def, false
 }

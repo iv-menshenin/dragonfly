@@ -224,6 +224,17 @@ func RegisterFieldValueGenerator(alias, funcName string, minimumArgumentsCount i
 		FunctionName:                ast.NewIdent(funcName),
 		MinimumNumberOfArguments:    minimumArgumentsCount,
 		ExtensibleNumberOfArguments: isExtensible,
+		MultipleReturnValues:        false,
+	}
+	addNewGenerator(alias, newFunction)
+}
+
+func RegisterFieldValueGeneratorWithChecking(alias, funcName string, minimumArgumentsCount int, isExtensible bool) {
+	newFunction := builders.CallFunctionDescriber{
+		FunctionName:                ast.NewIdent(funcName),
+		MinimumNumberOfArguments:    minimumArgumentsCount,
+		ExtensibleNumberOfArguments: isExtensible,
+		MultipleReturnValues:        true,
 	}
 	addNewGenerator(alias, newFunction)
 }
