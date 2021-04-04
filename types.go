@@ -468,6 +468,16 @@ func (c *ColumnRef) normalize(schema *SchemaRef, relationName string, columnInde
 	if !reflect.DeepEqual(constraints, c.Value.Constraints) {
 		c.Value.Constraints = constraints
 	}
+	for i, tag := range c.Value.Tags {
+		normalizedTag := utils.EvalTemplateParameters(tag, map[string]string{
+			cTable:  relationName,
+			cSchema: schema.Value.Name,
+			cNN:     strconv.Itoa(i),
+		})
+		if tag != normalizedTag {
+			c.Value.Tags[i] = normalizedTag
+		}
+	}
 	c.Value.Schema.normalize(relationName, columnIndex, db)
 }
 
