@@ -426,7 +426,7 @@ func makeInputValueProcessor(
 				builders.Call(
 					builders.SprintfFn,
 					builders.StringConstant(sqlExpr).Expr(),
-					builders.Call(builders.LengthFn, ast.NewIdent(columnVarName)),
+					builders.Call(builders.LengthFn, ast.NewIdent(valueVarName)),
 				),
 			),
 		),
